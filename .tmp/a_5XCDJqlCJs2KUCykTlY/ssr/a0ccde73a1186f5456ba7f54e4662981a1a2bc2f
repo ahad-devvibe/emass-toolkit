@@ -1,0 +1,10 @@
+__vite_ssr_exportName__("getHealth", () => { try { return getHealth } catch {} });
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/src/utils/api-response.utils.ts", {"importedNames":["ApiResponse"]});
+
+const getHealth = (_req, res) => {
+	res.json(__vite_ssr_import_0__.ApiResponse.ok());
+};
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTtBQUNBOztBQUVPLE1BQU0sYUFBYSxNQUFlLFFBQWtCO0NBQ3pELElBQUksS0FBSyxrQ0FBWSxHQUFHLENBQUM7QUFDM0IiLCJuYW1lcyI6W10sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbImhlYWx0aC5jb250cm9sbGVyLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgUmVxdWVzdCwgUmVzcG9uc2UgfSBmcm9tIFwiZXhwcmVzc1wiO1xuaW1wb3J0IHsgQXBpUmVzcG9uc2UgfSBmcm9tIFwiLi4vdXRpbHMvYXBpLXJlc3BvbnNlLnV0aWxzLmpzXCI7XG5cbmV4cG9ydCBjb25zdCBnZXRIZWFsdGggPSAoX3JlcTogUmVxdWVzdCwgcmVzOiBSZXNwb25zZSkgPT4ge1xuICByZXMuanNvbihBcGlSZXNwb25zZS5vaygpKTtcbn07XG4iXSwiZmlsZSI6Ii9zcmMvY29udHJvbGxlcnMvaGVhbHRoLmNvbnRyb2xsZXIudHMifQ==
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0ZWRVcmxzIjoiMyIsIm1hcHBpbmdzIjpmYWxzZX0sIkQ6L2NvbS1wcm9qZWN0cy9lbWFzcy10b29sa2l0L3NlcnZlci9zcmMvY29udHJvbGxlcnMvaGVhbHRoLmNvbnRyb2xsZXIudHMiLCIvc3JjL2NvbnRyb2xsZXJzL2hlYWx0aC5jb250cm9sbGVyLnRzIixbXV0=

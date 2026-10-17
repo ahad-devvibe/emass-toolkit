@@ -1,0 +1,50 @@
+__vite_ssr_exportName__("renderPasswordResetEmail", () => { try { return renderPasswordResetEmail } catch {} });
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/src/services/email/email.utils.ts", {"importedNames":["escapeHtml"]});
+
+function renderPasswordResetEmail(input) {
+	const code = (0,__vite_ssr_import_0__.escapeHtml)(input.code);
+	const expiry = (0,__vite_ssr_import_0__.escapeHtml)(String(input.expiresInMinutes));
+	return {
+		subject: "Your EMASS Toolkit password reset code",
+		html: `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your EMASS Toolkit password reset code</title>
+  </head>
+  <body style="margin:0; padding:0; background-color:#FAF7F4; color:#2f2925; font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#FAF7F4;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px; background-color:#ffffff; border:1px solid #e7dfd8; border-radius:16px;">
+            <tr>
+              <td style="padding:32px 32px 24px;">
+                <h1 style="margin:0 0 16px; color:#2f2925; font-size:26px; line-height:1.25; text-align:center; font-weight:700;">Reset your password</h1>
+                <p style="margin:0 0 24px; color:#6C7278; font-size:16px; line-height:1.6; text-align:center;">Use the verification code below to choose a new password for your EMASS Toolkit account.</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td style="padding:22px 16px; background-color:#FF7A3D; border-radius:12px; color:#ffffff; font-size:32px; font-weight:700; letter-spacing:8px; line-height:1; text-align:center;">${code}</td>
+                  </tr>
+                </table>
+                <p style="margin:20px 0 0; color:#6C7278; font-size:14px; line-height:1.6; text-align:center;">This code expires in ${expiry} minutes.</p>
+                <hr style="margin:28px 0; border:0; border-top:1px solid #eee8e3;">
+                <p style="margin:0; color:#8B8179; font-size:13px; line-height:1.6;">For your security, never share this code. If you did not request it, you can safely ignore this email and your password will not change.</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 32px; background-color:#FDF8F4; border-radius:0 0 16px 16px; color:#9A918B; font-size:12px; line-height:1.5; text-align:center;">This is an automated message from EMASS Toolkit. Please do not reply.</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`,
+		text: `EMASS Toolkit\n\nReset your password\n\nUse this verification code to choose a new password for your EMASS Toolkit account:\n\n${input.code}\n\nThis code expires in ${input.expiresInMinutes} minutes.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email and your password will not change.`
+	};
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTtBQUFBOztBQWFPLFNBQVMseUJBQ2QsT0FDZTtDQUNmLE1BQU0sT0FBTyxxQ0FBVyxNQUFNLElBQUk7Q0FDbEMsTUFBTSxTQUFTLHFDQUFXLE9BQU8sTUFBTSxnQkFBZ0IsQ0FBQztDQUV4RCxPQUFPO0VBQ0wsU0FBUztFQUNULE1BQU07Ozs7Ozs7Ozs7Ozs7Ozs7Ozt5TUFrQitMLEtBQUs7OztzSUFHeEUsT0FBTzs7Ozs7Ozs7Ozs7Ozs7RUFjekksTUFBTSxrSUFBa0ksTUFBTSxLQUFLLDJCQUEyQixNQUFNLGlCQUFpQjtDQUN2TTtBQUNGIiwibmFtZXMiOltdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJwYXNzd29yZC1yZXNldC50ZW1wbGF0ZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBlc2NhcGVIdG1sIH0gZnJvbSBcIi4uL2VtYWlsLnV0aWxzLmpzXCI7XG5cbmV4cG9ydCBpbnRlcmZhY2UgUmVzZXRFbWFpbFRlbXBsYXRlSW5wdXQge1xuICBjb2RlOiBzdHJpbmc7XG4gIGV4cGlyZXNJbk1pbnV0ZXM6IG51bWJlcjtcbn1cblxuZXhwb3J0IGludGVyZmFjZSBSZW5kZXJlZEVtYWlsIHtcbiAgc3ViamVjdDogc3RyaW5nO1xuICBodG1sOiBzdHJpbmc7XG4gIHRleHQ6IHN0cmluZztcbn1cblxuZXhwb3J0IGZ1bmN0aW9uIHJlbmRlclBhc3N3b3JkUmVzZXRFbWFpbChcbiAgaW5wdXQ6IFJlc2V0RW1haWxUZW1wbGF0ZUlucHV0LFxuKTogUmVuZGVyZWRFbWFpbCB7XG4gIGNvbnN0IGNvZGUgPSBlc2NhcGVIdG1sKGlucHV0LmNvZGUpO1xuICBjb25zdCBleHBpcnkgPSBlc2NhcGVIdG1sKFN0cmluZyhpbnB1dC5leHBpcmVzSW5NaW51dGVzKSk7XG5cbiAgcmV0dXJuIHtcbiAgICBzdWJqZWN0OiBcIllvdXIgRU1BU1MgVG9vbGtpdCBwYXNzd29yZCByZXNldCBjb2RlXCIsXG4gICAgaHRtbDogYDwhZG9jdHlwZSBodG1sPlxuPGh0bWwgbGFuZz1cImVuXCI+XG4gIDxoZWFkPlxuICAgIDxtZXRhIGNoYXJzZXQ9XCJ1dGYtOFwiPlxuICAgIDxtZXRhIG5hbWU9XCJ2aWV3cG9ydFwiIGNvbnRlbnQ9XCJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MS4wXCI+XG4gICAgPHRpdGxlPllvdXIgRU1BU1MgVG9vbGtpdCBwYXNzd29yZCByZXNldCBjb2RlPC90aXRsZT5cbiAgPC9oZWFkPlxuICA8Ym9keSBzdHlsZT1cIm1hcmdpbjowOyBwYWRkaW5nOjA7IGJhY2tncm91bmQtY29sb3I6I0ZBRjdGNDsgY29sb3I6IzJmMjkyNTsgZm9udC1mYW1pbHk6QXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWY7XCI+XG4gICAgPHRhYmxlIHJvbGU9XCJwcmVzZW50YXRpb25cIiB3aWR0aD1cIjEwMCVcIiBjZWxsc3BhY2luZz1cIjBcIiBjZWxscGFkZGluZz1cIjBcIiBib3JkZXI9XCIwXCIgc3R5bGU9XCJiYWNrZ3JvdW5kLWNvbG9yOiNGQUY3RjQ7XCI+XG4gICAgICA8dHI+XG4gICAgICAgIDx0ZCBhbGlnbj1cImNlbnRlclwiIHN0eWxlPVwicGFkZGluZzozMnB4IDE2cHg7XCI+XG4gICAgICAgICAgPHRhYmxlIHJvbGU9XCJwcmVzZW50YXRpb25cIiB3aWR0aD1cIjEwMCVcIiBjZWxsc3BhY2luZz1cIjBcIiBjZWxscGFkZGluZz1cIjBcIiBib3JkZXI9XCIwXCIgc3R5bGU9XCJtYXgtd2lkdGg6NTYwcHg7IGJhY2tncm91bmQtY29sb3I6I2ZmZmZmZjsgYm9yZGVyOjFweCBzb2xpZCAjZTdkZmQ4OyBib3JkZXItcmFkaXVzOjE2cHg7XCI+XG4gICAgICAgICAgICA8dHI+XG4gICAgICAgICAgICAgIDx0ZCBzdHlsZT1cInBhZGRpbmc6MzJweCAzMnB4IDI0cHg7XCI+XG4gICAgICAgICAgICAgICAgPGgxIHN0eWxlPVwibWFyZ2luOjAgMCAxNnB4OyBjb2xvcjojMmYyOTI1OyBmb250LXNpemU6MjZweDsgbGluZS1oZWlnaHQ6MS4yNTsgdGV4dC1hbGlnbjpjZW50ZXI7IGZvbnQtd2VpZ2h0OjcwMDtcIj5SZXNldCB5b3VyIHBhc3N3b3JkPC9oMT5cbiAgICAgICAgICAgICAgICA8cCBzdHlsZT1cIm1hcmdpbjowIDAgMjRweDsgY29sb3I6IzZDNzI3ODsgZm9udC1zaXplOjE2cHg7IGxpbmUtaGVpZ2h0OjEuNjsgdGV4dC1hbGlnbjpjZW50ZXI7XCI+VXNlIHRoZSB2ZXJpZmljYXRpb24gY29kZSBiZWxvdyB0byBjaG9vc2UgYSBuZXcgcGFzc3dvcmQgZm9yIHlvdXIgRU1BU1MgVG9vbGtpdCBhY2NvdW50LjwvcD5cbiAgICAgICAgICAgICAgICA8dGFibGUgcm9sZT1cInByZXNlbnRhdGlvblwiIHdpZHRoPVwiMTAwJVwiIGNlbGxzcGFjaW5nPVwiMFwiIGNlbGxwYWRkaW5nPVwiMFwiIGJvcmRlcj1cIjBcIj5cbiAgICAgICAgICAgICAgICAgIDx0cj5cbiAgICAgICAgICAgICAgICAgICAgPHRkIHN0eWxlPVwicGFkZGluZzoyMnB4IDE2cHg7IGJhY2tncm91bmQtY29sb3I6I0ZGN0EzRDsgYm9yZGVyLXJhZGl1czoxMnB4OyBjb2xvcjojZmZmZmZmOyBmb250LXNpemU6MzJweDsgZm9udC13ZWlnaHQ6NzAwOyBsZXR0ZXItc3BhY2luZzo4cHg7IGxpbmUtaGVpZ2h0OjE7IHRleHQtYWxpZ246Y2VudGVyO1wiPiR7Y29kZX08L3RkPlxuICAgICAgICAgICAgICAgICAgPC90cj5cbiAgICAgICAgICAgICAgICA8L3RhYmxlPlxuICAgICAgICAgICAgICAgIDxwIHN0eWxlPVwibWFyZ2luOjIwcHggMCAwOyBjb2xvcjojNkM3Mjc4OyBmb250LXNpemU6MTRweDsgbGluZS1oZWlnaHQ6MS42OyB0ZXh0LWFsaWduOmNlbnRlcjtcIj5UaGlzIGNvZGUgZXhwaXJlcyBpbiAke2V4cGlyeX0gbWludXRlcy48L3A+XG4gICAgICAgICAgICAgICAgPGhyIHN0eWxlPVwibWFyZ2luOjI4cHggMDsgYm9yZGVyOjA7IGJvcmRlci10b3A6MXB4IHNvbGlkICNlZWU4ZTM7XCI+XG4gICAgICAgICAgICAgICAgPHAgc3R5bGU9XCJtYXJnaW46MDsgY29sb3I6IzhCODE3OTsgZm9udC1zaXplOjEzcHg7IGxpbmUtaGVpZ2h0OjEuNjtcIj5Gb3IgeW91ciBzZWN1cml0eSwgbmV2ZXIgc2hhcmUgdGhpcyBjb2RlLiBJZiB5b3UgZGlkIG5vdCByZXF1ZXN0IGl0LCB5b3UgY2FuIHNhZmVseSBpZ25vcmUgdGhpcyBlbWFpbCBhbmQgeW91ciBwYXNzd29yZCB3aWxsIG5vdCBjaGFuZ2UuPC9wPlxuICAgICAgICAgICAgICA8L3RkPlxuICAgICAgICAgICAgPC90cj5cbiAgICAgICAgICAgIDx0cj5cbiAgICAgICAgICAgICAgPHRkIHN0eWxlPVwicGFkZGluZzoyMHB4IDMycHg7IGJhY2tncm91bmQtY29sb3I6I0ZERjhGNDsgYm9yZGVyLXJhZGl1czowIDAgMTZweCAxNnB4OyBjb2xvcjojOUE5MThCOyBmb250LXNpemU6MTJweDsgbGluZS1oZWlnaHQ6MS41OyB0ZXh0LWFsaWduOmNlbnRlcjtcIj5UaGlzIGlzIGFuIGF1dG9tYXRlZCBtZXNzYWdlIGZyb20gRU1BU1MgVG9vbGtpdC4gUGxlYXNlIGRvIG5vdCByZXBseS48L3RkPlxuICAgICAgICAgICAgPC90cj5cbiAgICAgICAgICA8L3RhYmxlPlxuICAgICAgICA8L3RkPlxuICAgICAgPC90cj5cbiAgICA8L3RhYmxlPlxuICA8L2JvZHk+XG48L2h0bWw+YCxcbiAgICB0ZXh0OiBgRU1BU1MgVG9vbGtpdFxcblxcblJlc2V0IHlvdXIgcGFzc3dvcmRcXG5cXG5Vc2UgdGhpcyB2ZXJpZmljYXRpb24gY29kZSB0byBjaG9vc2UgYSBuZXcgcGFzc3dvcmQgZm9yIHlvdXIgRU1BU1MgVG9vbGtpdCBhY2NvdW50OlxcblxcbiR7aW5wdXQuY29kZX1cXG5cXG5UaGlzIGNvZGUgZXhwaXJlcyBpbiAke2lucHV0LmV4cGlyZXNJbk1pbnV0ZXN9IG1pbnV0ZXMuXFxuXFxuRm9yIHlvdXIgc2VjdXJpdHksIG5ldmVyIHNoYXJlIHRoaXMgY29kZS4gSWYgeW91IGRpZCBub3QgcmVxdWVzdCBpdCwgeW91IGNhbiBzYWZlbHkgaWdub3JlIHRoaXMgZW1haWwgYW5kIHlvdXIgcGFzc3dvcmQgd2lsbCBub3QgY2hhbmdlLmAsXG4gIH07XG59XG4iXSwiZmlsZSI6Ii9zcmMvc2VydmljZXMvZW1haWwvdGVtcGxhdGVzL3Bhc3N3b3JkLXJlc2V0LnRlbXBsYXRlLnRzIn0=
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0ZWRVcmxzIjoiMyIsIm1hcHBpbmdzIjpmYWxzZX0sIkQ6L2NvbS1wcm9qZWN0cy9lbWFzcy10b29sa2l0L3NlcnZlci9zcmMvc2VydmljZXMvZW1haWwvdGVtcGxhdGVzL3Bhc3N3b3JkLXJlc2V0LnRlbXBsYXRlLnRzIiwiL3NyYy9zZXJ2aWNlcy9lbWFpbC90ZW1wbGF0ZXMvcGFzc3dvcmQtcmVzZXQudGVtcGxhdGUudHMiLFtdXQ==
