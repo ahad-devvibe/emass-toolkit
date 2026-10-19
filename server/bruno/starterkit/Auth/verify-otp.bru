@@ -1,0 +1,24 @@
+meta {
+  name: verify-otp (MFA / reset)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/verify-otp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "email": "admin@company.com",
+    "code": "123456",
+    "purpose": "MFA_LOGIN"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+template-features/
+docs/api/
+docs/.obsidian/
+.opencode/
+bruno/
+package-lock.json
+prisma/migrations/

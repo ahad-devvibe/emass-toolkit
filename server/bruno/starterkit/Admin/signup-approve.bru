@@ -1,0 +1,20 @@
+meta {
+  name: signup approve
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/auth/admin/signups/{{signupUserId}}/approve
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminAccessToken}}
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

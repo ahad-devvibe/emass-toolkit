@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OtpPurpose {
+  MFA_LOGIN
+  PASSWORD_RESET
+}
+
+enum UserRole {
+  CUSTOMER
+  DEV
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING_APPROVAL
+  PENDING_SET_PASSWORD
+  ACTIVE
+  BLOCKED
+}
+
+enum EmailDomainKind {
+  FREE_MAIL
+  COMPETITOR
+}
+
+model User {
+  id String @id @default(uuid())
+
+  email        String  @unique
+  firstName    String
+  middleName   String?
+  lastName     String
+  country      String
+  companyName  String
+  jobTitle     String
+
+  password String?
+
+  emailVerified Boolean     @default(false)
+  role          UserRole    @default(CUSTOMER)
+  status        UserStatus  @default(PENDING_SET_PASSWORD)
+
+  refreshTokens     RefreshToken[]
+  otps              Otp[]
+  setPasswordTokens SetPasswordToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Otp {
+  id         String     @id @default(uuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  purpose    OtpPurpose
+  expiresAt  DateTime
+  attempts   Int        @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+}
+
+model SetPasswordToken {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  reminderSentAt DateTime?
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model EmailDomainPolicy {
+  id        String          @id @default(uuid())
+  domain    String          @unique
+  kind      EmailDomainKind
+  createdAt DateTime        @default(now())
+}

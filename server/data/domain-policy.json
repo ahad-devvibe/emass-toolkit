@@ -1,0 +1,11 @@
+{
+  "freeMail": [
+    "gmail.com",
+    "yahoo.com",
+    "outlook.com",
+    "hotmail.com",
+    "icloud.com",
+    "aol.com"
+  ],
+  "competitor": ["blocked-competitor.example"]
+}

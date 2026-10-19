@@ -1,0 +1,23 @@
+meta {
+  name: resend-otp
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/auth/resend-otp
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "email": "admin@company.com",
+    "purpose": "MFA_LOGIN"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

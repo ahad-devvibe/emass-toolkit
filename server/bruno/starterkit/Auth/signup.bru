@@ -1,0 +1,29 @@
+meta {
+  name: signup
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/signup
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "email": "newuser@company.com",
+    "firstName": "New",
+    "middleName": "",
+    "lastName": "User",
+    "country": "US",
+    "companyName": "Acme Corp",
+    "jobTitle": "Engineer",
+    "captcha": "GET-FROM-CAPTCHA"
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,15 @@
+meta {
+  name: captcha
+  type: http
+  seq: 0
+}
+
+get {
+  url: {{baseUrl}}/auth/captcha
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+}
