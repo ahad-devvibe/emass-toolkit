@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   forgotPasswordSchema,
   loginSchema,
-  logoutSchema,
-  refreshSchema,
   resendOtpSchema,
   resendSetPasswordSchema,
   resetPasswordSchema,
@@ -70,6 +68,21 @@ describe("signupSchema", () => {
       (result as { error: { issues: { message: string }[] } }).error.issues[0]
         .message,
     ).toBe("Country must be a 2-letter ISO code");
+  });
+
+  it("rejects a well-formed but unassigned country", () => {
+    const result = signupSchema.safeParse({ ...validSignup, country: "ZZ" });
+    expect(result.success).toBe(false);
+    expect(
+      (result as { error: { issues: { message: string }[] } }).error.issues[0]
+        .message,
+    ).toBe("Country must be a valid ISO 3166-1 alpha-2 code");
+  });
+
+  it("accepts a valid country code in any case", () => {
+    expect(
+      signupSchema.safeParse({ ...validSignup, country: "us" }).success,
+    ).toBe(true);
   });
 
   it("rejects an empty captcha", () => {
@@ -232,11 +245,5 @@ describe("forgot/reset/refresh/logout schemas", () => {
       "code",
       "newPassword",
     ]);
-  });
-
-  it("refresh/logout accept empty body objects (cookie fallback)", () => {
-    expect(refreshSchema.safeParse({}).success).toBe(true);
-    expect(logoutSchema.safeParse({}).success).toBe(true);
-    expect(refreshSchema.safeParse(undefined).success).toBe(false);
   });
 });

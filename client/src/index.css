@@ -70,7 +70,7 @@
   --brand-ice: #f0f9ff;
   --brand-mist: #dcf1ff;
   --brand-powder: #c3dfff;
-  --brand-shadow: 0 1px 2px oklch(0.3 0.08 250 / 6%), 0 10px 28px -10px oklch(0.45 0.15 245 / 22%);
+  --brand-shadow: 0 1px 2px oklch(0.3 0.03 250 / 5%), 0 4px 12px -6px oklch(0.3 0.03 250 / 8%);
   --brand-shadow-lg: 0 2px 4px oklch(0.3 0.08 250 / 6%), 0 22px 44px -14px oklch(0.45 0.15 245 / 32%);
   --background: oklch(0.982 0.009 235);
   --foreground: oklch(0.25 0.06 262);
@@ -109,7 +109,7 @@
 
 .dark {
   color-scheme: dark;
-  --brand-shadow: 0 1px 2px oklch(0 0 0 / 30%), 0 10px 28px -10px oklch(0.05 0.04 260 / 70%);
+  --brand-shadow: 0 1px 2px oklch(0 0 0 / 25%);
   --brand-shadow-lg: 0 2px 4px oklch(0 0 0 / 30%), 0 22px 44px -14px oklch(0.55 0.15 240 / 28%);
   --background: oklch(0.165 0.035 262);
   --foreground: oklch(0.96 0.012 240);
@@ -145,22 +145,8 @@
   --sidebar-ring: #2ea7f5;
 }
 
-@utility bg-brand-gradient {
-  background-image: linear-gradient(90deg, var(--brand-powder), var(--brand-sky));
-}
-
 @utility bg-brand-gradient-deep {
   background-image: linear-gradient(135deg, var(--brand-navy), var(--brand-blue) 60%, var(--brand-sky));
-}
-
-@utility bg-brand-edge {
-  background-image: linear-gradient(180deg, var(--brand-powder), var(--brand-sky) 45%, var(--brand-blue));
-}
-
-@utility text-brand-gradient {
-  background-image: linear-gradient(90deg, var(--brand-powder), var(--brand-sky));
-  background-clip: text;
-  color: transparent;
 }
 
 /* Faint dot matrix used on hero panels; reads as a chip/circuit texture */
@@ -182,5 +168,35 @@
 
   html {
     @apply font-sans;
+  }
+
+  /* Tailwind v4 preflight resets buttons to cursor: default; restore the pointer for every clickable control */
+  button:not(:disabled),
+  [role="button"],
+  [role="combobox"],
+  [role="option"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="tab"],
+  [role="checkbox"],
+  [role="switch"],
+  [role="radio"],
+  select,
+  summary,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="range"],
+  a[href] {
+    cursor: pointer;
+  }
+
+  /* aria-disabled buttons stay clickable on purpose (they explain what's blocking) */
+  :disabled,
+  [aria-disabled="true"]:not(button),
+  [data-disabled] {
+    cursor: not-allowed;
   }
 }

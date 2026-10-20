@@ -45,7 +45,7 @@ describe("classifySignupEmail", () => {
 });
 
 describe("signup domain routing", () => {
-  it("instantly blocks competitor domains without creating a user", async () => {
+  it("blocks competitor domains, keeping a BLOCKED audit row and sending nothing", async () => {
     const sender = createMockEmailSender();
     const email = uniqueEmail("blocked");
     const fullEmail = email.replace(/@.*$/, "@blocked-competitor.example");
@@ -55,7 +55,8 @@ describe("signup domain routing", () => {
     ).rejects.toMatchObject({ code: "DOMAIN_BLOCKED" });
 
     const user = await prisma.user.findUnique({ where: { email: fullEmail } });
-    expect(user).toBeNull();
+    expect(user?.status).toBe("BLOCKED");
+    expect(user?.password).toBeNull();
     expect(sender.sent).toHaveLength(0);
   });
 

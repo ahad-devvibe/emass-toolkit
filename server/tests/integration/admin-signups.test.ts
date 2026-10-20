@@ -1,10 +1,12 @@
 import { UserStatus } from "@prisma/client";
 import { beforeAll, describe, expect, it } from "vitest";
-import request from "supertest";
+import request, { type Response } from "supertest";
 import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { resetDb } from "../helpers/resetDb.js";
 import { createUser, promoteToAdmin, uniqueEmail } from "../helpers/auth.js";
+import { createMockEmailSender } from "../helpers/email.js";
+import { rejectSignup } from "../../src/services/auth/admin-signups.service.js";
 
 beforeAll(async () => {
   await resetDb();
@@ -73,6 +75,90 @@ describe("GET /api/auth/admin/signups/pending", () => {
   });
 });
 
+describe("GET /api/auth/admin/signups/pending (pagination + search)", () => {
+  it("walks the queue with a cursor, oldest first, without gaps", async () => {
+    const headers = await adminAuthHeader();
+    // Isolate this test's rows with a unique search token
+    const tag = `pg${Date.now()}`;
+    const emails: string[] = [];
+    const base = Date.now() - 60_000;
+    for (let i = 0; i < 5; i++) {
+      const email = uniqueEmail(`${tag}-${i}`);
+      const user = await pendingSignup(email);
+      // Distinct timestamps so the expected order is deterministic
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { createdAt: new Date(base + i * 1000) },
+      });
+      emails.push(email);
+    }
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const res: Response = await request(app)
+        .get("/api/auth/admin/signups/pending")
+        .query({ limit: 2, q: tag, ...(cursor ? { cursor } : {}) })
+        .set(headers);
+      expect(res.status).toBe(200);
+      expect(res.body.data.total).toBe(5);
+      seen.push(
+        ...res.body.data.signups.map((s: { email: string }) => s.email),
+      );
+      cursor = res.body.data.nextCursor;
+      pages += 1;
+    } while (cursor);
+
+    expect(pages).toBe(3);
+    expect(seen).toEqual(emails);
+  });
+
+  it("searches by email, first name and full name", async () => {
+    const headers = await adminAuthHeader();
+    const email = uniqueEmail("searchable");
+    const user = await pendingSignup(email);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { firstName: "Zebulon", lastName: "Quartz" },
+    });
+
+    for (const q of [email.toUpperCase(), "zebulon", "Zebulon quartz"]) {
+      const res = await request(app)
+        .get("/api/auth/admin/signups/pending")
+        .query({ q })
+        .set(headers);
+      expect(res.status).toBe(200);
+      expect(res.body.data.total).toBe(1);
+      expect(res.body.data.signups[0].email).toBe(email);
+    }
+
+    const none = await request(app)
+      .get("/api/auth/admin/signups/pending")
+      .query({ q: "zebulon nobody" })
+      .set(headers);
+    expect(none.body.data).toEqual({ signups: [], nextCursor: null, total: 0 });
+  });
+
+  it("validates limit and cursor", async () => {
+    const headers = await adminAuthHeader();
+    for (const query of [{ limit: 0 }, { limit: 51 }, { limit: "abc" }]) {
+      const res = await request(app)
+        .get("/api/auth/admin/signups/pending")
+        .query(query)
+        .set(headers);
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("VALIDATION_ERROR");
+    }
+    const bad = await request(app)
+      .get("/api/auth/admin/signups/pending")
+      .query({ cursor: "garbage" })
+      .set(headers);
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe("INVALID_CURSOR");
+  });
+});
+
 describe("POST /api/auth/admin/signups/:id/approve", () => {
   it("approves: status PENDING_SET_PASSWORD + set-password email", async () => {
     const headers = await adminAuthHeader();
@@ -135,6 +221,55 @@ describe("POST /api/auth/admin/signups/:id/reject", () => {
       )
       .set(headers);
     expect(res.status).toBe(404);
+  });
+
+  it("accepts an optional reason and rejects one over 500 characters", async () => {
+    const headers = await adminAuthHeader();
+    const user = await pendingSignup(uniqueEmail("reject-reason"));
+
+    const tooLong = await request(app)
+      .post(`/api/auth/admin/signups/${user.id}/reject`)
+      .set(headers)
+      .send({ reason: "x".repeat(501) });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.code).toBe("VALIDATION_ERROR");
+
+    const res = await request(app)
+      .post(`/api/auth/admin/signups/${user.id}/reject`)
+      .set(headers)
+      .send({ reason: "Please use your company email" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe("BLOCKED");
+  });
+
+  it("emails the person, including the reason when given", async () => {
+    const sender = createMockEmailSender();
+    const user = await pendingSignup(uniqueEmail("reject-email"));
+
+    await rejectSignup(user.id, "Please use your company email", sender);
+
+    expect(sender.sent).toEqual([
+      {
+        kind: "signupRejected",
+        email: user.email,
+        firstName: "Test",
+        reason: "Please use your company email",
+      },
+    ]);
+  });
+
+  it("still blocks the user when the email fails", async () => {
+    const sender = createMockEmailSender();
+    sender.sendSignupRejectedEmail = async () => {
+      throw new Error("smtp down");
+    };
+    const user = await pendingSignup(uniqueEmail("reject-email-fail"));
+
+    const result = await rejectSignup(user.id, undefined, sender);
+
+    expect(result.status).toBe("BLOCKED");
+    const row = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(row?.status).toBe(UserStatus.BLOCKED);
   });
 });
 

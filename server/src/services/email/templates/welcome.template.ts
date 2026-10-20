@@ -1,12 +1,14 @@
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
-  bulletList,
   button,
-  heading,
+  commandLine,
+  featureGrid,
   linkFallback,
   paragraph,
   renderEmailLayout,
   securityNote,
+  steps,
+  subheading,
 } from "./layout.template.js";
 
 export interface WelcomeEmailTemplateInput {
@@ -15,16 +17,31 @@ export interface WelcomeEmailTemplateInput {
   catalogUrl: string;
 }
 
-const highlights = [
-  "Download the latest EMASS SDKs for Windows, macOS and Linux.",
-  "Verify every file against its published SHA-256 checksum.",
-  "Read release notes and grab earlier versions when you need them.",
+const MAC_LINUX_CHECKSUM = "shasum -a 256 <file>";
+const WINDOWS_CHECKSUM = "certutil -hashfile <file> SHA256";
+
+const features = [
+  {
+    title: "Versioned releases",
+    text: "Every SDK version stays available, so you can pin the build you ship.",
+  },
+  {
+    title: "SHA-256 verified",
+    text: "A checksum sits next to every file for integrity checks.",
+  },
+  {
+    title: "Release notes",
+    text: "See what changed in each version before you upgrade.",
+  },
+  {
+    title: "Private downloads",
+    text: "Files come from a private bucket through short-lived links.",
+  },
 ];
 
 export function renderWelcomeEmail(
   input: WelcomeEmailTemplateInput,
 ): RenderedEmail {
-  const firstName = escapeHtml(input.firstName);
   const url = escapeHtml(input.catalogUrl);
 
   return {
@@ -32,19 +49,42 @@ export function renderWelcomeEmail(
     html: renderEmailLayout({
       title: "Welcome to EMASS Toolkit",
       preheader: "Your account is active. Your SDK downloads are ready.",
+      eyebrow: "Welcome",
+      hero: {
+        title: `Welcome, ${input.firstName}`,
+        subtitle:
+          "Your EMASS Toolkit account is active. Drivers, SDKs and tools for EMASS edge-AI hardware are ready for you.",
+      },
+      reason:
+        "You're receiving this because a password was just set for your EMASS Toolkit account.",
       body: [
-        heading(`Welcome, ${firstName}`),
         paragraph(
-          "Your EMASS Toolkit account is active. Here is what you can do in the portal:",
+          "Thanks for joining. Here's how to get from zero to a verified SDK on your machine.",
         ),
-        bulletList(highlights),
-        button(url, "Browse the SDK catalog"),
+        subheading("Get started"),
+        steps([
+          {
+            title: "Browse the catalog",
+            text: "Pick EMASS Core or EMASS Vision and open the latest release.",
+          },
+          {
+            title: "Download for your platform",
+            text: "Builds are listed for Windows, macOS and Linux, with docs alongside.",
+          },
+          {
+            title: "Verify the checksum",
+            text: `Compare the file's SHA-256 with the value shown next to the download.${commandLine(MAC_LINUX_CHECKSUM, "macOS / Linux")}${commandLine(WINDOWS_CHECKSUM, "Windows")}`,
+          },
+        ]),
+        button(url, "Open the SDK catalog"),
+        subheading("What's in the portal"),
+        featureGrid(features),
         linkFallback(url),
         securityNote(
-          "You received this because a password was just set for your EMASS Toolkit account. If that was not you, reset your password from the sign-in page right away.",
+          "If you did not just set a password for this account, reset it from the sign-in page right away.",
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit\n\nWelcome, ${input.firstName}\n\nYour EMASS Toolkit account is active. Here is what you can do in the portal:\n\n${highlights.map((item) => `- ${item}`).join("\n")}\n\nBrowse the SDK catalog: ${input.catalogUrl}\n\nIf you did not just set a password for this account, reset it from the sign-in page right away.`,
+    text: `EMASS Toolkit · Welcome\n\nWelcome, ${input.firstName}\n\nYour EMASS Toolkit account is active.\n\nGet started:\n1. Browse the catalog: pick EMASS Core or EMASS Vision and open the latest release.\n2. Download for your platform: Windows, macOS or Linux, with docs alongside.\n3. Verify the checksum against the SHA-256 shown next to the download:\n   macOS / Linux: ${MAC_LINUX_CHECKSUM}\n   Windows: ${WINDOWS_CHECKSUM}\n\nOpen the SDK catalog: ${input.catalogUrl}\n\nWhat's in the portal:\n${features.map((f) => `- ${f.title}: ${f.text}`).join("\n")}\n\nIf you did not just set a password for this account, reset it from the sign-in page right away.`,
   };
 }

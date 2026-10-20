@@ -7,3 +7,5 @@ test.ts
 .oci/
 client/
 .config/
+# Local staff accounts for `npm run seed:users` (contains passwords)
+data/staff-users.json

@@ -32,23 +32,32 @@ enum EmailDomainKind {
 model User {
   id String @id @default(uuid())
 
-  email        String  @unique
-  firstName    String
-  middleName   String?
-  lastName     String
-  country      String
-  companyName  String
-  jobTitle     String
+  email       String  @unique
+  firstName   String
+  middleName  String?
+  lastName    String
+  country     String
+  companyName String
+  jobTitle    String
 
   password String?
 
-  emailVerified Boolean     @default(false)
-  role          UserRole    @default(CUSTOMER)
-  status        UserStatus  @default(PENDING_SET_PASSWORD)
+  emailVerified Boolean    @default(false)
+  role          UserRole   @default(CUSTOMER)
+  status        UserStatus @default(PENDING_SET_PASSWORD)
+
+  // HubSpot contact record ID (numeric string), filled by the best-effort sync;
+  // null until the first successful upsert. Internal only, never sent to clients.
+  hubspotContactId String?   @unique
+  hubspotSyncedAt  DateTime?
 
   refreshTokens     RefreshToken[]
   otps              Otp[]
   setPasswordTokens SetPasswordToken[]
+
+  // releasesCreated   Release[]      @relation("ReleaseCreatedBy")
+  // releasesPublished Release[]      @relation("ReleasePublishedBy")
+  // releaseEvents     ReleaseEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -97,3 +106,109 @@ model EmailDomainPolicy {
   kind      EmailDomainKind
   createdAt DateTime        @default(now())
 }
+
+// ---------------------------------------------------------------------------
+// Releases (see tasks/release-management.md). Products are defined in code;
+// productId is validated against that list in the service layer.
+
+// enum ReleaseStatus {
+//   DRAFT
+//   IN_REVIEW
+//   CHANGES_REQUESTED
+//   PUBLISHED
+//   ARCHIVED
+//   ROLLED_BACK
+// }
+
+// enum ReleaseFileKind {
+//   SDK
+//   DOC
+// }
+
+// enum SdkPlatform {
+//   WINDOWS
+//   MACOS
+//   UBUNTU
+// }
+
+// enum ReleaseEventType {
+//   CREATED
+//   EDITED
+//   FILE_ADDED
+//   FILE_REMOVED
+//   FILE_REMAPPED
+//   SUBMITTED
+//   WITHDRAWN
+//   CHANGES_REQUESTED
+//   PUBLISHED
+//   ARCHIVED
+//   ROLLED_BACK
+//   RESTORED
+//   NOTES_EDITED
+// }
+
+// model Release {
+//   id           String        @id @default(uuid())
+//   productId    String
+//   version      String
+//   // Parsed semver parts, for ordering and "newer than shipped" checks
+//   versionMajor Int
+//   versionMinor Int
+//   versionPatch Int
+//   status       ReleaseStatus @default(DRAFT)
+//   // Optional Markdown; empty means no release-notes tab (PDF notes ship as a DOC file)
+//   notes        String        @default("") @db.Text
+
+//   createdById   String
+//   createdBy     User      @relation("ReleaseCreatedBy", fields: [createdById], references: [id])
+//   publishedAt   DateTime?
+//   publishedById String?
+//   publishedBy   User?     @relation("ReleasePublishedBy", fields: [publishedById], references: [id])
+
+//   files  ReleaseFile[]
+//   events ReleaseEvent[]
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+
+//   @@unique([productId, version])
+//   @@index([productId, status])
+//   @@index([status, updatedAt])
+// }
+
+// model ReleaseFile {
+//   id        String          @id @default(uuid())
+//   releaseId String
+//   release   Release         @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+//   kind      ReleaseFileKind
+//   // SDK files need a platform (one per platform per release; NULLs for docs
+//   // don't collide). Docs are shown by their original file name.
+//   platform  SdkPlatform?
+
+//   originalName String
+//   contentType  String
+//   sizeBytes    BigInt
+//   sha256       String
+//   // staged/... until publish, then releases/...; never overwritten
+//   objectKey    String @unique
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+
+//   @@unique([releaseId, platform])
+//   @@index([releaseId])
+// }
+
+// model ReleaseEvent {
+//   id        String           @id @default(uuid())
+//   releaseId String
+//   release   Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+//   type      ReleaseEventType
+//   actorId   String
+//   actor     User             @relation(fields: [actorId], references: [id])
+//   note      String?          @db.Text
+//   meta      Json?
+//   createdAt DateTime         @default(now())
+
+//   @@index([releaseId, createdAt])
+// }

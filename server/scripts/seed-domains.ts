@@ -62,7 +62,9 @@ function loadPolicyFile(): NormalizedPolicy {
     process.exit(1);
   }
 
-  const freeMail = result.data.freeMail.map((d) => normalizeDomain(d, "freeMail"));
+  const freeMail = result.data.freeMail.map((d) =>
+    normalizeDomain(d, "freeMail"),
+  );
   const competitor = result.data.competitor.map((d) =>
     normalizeDomain(d, "competitor"),
   );
@@ -140,7 +142,10 @@ async function main(): Promise<void> {
   } else {
     console.log("domain-policy: nothing to create");
   }
-  logger.info({ created: toCreate.length, unchanged, dbOnly }, "domain policy synced");
+  logger.info(
+    { created: toCreate.length, unchanged, dbOnly },
+    "domain policy synced",
+  );
 }
 
 main()

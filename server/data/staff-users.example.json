@@ -1,0 +1,24 @@
+{
+  "users": [
+    {
+      "email": "admin@nanoveu.com",
+      "firstName": "Ada",
+      "lastName": "Admin",
+      "companyName": "Nanoveu",
+      "jobTitle": "Release manager",
+      "country": "SG",
+      "role": "ADMIN",
+      "password": "change-me-admin"
+    },
+    {
+      "email": "dev@nanoveu.com",
+      "firstName": "Dev",
+      "lastName": "Engineer",
+      "companyName": "Nanoveu",
+      "jobTitle": "SDK engineer",
+      "country": "SG",
+      "role": "DEV",
+      "password": "change-me-dev"
+    }
+  ]
+}

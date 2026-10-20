@@ -15,6 +15,7 @@ import {
   uniqueEmail,
 } from "../helpers/auth.js";
 import { createMockEmailSender } from "../helpers/email.js";
+import { setCookies } from "../helpers/http.js";
 
 beforeAll(async () => {
   await resetDb();
@@ -128,10 +129,9 @@ describe("MFA login (API)", () => {
     expect(verify.status).toBe(200);
     expect(verify.body.data.accessToken).toEqual(expect.any(String));
     expect(verify.body.data.user.role).toBe("ADMIN");
+    expect(verify.body.data).not.toHaveProperty("refreshToken");
     expect(
-      verify.headers["set-cookie"].some((c: string) =>
-        c.startsWith("refreshToken="),
-      ),
+      setCookies(verify.headers).some((c) => c.startsWith("refreshToken=")),
     ).toBe(true);
   });
 

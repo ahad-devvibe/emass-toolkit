@@ -12,10 +12,12 @@ type JsonSchemaObject = Record<string, unknown>;
 export function schemaOf(
   schema: z.ZodType | JsonSchemaObject,
 ): JsonSchemaObject {
-  if (typeof schema === "object" && schema !== null && !("_zod" in schema)) {
-    return schema;
+  if ("_zod" in schema) {
+    return z.toJSONSchema(schema as z.ZodType, {
+      target: SCHEMA_TARGET,
+    }) as JsonSchemaObject;
   }
-  return z.toJSONSchema(schema, { target: SCHEMA_TARGET }) as JsonSchemaObject;
+  return schema;
 }
 
 export const bearerScheme = {

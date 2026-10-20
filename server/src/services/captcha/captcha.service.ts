@@ -3,6 +3,7 @@ import svgCaptcha from "svg-captcha";
 import jwt from "jsonwebtoken";
 import { env } from "../../configs/env.js";
 import { ApiError } from "../../utils/api-error.utils.js";
+import { restyleCaptchaSvg } from "./captcha.utils.js";
 
 /** No 0/O, 1/I, 5/S look-alikes — keeps the widget honest for humans. */
 export const CAPTCHA_ALPHABET = "ABCDEFGHJKLMNPQRTUVWXYZ2346789";
@@ -22,21 +23,25 @@ function hashCaptchaCode(code: string): string {
 }
 
 export function createCaptchaChallenge(): CaptchaChallenge {
+  // Monochrome + no background so restyleCaptchaSvg can apply brand colours
   const svg = svgCaptcha.create({
     size: CAPTCHA_LENGTH,
     charPreset: CAPTCHA_ALPHABET,
     noise: 3,
-    color: true,
-    background: "#f4f1ec",
+    color: false,
+    width: 180,
+    height: 56,
+    fontSize: 54,
   });
   const expected = svg.text;
+  const image = restyleCaptchaSvg(svg.data);
   const cookieValue = jwt.sign(
     { kind: CAPTCHA_JWT_KIND, h: hashCaptchaCode(expected) },
     env.JWT_SECRET,
     { expiresIn: env.CAPTCHA_TTL_SECONDS },
   );
   return {
-    image: `data:image/svg+xml;base64,${Buffer.from(svg.data).toString("base64")}`,
+    image: `data:image/svg+xml;base64,${Buffer.from(image).toString("base64")}`,
     cookieValue,
   };
 }

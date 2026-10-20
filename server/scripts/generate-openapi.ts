@@ -10,7 +10,6 @@ import {
 import {
   forgotPasswordSchema,
   loginSchema,
-  refreshSchema,
   resendOtpSchema,
   resendSetPasswordSchema,
   resetPasswordSchema,
@@ -18,14 +17,16 @@ import {
   signupSchema,
   verifyOtpSchema,
 } from "../src/schemas/auth.schema.js";
+import { rejectSignupSchema } from "../src/schemas/admin.schema.js";
 
-const tokenPairSchema = {
+// The refresh token only travels in the httpOnly cookie (path /api/auth)
+const accessTokenSchema = {
   type: "object",
   properties: {
     accessToken: { type: "string" },
-    refreshToken: { type: "string" },
+    user: { type: "object" },
   },
-  required: ["accessToken", "refreshToken"],
+  required: ["accessToken"],
 };
 
 const authTag = {
@@ -97,7 +98,6 @@ const authPaths = {
           properties: {
             mfaRequired: { type: "boolean" },
             accessToken: { type: "string" },
-            refreshToken: { type: "string" },
             user: { type: "object" },
           },
           required: ["mfaRequired"],
@@ -146,7 +146,7 @@ const authPaths = {
         "Verify an MFA login OTP (issues tokens) or validate a reset OTP",
       requestBody: jsonBody(verifyOtpSchema, "Email, code and purpose"),
       responses: {
-        200: successResponse("Verified", tokenPairSchema),
+        200: successResponse("Verified", accessTokenSchema),
         400: errorResponse("Invalid or expired OTP", [
           "OTP_INVALID",
           "OTP_EXPIRED",
@@ -275,13 +275,10 @@ const authPaths = {
     post: {
       ...publicOperation("refresh"),
       tags: ["Auth"],
-      summary: "Rotate the refresh token and issue a new token pair",
-      requestBody: jsonBody(
-        refreshSchema,
-        "Refresh token (cookie preferred; body accepted)",
-      ),
+      summary:
+        "Rotate the refresh-token cookie and issue a new access token (cookie only; one call in flight per device)",
       responses: {
-        200: successResponse("Tokens refreshed", tokenPairSchema),
+        200: successResponse("Tokens refreshed", accessTokenSchema),
         401: errorResponse(
           "Missing, invalid, expired or reused refresh token",
           [
@@ -299,7 +296,7 @@ const authPaths = {
     post: {
       ...publicOperation("logout"),
       tags: ["Auth"],
-      summary: "Revoke the refresh token and clear cookies",
+      summary: "Revoke the refresh-token cookie and clear it",
       responses: {
         200: successResponse("Logged out"),
       },
@@ -325,14 +322,47 @@ const authPaths = {
     get: {
       operationId: "listPendingSignups",
       tags: ["Admin"],
-      summary: "List PENDING_APPROVAL signups (ADMIN only)",
+      summary:
+        "List PENDING_APPROVAL signups oldest first, cursor-paginated, with name/email search (ADMIN only)",
       security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: "limit",
+          in: "query",
+          required: false,
+          schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+        },
+        {
+          name: "cursor",
+          in: "query",
+          required: false,
+          description: "Opaque; pass the previous response's nextCursor",
+          schema: { type: "string" },
+        },
+        {
+          name: "q",
+          in: "query",
+          required: false,
+          description:
+            "Case-insensitive; every word must match a name part or the email",
+          schema: { type: "string", maxLength: 100 },
+        },
+      ],
       responses: {
-        200: successResponse("Pending signups", {
+        200: successResponse("Pending signups page", {
           type: "object",
-          properties: { signups: { type: "array", items: { type: "object" } } },
-          required: ["signups"],
+          properties: {
+            signups: { type: "array", items: { type: "object" } },
+            nextCursor: { type: "string", nullable: true },
+            total: { type: "integer" },
+          },
+          required: ["signups", "nextCursor", "total"],
         }),
+        400: errorResponse(
+          "Invalid query",
+          ["VALIDATION_ERROR", "INVALID_CURSOR"],
+          400,
+        ),
         401: errorResponse(
           "Missing or invalid token",
           ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
@@ -367,11 +397,16 @@ const authPaths = {
     post: {
       operationId: "rejectSignup",
       tags: ["Admin"],
-      summary: "Reject a signup — blocks the account",
+      summary:
+        "Reject a signup — blocks the account and emails the person (optional reason included)",
       security: [{ bearerAuth: [] }],
       parameters: [
         { name: "id", in: "path", required: true, schema: { type: "string" } },
       ],
+      requestBody: {
+        ...jsonBody(rejectSignupSchema, "Optional reason (≤500 chars)"),
+        required: false,
+      },
       responses: {
         200: successResponse("Rejected", { type: "object" }),
         401: errorResponse(

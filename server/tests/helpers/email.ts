@@ -8,13 +8,15 @@ export interface RecordedEmail {
     | "setPasswordReminder"
     | "pendingApproval"
     | "mfaLogin"
-    | "welcome";
+    | "welcome"
+    | "signupRejected";
   email: string;
   code?: string;
   url?: string;
   firstName?: string;
   expiresInHours?: number;
   hoursLeft?: number;
+  reason?: string;
 }
 
 export interface MockEmailSender extends EmailSender {
@@ -71,6 +73,9 @@ export function createMockEmailSender(): MockEmailSender {
     },
     async sendWelcomeEmail(email, firstName, url) {
       sent.push({ kind: "welcome", email, firstName, url });
+    },
+    async sendSignupRejectedEmail(email, firstName, reason) {
+      sent.push({ kind: "signupRejected", email, firstName, reason });
     },
   };
 }

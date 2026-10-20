@@ -24,6 +24,7 @@ import { renderSetPasswordReminderEmail } from "./templates/set-password-reminde
 import { renderPendingApprovalEmail } from "./templates/pending-approval.template.js";
 import { renderMfaLoginEmail } from "./templates/mfa-login.template.js";
 import { renderWelcomeEmail } from "./templates/welcome.template.js";
+import { renderSignupRejectedEmail } from "./templates/signup-rejected.template.js";
 
 export interface EmailSender {
   assertReady(): Promise<void>;
@@ -47,6 +48,11 @@ export interface EmailSender {
     email: string,
     firstName: string,
     catalogUrl: string,
+  ): Promise<void>;
+  sendSignupRejectedEmail(
+    email: string,
+    firstName: string,
+    reason?: string,
   ): Promise<void>;
 }
 
@@ -196,6 +202,15 @@ export function createOciEmailSender(
       const template = renderWelcomeEmail({ firstName, catalogUrl });
       await submit(email, template, "Unable to send welcome email");
     },
+
+    async sendSignupRejectedEmail(
+      email: string,
+      firstName: string,
+      reason?: string,
+    ): Promise<void> {
+      const template = renderSignupRejectedEmail({ firstName, reason });
+      await submit(email, template, "Unable to send signup rejected email");
+    },
   };
 }
 
@@ -262,6 +277,17 @@ export function createConsoleEmailSender(): EmailSender {
       logger.info(
         { email, firstName, catalogUrl },
         "console email sender: welcome email",
+      );
+    },
+
+    async sendSignupRejectedEmail(
+      email: string,
+      firstName: string,
+      reason?: string,
+    ): Promise<void> {
+      logger.info(
+        { email, firstName, reason },
+        "console email sender: signup rejected email",
       );
     },
   };

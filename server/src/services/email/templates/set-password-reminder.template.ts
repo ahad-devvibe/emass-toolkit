@@ -1,11 +1,13 @@
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
+  bulletList,
   button,
-  heading,
+  infoTable,
   linkFallback,
   paragraph,
   renderEmailLayout,
   securityNote,
+  subheading,
 } from "./layout.template.js";
 
 export interface SetPasswordReminderEmailTemplateInput {
@@ -13,6 +15,12 @@ export interface SetPasswordReminderEmailTemplateInput {
   url: string;
   hoursLeft: number;
 }
+
+const benefits = [
+  "The latest EMASS Core and Vision SDKs for Windows, macOS and Linux.",
+  "Release notes and every earlier version, ready to pin.",
+  "A SHA-256 checksum next to every download.",
+];
 
 export function renderSetPasswordReminderEmail(
   input: SetPasswordReminderEmailTemplateInput,
@@ -26,18 +34,30 @@ export function renderSetPasswordReminderEmail(
     html: renderEmailLayout({
       title: "Reminder: set your EMASS Toolkit password",
       preheader: `About ${input.hoursLeft} hours left to activate your account.`,
+      eyebrow: "Reminder",
+      hero: {
+        title: "Your invite is waiting",
+        subtitle: `${input.firstName}, one step left to activate your account.`,
+      },
+      reason:
+        "You're receiving this because your EMASS Toolkit account is approved but has no password yet.",
       body: [
-        heading(`Your account is waiting, ${firstName}`),
         paragraph(
-          `You have not set a password yet. About ${hoursLeft} hours remain before your setup link expires.`,
+          `Hi ${firstName}, you have not set a password yet. About ${hoursLeft} hours remain before your setup link expires.`,
         ),
+        infoTable([
+          ["Time left", `About ${hoursLeft} hours`],
+          ["Earlier links", "No longer work"],
+        ]),
         button(url, "Set your password"),
+        subheading("What's waiting for you"),
+        bulletList(benefits),
         linkFallback(url),
         securityNote(
-          "Earlier setup links no longer work. Use the one in this email. If you did not sign up for EMASS Toolkit, you can safely ignore this email.",
+          "Use the link in this email; earlier setup links no longer work. If you did not sign up for EMASS Toolkit, you can safely ignore this email.",
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit\n\nHi ${input.firstName},\n\nYou have not set a password yet. About ${input.hoursLeft} hours remain before your setup link expires:\n\n${input.url}\n\nEarlier setup links no longer work. If you did not sign up, you can safely ignore this email.`,
+    text: `EMASS Toolkit · Reminder\n\nHi ${input.firstName},\n\nYou have not set a password yet. About ${input.hoursLeft} hours remain before your setup link expires:\n\n${input.url}\n\nWhat's waiting for you:\n${benefits.map((item) => `- ${item}`).join("\n")}\n\nEarlier setup links no longer work. If you did not sign up, you can safely ignore this email.`,
   };
 }

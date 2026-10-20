@@ -114,7 +114,8 @@ download versioned files. This is an MVP: keep it simple.
 When a task in tasks/ is marked complete, convert it into a docs/ entry —
 do not skip even for small tasks, this is the project's only permanent
 record of decisions/risks/assumptions. Then delete or archive the task
-file from tasks/.
+file from tasks/. DO not create a task in tasks/ on your own and for
+small features.
 
 - Module/feature tasks: follow docs/\_template.md, placed at
   docs/{module}/{task-name}.md.

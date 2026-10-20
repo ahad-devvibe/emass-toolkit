@@ -165,4 +165,32 @@ describe("envSchema", () => {
     expect(() => parseEnv({ ...base, SET_PASSWORD_TTL_HOURS: "0" })).toThrow();
     expect(() => parseEnv({ ...base, CAPTCHA_TTL_SECONDS: "-1" })).toThrow();
   });
+
+  it("keeps HubSpot disabled by default without an API key", () => {
+    const env = parseEnv(base);
+    expect(env.HUBSPOT_ENABLED).toBe("false");
+    expect(env.HUBSPOT_API_KEY).toBeUndefined();
+  });
+
+  it("requires HUBSPOT_API_KEY when HUBSPOT_ENABLED=true", () => {
+    expect(() => parseEnv({ ...base, HUBSPOT_ENABLED: "true" })).toThrow(
+      "HUBSPOT_API_KEY is required when HUBSPOT_ENABLED=true",
+    );
+  });
+
+  it("accepts a fully configured HubSpot", () => {
+    const env = parseEnv({
+      ...base,
+      HUBSPOT_ENABLED: "true",
+      HUBSPOT_API_KEY: "pat-x",
+    });
+    expect(env.HUBSPOT_ENABLED).toBe("true");
+    expect(env.HUBSPOT_API_KEY).toBe("pat-x");
+  });
+
+  it("rejects an invalid HUBSPOT_ENABLED value", () => {
+    expect(() => parseEnv({ ...base, HUBSPOT_ENABLED: "yes" })).toThrow(
+      "HUBSPOT_ENABLED must be true or false",
+    );
+  });
 });

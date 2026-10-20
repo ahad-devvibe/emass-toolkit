@@ -226,7 +226,10 @@ describe("createConsoleEmailSender", () => {
         "http://localhost:5173/catalog",
       ),
     ).resolves.toBeUndefined();
+    await expect(
+      sender.sendSignupRejectedEmail("user@example.com", "Jane", "Not a fit"),
+    ).resolves.toBeUndefined();
 
-    expect(log).toHaveBeenCalledTimes(7);
+    expect(log).toHaveBeenCalledTimes(8);
   });
 });

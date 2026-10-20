@@ -86,8 +86,23 @@ export const envSchema = z
     // storage
     OCI_OBJECT_NAMESPACE: z.string().optional(),
     OCI_BUCKET: z.string().optional(),
+
+    // hubspot (one-way customer contact sync)
+    HUBSPOT_ENABLED: z
+      .enum(["true", "false"], {
+        error: "HUBSPOT_ENABLED must be true or false",
+      })
+      .default("false"),
+    HUBSPOT_API_KEY: z.string().optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.HUBSPOT_ENABLED === "true" && !value.HUBSPOT_API_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["HUBSPOT_API_KEY"],
+        message: "HUBSPOT_API_KEY is required when HUBSPOT_ENABLED=true",
+      });
+    }
     if (value.EMAIL_PROVIDER !== "oci") return;
     if (!value.EMAIL_FROM_ADDRESS) {
       ctx.addIssue({

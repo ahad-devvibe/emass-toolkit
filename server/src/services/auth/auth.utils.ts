@@ -7,6 +7,8 @@ import { ApiError } from "../../utils/api-error.utils.js";
 
 export const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
 export const REFRESH_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+// Revoked refresh tokens are kept this long so a replay is detected as reuse
+export const REUSE_DETECTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const OTP_TTL_MS = 10 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_CODE_LENGTH = 6;

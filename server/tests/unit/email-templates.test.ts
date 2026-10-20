@@ -6,6 +6,8 @@ import { renderSetPasswordReminderEmail } from "../../src/services/email/templat
 import { renderPendingApprovalEmail } from "../../src/services/email/templates/pending-approval.template.js";
 import { renderMfaLoginEmail } from "../../src/services/email/templates/mfa-login.template.js";
 import { renderWelcomeEmail } from "../../src/services/email/templates/welcome.template.js";
+import { renderSignupRejectedEmail } from "../../src/services/email/templates/signup-rejected.template.js";
+import { EMAIL_TAGLINE } from "../../src/services/email/templates/layout.template.js";
 
 describe("renderOtpVerificationEmail", () => {
   it("renders styled HTML and a matching plain-text fallback", () => {
@@ -17,9 +19,9 @@ describe("renderOtpVerificationEmail", () => {
     expect(email.subject).toBe("Your EMASS Toolkit verification code");
     expect(email.html).toContain("<!doctype html>");
     expect(email.html).toContain('role="presentation"');
-    expect(email.html).toContain("background-color:#F5FAFF");
+    expect(email.html).toContain("background-color:#EEF4FB");
     expect(email.html).toContain("EMASS Toolkit");
-    expect(email.html).toContain("letter-spacing:8px");
+    expect(email.html).toContain("letter-spacing:10px");
     expect(email.html).toContain(">123456</td>");
     expect(email.html).toMatch(/This code expires in 10\s+minutes\./);
     expect(email.html).toMatch(/never share this code/);
@@ -173,5 +175,84 @@ describe("renderWelcomeEmail", () => {
     });
     expect(email.html).toContain("&lt;b&gt;");
     expect(email.html).toContain("a=1&amp;b=2");
+  });
+});
+
+describe("renderSignupRejectedEmail", () => {
+  it("explains the decision without a reason block when none is given", () => {
+    const email = renderSignupRejectedEmail({ firstName: "Jane" });
+
+    expect(email.subject).toBe("Your EMASS Toolkit access request");
+    expect(email.html).toContain("Hi Jane,");
+    expect(email.html).toContain("company email");
+    expect(email.html).not.toContain("A note from our team");
+    expect(email.html).not.toMatch(/<link\b|<script\b|<img\b/i);
+    expect(email.text).not.toContain("A note from our team");
+  });
+
+  it("includes the reviewer's reason, escaped", () => {
+    const email = renderSignupRejectedEmail({
+      firstName: "<b>",
+      reason: "Use your <work> email\nthanks",
+    });
+
+    expect(email.html).toContain("A note from our team");
+    expect(email.html).toContain("Use your &lt;work&gt; email<br>thanks");
+    expect(email.html).toContain("Hi &lt;b&gt;,");
+    expect(email.text).toContain("Use your <work> email");
+  });
+});
+
+describe("shared layout", () => {
+  const all = [
+    renderOtpVerificationEmail({ code: "123456", expiresInMinutes: 10 }),
+    renderPasswordResetEmail({ code: "123456", expiresInMinutes: 10 }),
+    renderMfaLoginEmail({ code: "123456", expiresInMinutes: 10 }),
+    renderSetPasswordEmail({
+      firstName: "Jane",
+      url: "https://x.example/set",
+      expiresInHours: 48,
+    }),
+    renderSetPasswordReminderEmail({
+      firstName: "Jane",
+      url: "https://x.example/set",
+      hoursLeft: 23,
+    }),
+    renderPendingApprovalEmail({ firstName: "Jane" }),
+    renderWelcomeEmail({ firstName: "Jane", catalogUrl: "https://x.example" }),
+    renderSignupRejectedEmail({ firstName: "Jane" }),
+  ];
+
+  it("gives every email the brand header band with a solid fallback", () => {
+    for (const email of all) {
+      expect(email.html).toContain('bgcolor="#0F3678"');
+      expect(email.html).toContain("linear-gradient(135deg, #0F3678");
+      expect(email.html).toContain(EMAIL_TAGLINE);
+      expect(email.html).toContain("You&#39;re receiving this because");
+      expect(email.html).not.toMatch(/<(link|script|img)[\s>]/i);
+      expect(email.text.length).toBeGreaterThan(80);
+    }
+  });
+
+  it("welcome includes both checksum commands, escaped", () => {
+    const email = renderWelcomeEmail({
+      firstName: "Jane",
+      catalogUrl: "https://x.example",
+    });
+    expect(email.html).toContain("shasum -a 256 &lt;file&gt;");
+    expect(email.html).toContain("certutil -hashfile &lt;file&gt; SHA256");
+    expect(email.text).toContain("shasum -a 256 <file>");
+  });
+
+  it("pending approval shows where the request stands", () => {
+    const email = renderPendingApprovalEmail({ firstName: "Jane" });
+    for (const step of [
+      "Request submitted",
+      "Team review",
+      "Set your password",
+    ]) {
+      expect(email.html).toContain(step);
+      expect(email.text).toContain(step);
+    }
   });
 });

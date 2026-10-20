@@ -5,7 +5,9 @@
     "outlook.com",
     "hotmail.com",
     "icloud.com",
-    "aol.com"
+    "aol.com",
+    "protonmail.com",
+    "proton.me"
   ],
   "competitor": ["blocked-competitor.example"]
 }

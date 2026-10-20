@@ -3,6 +3,7 @@ import { prisma } from "../../configs/prisma.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import {
   REFRESH_TOKEN_TTL_MS,
+  REUSE_DETECTION_WINDOW_MS,
   generateAccessToken,
   generateRefreshToken,
   hashToken,
@@ -13,27 +14,39 @@ export interface TokenPair {
   refreshToken: string;
 }
 
+/**
+ * Prunes the user's tokens that no longer matter (expired, or revoked longer
+ * than the reuse-detection window) and stores a new refresh token. Recently
+ * revoked rows are kept so a replay still trips REFRESH_TOKEN_REUSED.
+ * Pass `tx` when already inside an interactive transaction.
+ */
 export async function issueTokenPair(
   userId: string,
   role: UserRole,
-  client: Prisma.TransactionClient | typeof prisma = prisma,
+  tx?: Prisma.TransactionClient,
 ): Promise<TokenPair> {
   const refreshToken = generateRefreshToken();
-  await client.$transaction([
-    client.refreshToken.deleteMany({
+  const now = Date.now();
+  const write = async (db: Prisma.TransactionClient) => {
+    await db.refreshToken.deleteMany({
       where: {
         userId,
-        OR: [{ revokedAt: { not: null } }, { expiresAt: { lt: new Date() } }],
+        OR: [
+          { expiresAt: { lt: new Date(now) } },
+          { revokedAt: { lt: new Date(now - REUSE_DETECTION_WINDOW_MS) } },
+        ],
       },
-    }),
-    client.refreshToken.create({
+    });
+    await db.refreshToken.create({
       data: {
         userId,
         tokenHash: hashToken(refreshToken),
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+        expiresAt: new Date(now + REFRESH_TOKEN_TTL_MS),
       },
-    }),
-  ]);
+    });
+  };
+  if (tx) await write(tx);
+  else await prisma.$transaction(write);
   return { accessToken: generateAccessToken(userId, role), refreshToken };
 }
 
@@ -94,7 +107,7 @@ export async function revokeRefreshToken(refreshToken: string): Promise<void> {
 
 export async function revokeAllUserTokens(userId: string): Promise<void> {
   await prisma.refreshToken.updateMany({
-    where: { userId },
+    where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }

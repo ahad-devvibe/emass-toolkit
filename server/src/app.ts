@@ -4,6 +4,7 @@ import express from "express";
 import { pinoHttp } from "pino-http";
 import { logger } from "./configs/logger.js";
 import routes from "./routes/index.js";
+import { ApiError } from "./utils/api-error.utils.js";
 import { errorHandler } from "./utils/error-handler.utils.js";
 
 export const app = express();
@@ -25,7 +26,14 @@ app.use(
       } catch {
         // invalid origin URL — fall through to rejection below
       }
-      callback(new Error("Not allowed by CORS"));
+      callback(
+        new ApiError(
+          403,
+          "This origin is not allowed to call the API",
+          "CORS_ORIGIN_DENIED",
+          { origin },
+        ),
+      );
     },
     credentials: true,
   }),

@@ -16,26 +16,29 @@ import * as authService from "../services/auth/auth.service.js";
 import { getSetPasswordInvite } from "../services/auth/set-password.service.js";
 import { createCaptchaChallenge } from "../services/captcha/captcha.service.js";
 import {
-  ACCESS_TOKEN_COOKIE,
   CAPTCHA_COOKIE,
+  LEGACY_REFRESH_COOKIE_PATH,
+  REFRESH_COOKIE_PATH,
   REFRESH_TOKEN_COOKIE,
-  accessCookieOptions,
   captchaCookieOptions,
   refreshCookieOptions,
 } from "../configs/cookie.config.js";
 
-function setTokenCookies(
-  res: Response,
-  accessToken: string,
-  refreshToken: string,
-) {
-  res.cookie(ACCESS_TOKEN_COOKIE, accessToken, accessCookieOptions);
+// The refresh token only ever travels in the httpOnly cookie; the access
+// token is returned in the body and sent back as a Bearer header.
+function setRefreshCookie(res: Response, refreshToken: string) {
+  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: LEGACY_REFRESH_COOKIE_PATH });
   res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
 }
 
-function clearTokenCookies(res: Response) {
-  res.clearCookie(ACCESS_TOKEN_COOKIE, { path: "/" });
-  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: "/api/auth/refresh" });
+function clearRefreshCookie(res: Response) {
+  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: REFRESH_COOKIE_PATH });
+  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: LEGACY_REFRESH_COOKIE_PATH });
+}
+
+function readRefreshCookie(req: Request): string | undefined {
+  const value = req.cookies?.[REFRESH_TOKEN_COOKIE] as unknown;
+  return typeof value === "string" && value ? value : undefined;
 }
 
 export const captcha = async (_req: Request, res: Response) => {
@@ -68,8 +71,9 @@ export const login = async (req: Request, res: Response) => {
     );
     return;
   }
-  setTokenCookies(res, result.accessToken, result.refreshToken);
-  res.json(ApiResponse.success(result, "Logged in"));
+  const { refreshToken, ...body } = result;
+  setRefreshCookie(res, refreshToken);
+  res.json(ApiResponse.success(body, "Logged in"));
 };
 
 export const resendOtp = async (req: Request, res: Response) => {
@@ -91,9 +95,12 @@ export const verifyOtp = async (req: Request, res: Response) => {
     res.json(ApiResponse.ok("OTP verified"));
     return;
   }
-  const result = await authService.verifyLoginOtp(input.email, input.code);
-  setTokenCookies(res, result.accessToken, result.refreshToken);
-  res.json(ApiResponse.success(result, "Logged in"));
+  const { refreshToken, ...body } = await authService.verifyLoginOtp(
+    input.email,
+    input.code,
+  );
+  setRefreshCookie(res, refreshToken);
+  res.json(ApiResponse.success(body, "Logged in"));
 };
 
 export const getSetPassword = async (req: Request, res: Response) => {
@@ -125,23 +132,19 @@ export const resetPassword = async (req: Request, res: Response) => {
 };
 
 export const refresh = async (req: Request, res: Response) => {
-  const refreshToken =
-    req.cookies?.[REFRESH_TOKEN_COOKIE] ?? req.body?.refreshToken;
-  if (!refreshToken || typeof refreshToken !== "string") {
+  const current = readRefreshCookie(req);
+  if (!current) {
     throw new ApiError(401, "Missing refresh token", "REFRESH_TOKEN_MISSING");
   }
-  const result = await authService.refresh(refreshToken);
-  setTokenCookies(res, result.accessToken, result.refreshToken);
-  res.json(ApiResponse.success(result, "Tokens refreshed"));
+  const { accessToken, refreshToken } = await authService.refresh(current);
+  setRefreshCookie(res, refreshToken);
+  res.json(ApiResponse.success({ accessToken }, "Tokens refreshed"));
 };
 
 export const logout = async (req: Request, res: Response) => {
-  const refreshToken =
-    req.cookies?.[REFRESH_TOKEN_COOKIE] ?? req.body?.refreshToken;
-  if (refreshToken && typeof refreshToken === "string") {
-    await authService.logout(refreshToken);
-  }
-  clearTokenCookies(res);
+  const refreshToken = readRefreshCookie(req);
+  if (refreshToken) await authService.logout(refreshToken);
+  clearRefreshCookie(res);
   res.json(ApiResponse.ok("Logged out"));
 };
 

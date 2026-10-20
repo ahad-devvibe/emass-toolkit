@@ -11,6 +11,7 @@ import {
   seedDomainPoliciesForTest,
   uniqueEmail,
 } from "../helpers/auth.js";
+import { refreshCookie, setCookies } from "../helpers/http.js";
 
 beforeAll(async () => {
   await resetDb();
@@ -23,7 +24,7 @@ describe("GET /api/auth/captcha", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.image).toMatch(/^data:image\/svg\+xml;base64,/);
-    const cookie = res.headers["set-cookie"].find((c: string) =>
+    const cookie = setCookies(res.headers).find((c) =>
       c.startsWith("captcha="),
     );
     expect(cookie).toBeDefined();
@@ -46,9 +47,7 @@ describe("POST /api/auth/login", () => {
     expect(res.body.data.user.email).toBe(email);
     expect(res.body.data.user).not.toHaveProperty("password");
     expect(
-      res.headers["set-cookie"].some((c: string) =>
-        c.startsWith("refreshToken="),
-      ),
+      setCookies(res.headers).some((c) => c.startsWith("refreshToken=")),
     ).toBe(true);
   });
 
@@ -152,35 +151,121 @@ describe("GET /api/auth/me", () => {
 });
 
 describe("refresh + logout", () => {
-  it("rotates the refresh token and logs out", async () => {
-    const email = uniqueEmail("session");
-    await createUser(email);
+  async function loginCookie(prefix: string) {
+    const email = uniqueEmail(prefix);
+    const user = await createUser(email);
     const login = await request(app)
       .post("/api/auth/login")
       .send({ email, password: "password123" });
-    const refreshToken = login.body.data.refreshToken as string;
+    return { user, login, cookie: refreshCookie(login.headers) };
+  }
+
+  it("keeps the refresh token out of response bodies", async () => {
+    const { login, cookie } = await loginCookie("session-body");
+    expect(login.body.data).not.toHaveProperty("refreshToken");
+    const raw = setCookies(login.headers).find((c) => c.startsWith(cookie));
+    expect(raw).toContain("HttpOnly");
+    expect(raw).toContain("Path=/api/auth;");
+    expect(
+      setCookies(login.headers).some((c) => c.startsWith("accessToken=")),
+    ).toBe(false);
 
     const refreshed = await request(app)
       .post("/api/auth/refresh")
-      .send({ refreshToken });
+      .set("Cookie", cookie);
     expect(refreshed.status).toBe(200);
-    expect(refreshed.body.data.refreshToken).not.toBe(refreshToken);
+    expect(refreshed.body.data).toEqual({ accessToken: expect.any(String) });
+  });
+
+  it("rotates via the cookie and revokes every session on reuse", async () => {
+    const { user, cookie } = await loginCookie("session-reuse");
+
+    const refreshed = await request(app)
+      .post("/api/auth/refresh")
+      .set("Cookie", cookie);
+    expect(refreshed.status).toBe(200);
+    const rotated = refreshCookie(refreshed.headers);
+    expect(rotated).not.toBe(cookie);
 
     const reused = await request(app)
       .post("/api/auth/refresh")
-      .send({ refreshToken });
+      .set("Cookie", cookie);
     expect(reused.status).toBe(401);
     expect(reused.body.code).toBe("REFRESH_TOKEN_REUSED");
 
+    // Reuse revokes the whole family, including the freshly rotated token
+    const afterReuse = await request(app)
+      .post("/api/auth/refresh")
+      .set("Cookie", rotated);
+    expect(afterReuse.status).toBe(401);
+    expect(
+      await prisma.refreshToken.count({
+        where: { userId: user.id, revokedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it("lets only one of two concurrent refreshes win", async () => {
+    const { cookie } = await loginCookie("session-race");
+
+    const results = await Promise.all([
+      request(app).post("/api/auth/refresh").set("Cookie", cookie),
+      request(app).post("/api/auth/refresh").set("Cookie", cookie),
+    ]);
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([200, 401]);
+    expect(results.find((r) => r.status === 401)?.body.code).toBe(
+      "REFRESH_TOKEN_REUSED",
+    );
+  });
+
+  it("revokes the refresh token on logout via the cookie", async () => {
+    const { user, cookie } = await loginCookie("session-logout");
+
     const logout = await request(app)
       .post("/api/auth/logout")
-      .send({ refreshToken: refreshed.body.data.refreshToken });
+      .set("Cookie", cookie);
     expect(logout.status).toBe(200);
+    expect(
+      await prisma.refreshToken.count({
+        where: { userId: user.id, revokedAt: null },
+      }),
+    ).toBe(0);
 
     const afterLogout = await request(app)
       .post("/api/auth/refresh")
-      .send({ refreshToken: refreshed.body.data.refreshToken });
+      .set("Cookie", cookie);
     expect(afterLogout.status).toBe(401);
+  });
+
+  it("ignores a refresh token sent in the body", async () => {
+    const res = await request(app)
+      .post("/api/auth/refresh")
+      .send({ refreshToken: "anything" });
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("REFRESH_TOKEN_MISSING");
+  });
+});
+
+describe("CORS", () => {
+  it("rejects a public origin with a 403 error envelope", async () => {
+    const res = await request(app)
+      .get("/api/auth/captcha")
+      .set("Origin", "https://evil.example.com");
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({
+      success: false,
+      statusCode: 403,
+      code: "CORS_ORIGIN_DENIED",
+    });
+  });
+
+  it("allows LAN and localhost origins with credentials", async () => {
+    const res = await request(app)
+      .get("/api/auth/captcha")
+      .set("Origin", "http://192.168.18.15:5173");
+    expect(res.status).toBe(200);
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
   });
 });
 
@@ -261,5 +346,26 @@ describe("POST /api/auth/signup (captcha wiring)", () => {
     expect(fe.country).toEqual(["Country is required"]);
     expect(fe.companyName).toEqual(["Company name is required"]);
     expect(fe.jobTitle).toEqual(["Job title is required"]);
+  });
+
+  it("rejects a well-formed but unassigned country code", async () => {
+    const res = await request(app)
+      .post("/api/auth/signup")
+      .set("Cookie", [`captcha=${captchaCookieFor(TEST_CAPTCHA_CODE)}`])
+      .send({
+        email: uniqueEmail("zz"),
+        firstName: "A",
+        lastName: "B",
+        country: "ZZ",
+        companyName: "Co",
+        jobTitle: "Dev",
+        captcha: TEST_CAPTCHA_CODE,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+    expect(res.body.details.fieldErrors.country).toEqual([
+      "Country must be a valid ISO 3166-1 alpha-2 code",
+    ]);
   });
 });

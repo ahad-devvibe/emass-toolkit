@@ -6,6 +6,11 @@ import { logger } from "../../configs/logger.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { hashPassword, normalizeEmail } from "./auth.utils.js";
 import { emailService, type EmailSender } from "../email/email.service.js";
+import {
+  hubspotService,
+  syncHubspotContact,
+  type HubspotClient,
+} from "../hubspot/hubspot.service.js";
 
 export function buildSetPasswordUrl(token: string): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, "")}/set-password?token=${encodeURIComponent(token)}`;
@@ -98,12 +103,23 @@ export async function redeemSetPasswordToken(
   token: string,
   newPassword: string,
   sender: EmailSender = emailService,
+  hubspot: HubspotClient = hubspotService,
 ): Promise<void> {
   const row = await prisma.setPasswordToken.findUnique({
     where: { tokenHash: hashSetPasswordToken(token) },
     include: {
       user: {
-        select: { id: true, status: true, email: true, firstName: true },
+        select: {
+          id: true,
+          status: true,
+          email: true,
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          country: true,
+          companyName: true,
+          jobTitle: true,
+        },
       },
     },
   });
@@ -156,6 +172,9 @@ export async function redeemSetPasswordToken(
   } catch (err) {
     logger.warn({ err, userId: row.userId }, "welcome email not sent");
   }
+
+  // Best-effort: the contact already exists as pending_password; mark it active
+  await syncHubspotContact(row.user, "active", hubspot);
 }
 
 export async function resendSetPasswordEmail(

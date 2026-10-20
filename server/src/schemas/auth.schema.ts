@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isCountryCode } from "../utils/country.utils.js";
 
 const required =
   (field: string) =>
@@ -50,7 +51,8 @@ export const signupSchema = z.object(
     country: z
       .string({ error: required("Country") })
       .trim()
-      .regex(/^[A-Za-z]{2}$/, "Country must be a 2-letter ISO code"),
+      .regex(/^[A-Za-z]{2}$/, "Country must be a 2-letter ISO code")
+      .refine(isCountryCode, "Country must be a valid ISO 3166-1 alpha-2 code"),
     companyName: nameField("Company name", 120),
     jobTitle: nameField("Job title", 120),
     captcha: z
@@ -122,20 +124,6 @@ export const setPasswordSchema = z.object(
 export const resendSetPasswordSchema = z.object(
   {
     email: emailField,
-  },
-  { error: bodyRequired },
-);
-
-export const refreshSchema = z.object(
-  {
-    refreshToken: z.string().min(1).optional(),
-  },
-  { error: bodyRequired },
-);
-
-export const logoutSchema = z.object(
-  {
-    refreshToken: z.string().min(1).optional(),
   },
   { error: bodyRequired },
 );

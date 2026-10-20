@@ -1,14 +1,19 @@
 import type { Request, Response } from "express";
 import { ApiResponse } from "../utils/api-response.utils.js";
 import {
+  listPendingSignupsSchema,
+  rejectSignupSchema,
+} from "../schemas/admin.schema.js";
+import {
   approveSignup,
   listPendingSignups,
   rejectSignup,
 } from "../services/auth/admin-signups.service.js";
 
-export const listPending = async (_req: Request, res: Response) => {
-  const users = await listPendingSignups();
-  res.json(ApiResponse.success({ signups: users }));
+export const listPending = async (req: Request, res: Response) => {
+  const query = listPendingSignupsSchema.parse(req.query);
+  const result = await listPendingSignups(query);
+  res.json(ApiResponse.success(result));
 };
 
 export const approve = async (req: Request, res: Response) => {
@@ -17,6 +22,10 @@ export const approve = async (req: Request, res: Response) => {
 };
 
 export const reject = async (req: Request, res: Response) => {
-  const user = await rejectSignup(String(req.params.id ?? ""));
+  const { reason } = rejectSignupSchema.parse(req.body ?? {});
+  const user = await rejectSignup(
+    String(req.params.id ?? ""),
+    reason || undefined,
+  );
   res.json(ApiResponse.success(user, "Signup rejected"));
 };

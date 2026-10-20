@@ -233,3 +233,31 @@ already delivers most of the visual change.
 - Tinted page backgrounds can make `muted-foreground` text fail AA. Phase 1
   includes the check and the fallback.
 - shadcn component edits drift from upstream. Keep them limited to Phase 5.
+
+## Revision: calmer product UI (2026-10-17)
+
+The first pass took the marketing site's decoration along with its identity,
+and it felt too loud for a task tool. The rule now is **brand at the edges,
+calm in the middle**. "Resemble nanoveu.com" is met through identity: palette,
+type, logo and tone. It does not come from decoration.
+
+- **Kept:** colour tokens, fonts, blue primary actions, the sign-in brand panel
+  (the one marketing-style moment), navy-tinted product imagery, the
+  sidebar gradient edge, and a 2px primary bar on the latest release.
+- **Removed:**
+  - the catalog gradient hero (now a plain header with one muted stats line)
+  - the page background glow and the gradient header hairlines (now plain
+    `border-b`)
+  - the gradient avatars and logo tiles (now solid primary)
+  - card lift and image zoom, the download-icon nudge, all entrance
+    animations, and the pulsing dot
+  - the `bg-brand-gradient` and `text-brand-gradient` utilities
+- **Softened:** `shadow-brand` is a neutral, near-flat shadow, and cards read
+  as border-led. `shadow-brand-lg` is used only on the sign-in card.
+- **Motion rule:** motion only gives feedback on an action (hover colour,
+  focus, press, toast). Nothing animates on page load.
+- **Sidebar edge (follow-up):** the gradient edge was also dropped for a plain
+  `border-r`, and the `bg-brand-edge` utility was removed. Decision Phase 2 is
+  superseded.
+- **Follow-up:** get official Nanoveu/EMASS logo SVGs. They are the strongest
+  resemblance signal at zero visual cost.

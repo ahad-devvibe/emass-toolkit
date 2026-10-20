@@ -19,6 +19,11 @@ import {
 import { classifySignupEmail } from "./domains.service.js";
 import { verifyCaptcha } from "../captcha/captcha.service.js";
 import {
+  hubspotService,
+  syncHubspotContact,
+  type HubspotClient,
+} from "../hubspot/hubspot.service.js";
+import {
   issueSetPasswordToken,
   redeemSetPasswordToken,
   resendSetPasswordEmail,
@@ -39,13 +44,36 @@ export async function signup(
   input: SignupInput,
   captchaCookie: string | undefined,
   sender: EmailSender = emailService,
+  hubspot: HubspotClient = hubspotService,
 ) {
   verifyCaptcha(input.captcha, captchaCookie);
   const email = normalizeEmail(input.email);
   await sender.assertReady();
 
   const domainClass = await classifySignupEmail(email);
+  const profile = {
+    email,
+    firstName: input.firstName,
+    middleName: input.middleName?.trim() || null,
+    lastName: input.lastName,
+    country: input.country.toUpperCase(),
+    companyName: input.companyName,
+    jobTitle: input.jobTitle,
+  };
+
   if (domainClass === "COMPETITOR") {
+    // Keep an internal audit row (never synced to HubSpot). An existing row
+    // for this email is left untouched; the answer is the same either way.
+    await prisma.user
+      .create({ data: { ...profile, status: UserStatus.BLOCKED } })
+      .catch((err: unknown) => {
+        if (
+          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+          err.code !== "P2002"
+        ) {
+          throw err;
+        }
+      });
     throw new ApiError(
       403,
       "Signups from this domain are not accepted",
@@ -57,13 +85,7 @@ export async function signup(
   try {
     user = await prisma.user.create({
       data: {
-        email,
-        firstName: input.firstName,
-        middleName: input.middleName?.trim() || null,
-        lastName: input.lastName,
-        country: input.country.toUpperCase(),
-        companyName: input.companyName,
-        jobTitle: input.jobTitle,
+        ...profile,
         status:
           domainClass === "FREE_MAIL"
             ? UserStatus.PENDING_APPROVAL
@@ -84,6 +106,11 @@ export async function signup(
   } catch (err) {
     await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
     throw err;
+  }
+
+  // Free-mail signups reach HubSpot only once an admin approves them
+  if (domainClass !== "FREE_MAIL") {
+    await syncHubspotContact(user, "pending_password", hubspot);
   }
 
   return presentUser(user);
