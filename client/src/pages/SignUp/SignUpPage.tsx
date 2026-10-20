@@ -117,46 +117,46 @@ export function SignUpPage() {
 
   return (
     <AuthCard wide title="Request access" description="Create an account to download EMASS SDKs and documentation." footer={<>Already have an account? <Link to="/sign-in" className="font-medium text-primary hover:underline">Sign in</Link></>}>
-      <form noValidate onSubmit={handleSubmit} className="space-y-5">
+      {/* Container queries size the rows by the card's own width, so the form works from small laptops to desktop */}
+      <form noValidate onSubmit={handleSubmit} className="@container space-y-5 short:space-y-4 compact:space-y-3 tiny:space-y-2.5">
         {formError && <FormAlert>{formError}</FormAlert>}
-        <FormField id="email" label="Work email" error={errors.email} hint="Company addresses get access right away. Personal addresses are reviewed first.">
-          <Input {...fieldA11y("email", errors.email)} type="email" autoComplete="email" placeholder="you@company.com" className="h-10" value={form.email} onChange={(event) => update("email")(event.target.value)} />
+        <FormField id="email" label="Work email" required error={errors.email} hint="Company addresses get access right away. Personal addresses are reviewed first.">
+          <Input {...fieldA11y("email", errors.email)} type="email" autoComplete="email" placeholder="you@company.com" value={form.email} onChange={(event) => update("email")(event.target.value)} />
         </FormField>
-        <div className="grid items-start gap-4 sm:grid-cols-3">
-          <FormField id="firstName" label="First name" error={errors.firstName}>
-            <Input {...fieldA11y("firstName", errors.firstName)} autoComplete="given-name" maxLength={80} className="h-10" value={form.firstName} onChange={(event) => update("firstName")(event.target.value)} />
+        <div className="grid items-start gap-3 @[22rem]:grid-cols-3">
+          <FormField id="firstName" label="First name" required error={errors.firstName}>
+            <Input {...fieldA11y("firstName", errors.firstName)} autoComplete="given-name" maxLength={80} value={form.firstName} onChange={(event) => update("firstName")(event.target.value)} />
           </FormField>
-          <FormField id="middleName" label="Middle name" error={errors.middleName}>
-            <Input {...fieldA11y("middleName", errors.middleName)} autoComplete="additional-name" maxLength={80} placeholder="Optional" className="h-10" value={form.middleName} onChange={(event) => update("middleName")(event.target.value)} />
+          <FormField id="middleName" label="Middle name" optional error={errors.middleName}>
+            <Input {...fieldA11y("middleName", errors.middleName)} autoComplete="additional-name" maxLength={80} value={form.middleName} onChange={(event) => update("middleName")(event.target.value)} />
           </FormField>
-          <FormField id="lastName" label="Last name" error={errors.lastName}>
-            <Input {...fieldA11y("lastName", errors.lastName)} autoComplete="family-name" maxLength={80} className="h-10" value={form.lastName} onChange={(event) => update("lastName")(event.target.value)} />
+          <FormField id="lastName" label="Last name" required error={errors.lastName}>
+            <Input {...fieldA11y("lastName", errors.lastName)} autoComplete="family-name" maxLength={80} value={form.lastName} onChange={(event) => update("lastName")(event.target.value)} />
           </FormField>
         </div>
-        <div className="grid items-start gap-4 sm:grid-cols-2">
-          <FormField id="companyName" label="Company" error={errors.companyName}>
-            <Input {...fieldA11y("companyName", errors.companyName)} autoComplete="organization" maxLength={120} className="h-10" value={form.companyName} onChange={(event) => update("companyName")(event.target.value)} />
+        {/* Country gets its own full row; only on very short screens with a wide card does it join this row */}
+        <div className="grid items-start gap-3 @[20rem]:grid-cols-2 compact:@[30rem]:grid-cols-3">
+          <FormField id="companyName" label="Company" required error={errors.companyName}>
+            <Input {...fieldA11y("companyName", errors.companyName)} autoComplete="organization" maxLength={120} value={form.companyName} onChange={(event) => update("companyName")(event.target.value)} />
           </FormField>
-          <FormField id="jobTitle" label="Job title" error={errors.jobTitle}>
-            <Input {...fieldA11y("jobTitle", errors.jobTitle)} autoComplete="organization-title" maxLength={120} className="h-10" value={form.jobTitle} onChange={(event) => update("jobTitle")(event.target.value)} />
+          <FormField id="jobTitle" label="Job title" required error={errors.jobTitle}>
+            <Input {...fieldA11y("jobTitle", errors.jobTitle)} autoComplete="organization-title" maxLength={120} value={form.jobTitle} onChange={(event) => update("jobTitle")(event.target.value)} />
+          </FormField>
+          <FormField id="country" label="Country" required error={errors.country} className="@[20rem]:col-span-2 compact:@[30rem]:col-span-1">
+            <CountryCombobox id="country" value={form.country} onChange={update("country")} invalid={Boolean(errors.country)} describedBy={errors.country ? "country-error" : undefined} />
           </FormField>
         </div>
-        <FormField id="country" label="Country" error={errors.country}>
-          <CountryCombobox id="country" value={form.country} onChange={update("country")} invalid={Boolean(errors.country)} describedBy={errors.country ? "country-error" : undefined} />
-        </FormField>
 
-        <div className="rounded-xl bg-muted/50 p-4 ring-1 ring-border">
-          <FormField id="captcha" label="Type the characters you see" error={errors.captcha}>
-            <div className="flex flex-wrap items-center gap-3">
-              {/* The image carries its own light tint, so it stays legible in dark mode too */}
-              <div className="grid h-14 w-[180px] shrink-0 place-items-center overflow-hidden rounded-lg bg-[#EEF4FB] ring-1 ring-border">
-                {captchaImage ? <img src={captchaImage} alt="Verification characters" width={180} height={56} className="size-full" /> : captchaError ? <span className="px-2 text-center text-xs text-destructive">Couldn't load the image</span> : <Loader2 className="size-4 animate-spin text-slate-500" />}
-              </div>
-              <Button type="button" variant="outline" size="icon" aria-label="Load a new image" title="Load a new image" onClick={loadCaptcha}><RefreshCw className={cn(!captchaImage && !captchaError && "animate-spin")} /></Button>
-              <Input {...fieldA11y("captcha", errors.captcha)} autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={6} placeholder="ABC123" className="h-10 w-full bg-card font-mono uppercase tracking-[0.3em] placeholder:tracking-[0.3em] sm:w-36 sm:flex-1" value={form.captcha} onChange={(event) => update("captcha")(event.target.value)} />
+        <FormField id="captcha" label="Type the characters you see" required error={errors.captcha}>
+          <div className="flex items-center gap-3">
+            {/* The image carries its own light tint, so it stays legible in dark mode too */}
+            <div className="grid h-12 w-[156px] shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#EEF4FB] ring-1 ring-[#4aa8ff]/27 short:h-11 short:w-[143px] compact:h-10 compact:w-[130px] tiny:h-9 tiny:w-[117px]">
+              {captchaImage ? <img src={captchaImage} alt="Verification characters" width={180} height={56} className="size-full object-contain" /> : captchaError ? <span className="px-2 text-center text-xs text-destructive">Couldn't load the image</span> : <Loader2 className="size-4 animate-spin text-slate-500" />}
             </div>
-          </FormField>
-        </div>
+            <Button type="button" variant="outline" size="icon" className="size-11 shrink-0 rounded-xl compact:size-10 tiny:size-9" aria-label="Load a new image" title="Load a new image" onClick={loadCaptcha}><RefreshCw className={cn(!captchaImage && !captchaError && "animate-spin")} /></Button>
+            <Input {...fieldA11y("captcha", errors.captcha)} autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={6} placeholder="ABC123" className="min-w-0 flex-1 font-mono uppercase tracking-[0.3em] placeholder:tracking-[0.3em]" value={form.captcha} onChange={(event) => update("captcha")(event.target.value)} />
+          </div>
+        </FormField>
 
         <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Creating account…" : "Create account"}</Button>
       </form>
