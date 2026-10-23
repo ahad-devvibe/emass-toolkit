@@ -10,7 +10,7 @@ The auth stack for the EMASS-Toolkit API, under `/api/auth` plus
 - a distorted-text captcha;
 - login: a password for customers, plus email-OTP MFA for DEV and ADMIN;
 - rotating, DB-backed refresh tokens;
-- OTP-based password reset.
+- password reset by emailed link (`docs/auth/password-reset.md`).
 
 The original spec is `tasks/auth.md`.
 
@@ -81,8 +81,8 @@ The original spec is `tasks/auth.md`.
 - **MFA**:
   - DEV/ADMIN login returns `{ mfaRequired: true }` and emails a 6-digit OTP
     (`OtpPurpose.MFA_LOGIN`, 10-minute TTL, 5 attempts).
-  - `verify-otp` exchanges the code for tokens. `verify-otp` accepts only
-    `MFA_LOGIN` and `PASSWORD_RESET`; signup codes have their own endpoints.
+  - `verify-otp` exchanges the code for tokens. It accepts only `MFA_LOGIN`:
+    signup codes have their own endpoints, and password reset uses a link.
   - MFA applies to every staff login; customers never see it.
 - **Captcha**:
   - `svg-captcha` with 6 distorted characters (ambiguous glyphs removed),
@@ -164,7 +164,7 @@ The original spec is `tasks/auth.md`.
   - welcome / approved;
   - signup rejected;
   - MFA login;
-  - password reset.
+  - password reset (a 30-minute, single-use link).
 
   None of them load external assets.
 
@@ -206,5 +206,5 @@ The original spec is `tasks/auth.md`.
 - **"Remember device"** for MFA is explicitly out of scope for the MVP.
 - **Removing the hidden set-password code:** delete everything marked
   `TODO(auth-otp-signup)`, then drop `SetPasswordToken` in a migration.
-- **Password reset** still works as described in `docs/auth/password-reset.md`
-  (OTP reset for all roles).
+- **Password reset** works by emailed link for every role, as described in
+  `docs/auth/password-reset.md`.

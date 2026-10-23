@@ -59,7 +59,11 @@ const previews: [name: string, email: RenderedEmail][] = [
   ["mfa-login", renderMfaLoginEmail({ code: "482913", expiresInMinutes: 10 })],
   [
     "password-reset",
-    renderPasswordResetEmail({ code: "605174", expiresInMinutes: 10 }),
+    renderPasswordResetEmail({
+      firstName: "Jane",
+      url: "https://portal.example.com/reset-password?token=preview",
+      expiresInMinutes: 30,
+    }),
   ],
   [
     "otp-verification",

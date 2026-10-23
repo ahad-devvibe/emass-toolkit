@@ -1,59 +1,54 @@
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
-  codeBlock,
+  button,
+  infoTable,
+  linkFallback,
   paragraph,
   renderEmailLayout,
   securityNote,
-  steps,
 } from "./layout.template.js";
 
 export interface ResetEmailTemplateInput {
-  code: string;
+  firstName: string;
+  url: string;
   expiresInMinutes: number;
 }
 
 export function renderPasswordResetEmail(
   input: ResetEmailTemplateInput,
 ): RenderedEmail {
-  const code = escapeHtml(input.code);
+  const firstName = escapeHtml(input.firstName);
+  const url = escapeHtml(input.url);
   const expiry = escapeHtml(String(input.expiresInMinutes));
 
   return {
-    subject: "Your EMASS Toolkit password reset code",
+    subject: "Reset your EMASS Toolkit password",
     html: renderEmailLayout({
-      title: "Your EMASS Toolkit password reset code",
-      preheader: `Your password reset code expires in ${input.expiresInMinutes} minutes.`,
+      title: "Reset your EMASS Toolkit password",
+      preheader: `Choose a new password. The link expires in ${input.expiresInMinutes} minutes.`,
       eyebrow: "Account security",
       hero: {
         title: "Reset your password",
-        subtitle: "Use this code to choose a new password.",
+        subtitle: "Choose a new password for your account.",
       },
       reason:
         "You're receiving this because a password reset was requested for your EMASS Toolkit account.",
       body: [
         paragraph(
-          "Enter this code to choose a new password for your EMASS Toolkit account.",
+          `Hi ${firstName}, use the button below to choose a new password. The link expires in ${expiry} minutes and works once.`,
         ),
-        codeBlock(code, `This code expires in ${expiry} minutes.`),
-        steps([
-          {
-            title: "Enter the code",
-            text: "Back on the reset screen, type the 6-digit code above.",
-          },
-          {
-            title: "Choose a new password",
-            text: "Pick something you don't use anywhere else.",
-          },
-          {
-            title: "Sign in again",
-            text: "For your security, every other session is signed out.",
-          },
+        button(url, "Choose a new password"),
+        infoTable([
+          ["Link expires", `in ${expiry} minutes`],
+          ["Link works", "Once"],
+          ["After the reset", "Every signed-in session is signed out"],
         ]),
+        linkFallback(url),
         securityNote(
-          "For your security, never share this code. If you did not request it, you can safely ignore this email and your password will not change.",
+          "If you didn't ask for this, you can safely ignore this email. Your password won't change.",
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Account security\n\nReset your password\n\nEnter this code to choose a new password for your EMASS Toolkit account:\n\n    ${input.code}\n\nThis code expires in ${input.expiresInMinutes} minutes.\n\n1. Enter the code on the reset screen.\n2. Choose a new password you don't use anywhere else.\n3. Sign in again. Every other session is signed out.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email and your password will not change.`,
+    text: `EMASS Toolkit · Account security\n\nReset your password\n\nHi ${input.firstName}, open this link to choose a new password. It expires in ${input.expiresInMinutes} minutes and works once:\n\n${input.url}\n\nAfter the reset, every signed-in session is signed out.\n\nIf you didn't ask for this, you can safely ignore this email. Your password won't change.`,
   };
 }

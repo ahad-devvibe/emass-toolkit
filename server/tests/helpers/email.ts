@@ -15,6 +15,7 @@ export interface RecordedEmail {
   url?: string;
   firstName?: string;
   expiresInHours?: number;
+  expiresInMinutes?: number;
   hoursLeft?: number;
   reason?: string;
 }
@@ -50,8 +51,14 @@ export function createMockEmailSender(): MockEmailSender {
     async sendOtpEmail(email, code) {
       sent.push({ kind: "otp", email, code });
     },
-    async sendPasswordResetEmail(email, code) {
-      sent.push({ kind: "passwordReset", email, code });
+    async sendPasswordResetEmail(email, firstName, url, expiresInMinutes) {
+      sent.push({
+        kind: "passwordReset",
+        email,
+        firstName,
+        url,
+        expiresInMinutes,
+      });
     },
     async sendSetPasswordEmail(email, firstName, url, expiresInHours) {
       sent.push({ kind: "setPassword", email, firstName, url, expiresInHours });

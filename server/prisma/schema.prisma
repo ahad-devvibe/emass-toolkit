@@ -55,9 +55,10 @@ model User {
 
   rejectionReason String? @db.Text
 
-  refreshTokens     RefreshToken[]
-  otps              Otp[]
-  setPasswordTokens SetPasswordToken[]
+  refreshTokens       RefreshToken[]
+  otps                Otp[]
+  setPasswordTokens   SetPasswordToken[]
+  passwordResetTokens PasswordResetToken[]
 
   releasesCreated   Release[]         @relation("ReleaseCreatedBy")
   releasesPublished Release[]         @relation("ReleasePublishedBy")
@@ -102,6 +103,21 @@ model SetPasswordToken {
   reminderSentAt DateTime?
   consumedAt     DateTime?
   createdAt      DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Forgot-password links: one live token per user (a new request replaces the
+// old one). Only the sha256 of the raw token is stored; the raw token exists
+// only in the emailed link.
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([userId])
 }
@@ -201,7 +217,7 @@ model Release {
 }
 
 model ReleaseFile {
-  id        String          @id @default(uuid())
+  id        String           @id @default(uuid())
   releaseId String
   release   Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
   // Null while drafting: the file uploaded before anyone picked its type.

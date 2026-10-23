@@ -12,6 +12,7 @@ import {
   forgotPasswordSchema,
   loginSchema,
   resendOtpSchema,
+  resetPasswordCheckSchema,
   resetPasswordSchema,
   signupCompleteSchema,
   signupSchema,
@@ -168,7 +169,7 @@ const authPaths = {
       ...publicOperation("resendOtp"),
       tags: ["Auth"],
       summary:
-        "Resend an MFA login OTP (DEV/ADMIN), a password-reset OTP or a signup code (SIGNUP_VERIFY: always 200, sent only for an unfinished signup)",
+        "Resend an MFA login OTP (DEV/ADMIN) or a signup code (SIGNUP_VERIFY: always 200, sent only for an unfinished signup)",
       requestBody: jsonBody(resendOtpSchema, "Email and purpose"),
       responses: {
         200: successResponse("OTP sent"),
@@ -191,8 +192,7 @@ const authPaths = {
     post: {
       ...publicOperation("verifyOtp"),
       tags: ["Auth"],
-      summary:
-        "Verify an MFA login OTP (issues tokens) or validate a reset OTP",
+      summary: "Verify an MFA login OTP (DEV/ADMIN); sets the session cookies",
       requestBody: jsonBody(verifyOtpSchema, "Email, code and purpose"),
       responses: {
         200: successResponse("Verified", signedInSchema),
@@ -214,22 +214,35 @@ const authPaths = {
     post: {
       ...publicOperation("forgotPassword"),
       tags: ["Auth"],
-      summary: "Send a password-reset OTP",
+      summary:
+        "Email a 30-minute, single-use reset link. Always the same 200, whether or not the email has an account; at most one email a minute per account",
       requestBody: jsonBody(forgotPasswordSchema, "Email"),
       responses: {
-        200: successResponse("OTP sent to your email"),
-        400: errorResponse(
-          "Validation failed",
-          ["VALIDATION_ERROR", "PASSWORD_NOT_SET"],
-          400,
+        200: successResponse(
+          "If an account exists for that email, we've sent a reset link",
         ),
-        403: errorResponse("Blocked account", ["ACCOUNT_BLOCKED"], 403),
-        404: errorResponse("Unknown email", ["USER_NOT_FOUND"], 404),
-        502: errorResponse(
-          "OTP email delivery failed",
-          ["EMAIL_SEND_FAILED"],
-          502,
-        ),
+        400: errorResponse("Validation failed", ["VALIDATION_ERROR"]),
+      },
+    },
+  },
+  "/auth/reset-password/check": {
+    post: {
+      ...publicOperation("checkResetLink"),
+      tags: ["Auth"],
+      summary:
+        "Check the token from a reset link without using it up; returns the account's email",
+      requestBody: jsonBody(resetPasswordCheckSchema, "Token from the link"),
+      responses: {
+        200: successResponse("Reset link is valid", {
+          type: "object",
+          properties: { email: { type: "string", format: "email" } },
+          required: ["email"],
+        }),
+        400: errorResponse("Invalid, used or expired link", [
+          "RESET_LINK_INVALID",
+          "RESET_LINK_EXPIRED",
+          "VALIDATION_ERROR",
+        ]),
       },
     },
   },
@@ -237,19 +250,22 @@ const authPaths = {
     post: {
       ...publicOperation("resetPassword"),
       tags: ["Auth"],
-      summary: "Reset the password with a reset OTP (revokes all sessions)",
-      requestBody: jsonBody(
-        resetPasswordSchema,
-        "Email, code and new password",
-      ),
+      summary:
+        "Set a new password with the token from a reset link; uses the link up and signs out every session",
+      requestBody: jsonBody(resetPasswordSchema, "Token and new password"),
       responses: {
-        200: successResponse("Password reset"),
-        400: errorResponse(
-          "Invalid, expired or reused OTP",
-          ["OTP_INVALID", "OTP_EXPIRED", "PASSWORD_REUSE", "VALIDATION_ERROR"],
-          400,
+        200: successResponse(
+          "Password updated. Sign in with your new password",
         ),
-        404: errorResponse("Unknown email", ["USER_NOT_FOUND"], 404),
+        400: errorResponse(
+          "Invalid, used or expired link, or the current password",
+          [
+            "RESET_LINK_INVALID",
+            "RESET_LINK_EXPIRED",
+            "PASSWORD_REUSE",
+            "VALIDATION_ERROR",
+          ],
+        ),
       },
     },
   },

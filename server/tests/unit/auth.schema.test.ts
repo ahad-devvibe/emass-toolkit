@@ -4,6 +4,7 @@ import {
   loginSchema,
   resendOtpSchema,
   resendSetPasswordSchema,
+  resetPasswordCheckSchema,
   resetPasswordSchema,
   setPasswordSchema,
   signupCompleteSchema,
@@ -134,28 +135,21 @@ describe("otp purposes", () => {
     if (result.success) expect(result.data.purpose).toBe("MFA_LOGIN");
   });
 
-  it("accepts PASSWORD_RESET", () => {
-    expect(
-      verifyOtpSchema.safeParse({
+  it.each(["PASSWORD_RESET", "SIGNUP_VERIFY"])(
+    "rejects %s (reset uses a link; signup has its own endpoint)",
+    (purpose) => {
+      const result = verifyOtpSchema.safeParse({
         email: "a@b.com",
         code: "123456",
-        purpose: "PASSWORD_RESET",
-      }).success,
-    ).toBe(true);
-  });
-
-  it("rejects SIGNUP_VERIFY (signup has its own verify endpoint)", () => {
-    const result = verifyOtpSchema.safeParse({
-      email: "a@b.com",
-      code: "123456",
-      purpose: "SIGNUP_VERIFY",
-    });
-    expect(result.success).toBe(false);
-    expect(
-      (result as { error: { issues: { message: string }[] } }).error.issues[0]
-        .message,
-    ).toBe("Purpose must be MFA_LOGIN or PASSWORD_RESET");
-  });
+        purpose,
+      });
+      expect(result.success).toBe(false);
+      expect(
+        (result as { error: { issues: { message: string }[] } }).error.issues[0]
+          .message,
+      ).toBe("Purpose must be MFA_LOGIN");
+    },
+  );
 
   it("rejects non-6-digit codes", () => {
     const result = verifyOtpSchema.safeParse({
@@ -183,7 +177,19 @@ describe("otp purposes", () => {
     expect(result.success).toBe(true);
   });
 
-  it("resendOtpSchema names all three purposes when wrong", () => {
+  it.each(["NOPE", "PASSWORD_RESET"])(
+    "resendOtpSchema rejects %s and names both purposes",
+    (purpose) => {
+      const result = resendOtpSchema.safeParse({ email: "a@b.com", purpose });
+      expect(result.success).toBe(false);
+      expect(
+        (result as { error: { issues: { message: string }[] } }).error.issues[0]
+          .message,
+      ).toBe("Purpose must be MFA_LOGIN or SIGNUP_VERIFY");
+    },
+  );
+
+  it("resendOtpSchema rejects an unknown purpose", () => {
     const result = resendOtpSchema.safeParse({
       email: "a@b.com",
       purpose: "NOPE",
@@ -192,7 +198,7 @@ describe("otp purposes", () => {
     expect(
       (result as { error: { issues: { message: string }[] } }).error.issues[0]
         .message,
-    ).toBe("Purpose must be MFA_LOGIN, PASSWORD_RESET or SIGNUP_VERIFY");
+    ).toBe("Purpose must be MFA_LOGIN or SIGNUP_VERIFY");
   });
 });
 
@@ -322,18 +328,37 @@ describe("forgot/reset/refresh/logout schemas", () => {
     expect(forgotPasswordSchema.safeParse({}).success).toBe(false);
   });
 
-  it("resetPasswordSchema requires email, code, newPassword", () => {
-    const result = resetPasswordSchema.safeParse({});
-    expect(result.success).toBe(false);
-    const issues = (
+  const issuesOf = (result: unknown) =>
+    (
       result as {
         error: { issues: { path: (string | number)[]; message: string }[] };
       }
-    ).error.issues;
-    expect(issues.map((i) => i.path[0])).toEqual([
-      "email",
-      "code",
-      "newPassword",
+    ).error.issues.map((issue) => [issue.path[0], issue.message]);
+
+  it("resetPasswordSchema requires token and newPassword", () => {
+    expect(issuesOf(resetPasswordSchema.safeParse({}))).toEqual([
+      ["token", "Token is required"],
+      ["newPassword", "New password is required"],
     ]);
+  });
+
+  it("resetPasswordSchema tells a wrong type from a missing field", () => {
+    expect(
+      issuesOf(resetPasswordSchema.safeParse({ token: 5, newPassword: 5 })),
+    ).toEqual([
+      ["token", "Invalid input: expected string, received number"],
+      ["newPassword", "Invalid input: expected string, received number"],
+    ]);
+  });
+
+  it("resetPasswordCheckSchema trims and caps the token", () => {
+    const ok = resetPasswordCheckSchema.safeParse({ token: "  abc  " });
+    expect(ok.success && ok.data.token).toBe("abc");
+    expect(
+      issuesOf(resetPasswordCheckSchema.safeParse({ token: "   " })),
+    ).toEqual([["token", "Token is required"]]);
+    expect(
+      issuesOf(resetPasswordCheckSchema.safeParse({ token: "x".repeat(129) })),
+    ).toEqual([["token", "Token must be at most 128 characters"]]);
   });
 });

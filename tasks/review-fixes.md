@@ -44,8 +44,9 @@ Two questions after auth and release management landed: is download the only fea
 8. **The captcha can be reused, and its answer can be cracked offline.**
    - **Fix:** the cookie carries a random nonce plus an HMAC of answer + nonce (with the server secret), not a hash of the answer anyone can compute.
    - Used nonces go in an in-memory set with a 10-minute TTL (single VM), so each captcha works for one signup only.
-9. **Account enumeration in password reset and MFA** (`forgot-password`, `reset-password`, `verify-otp`, `resend-otp` return `USER_NOT_FOUND` / `MFA_NOT_ALLOWED`).
-   - **Fix:** `forgot-password` and `resend-otp` answer a neutral 200. Code checks answer `OTP_INVALID` for unknown or ineligible accounts.
+9. **Account enumeration in MFA** (`verify-otp`, `resend-otp` return `USER_NOT_FOUND` / `MFA_NOT_ALLOWED`).
+   - **Done for password reset (2026-10-23):** reset now works by emailed link, and `forgot-password` always answers the same 200 (see `docs/auth/password-reset.md`).
+   - **Still to fix:** `resend-otp` answers a neutral 200; `verify-otp` answers `OTP_INVALID` for unknown or ineligible accounts.
    - The client sign-in page already treats these as generic messages; check that copy still reads right.
 
 Left as notes in the docs, not fixed now:

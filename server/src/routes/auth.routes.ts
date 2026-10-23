@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   captcha,
+  checkResetLink,
   forgotPassword,
   getMe,
   login,
@@ -28,6 +29,7 @@ router.post("/resend-otp", resendOtp);
 router.post("/verify-otp", verifyOtp);
 
 router.post("/forgot-password", forgotPassword);
+router.post("/reset-password/check", checkResetLink);
 router.post("/reset-password", resetPassword);
 
 router.post("/refresh", refresh);

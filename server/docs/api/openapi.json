@@ -923,7 +923,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Resend an MFA login OTP (DEV/ADMIN), a password-reset OTP or a signup code (SIGNUP_VERIFY: always 200, sent only for an unfinished signup)",
+        "summary": "Resend an MFA login OTP (DEV/ADMIN) or a signup code (SIGNUP_VERIFY: always 200, sent only for an unfinished signup)",
         "requestBody": {
           "description": "Email and purpose",
           "required": true,
@@ -942,7 +942,6 @@
                     "type": "string",
                     "enum": [
                       "MFA_LOGIN",
-                      "PASSWORD_RESET",
                       "SIGNUP_VERIFY"
                     ]
                   }
@@ -1161,7 +1160,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Verify an MFA login OTP (issues tokens) or validate a reset OTP",
+        "summary": "Verify an MFA login OTP (DEV/ADMIN); sets the session cookies",
         "requestBody": {
           "description": "Email, code and purpose",
           "required": true,
@@ -1183,8 +1182,7 @@
                     "default": "MFA_LOGIN",
                     "type": "string",
                     "enum": [
-                      "MFA_LOGIN",
-                      "PASSWORD_RESET"
+                      "MFA_LOGIN"
                     ]
                   }
                 },
@@ -1376,7 +1374,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Send a password-reset OTP",
+        "summary": "Email a 30-minute, single-use reset link. Always the same 200, whether or not the email has an account; at most one email a minute per account",
         "requestBody": {
           "description": "Email",
           "required": true,
@@ -1401,7 +1399,7 @@
         },
         "responses": {
           "200": {
-            "description": "OTP sent to your email",
+            "description": "If an account exists for that email, we've sent a reset link",
             "content": {
               "application/json": {
                 "schema": {
@@ -1457,8 +1455,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "VALIDATION_ERROR",
-                        "PASSWORD_NOT_SET"
+                        "VALIDATION_ERROR"
                       ]
                     },
                     "details": {}
@@ -1472,9 +1469,88 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/auth/reset-password/check": {
+      "post": {
+        "operationId": "checkResetLink",
+        "security": [],
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Check the token from a reset link without using it up; returns the account's email",
+        "requestBody": {
+          "description": "Token from the link",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reset link is valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string",
+                          "format": "email"
+                        }
+                      },
+                      "required": [
+                        "email"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
           },
-          "403": {
-            "description": "Blocked account",
+          "400": {
+            "description": "Invalid, used or expired link",
             "content": {
               "application/json": {
                 "schema": {
@@ -1489,7 +1565,7 @@
                     "statusCode": {
                       "type": "integer",
                       "enum": [
-                        403
+                        400
                       ]
                     },
                     "message": {
@@ -1498,87 +1574,9 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "ACCOUNT_BLOCKED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Unknown email",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        404
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "USER_NOT_FOUND"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "OTP email delivery failed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        502
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "EMAIL_SEND_FAILED"
+                        "RESET_LINK_INVALID",
+                        "RESET_LINK_EXPIRED",
+                        "VALIDATION_ERROR"
                       ]
                     },
                     "details": {}
@@ -1603,23 +1601,19 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Reset the password with a reset OTP (revokes all sessions)",
+        "summary": "Set a new password with the token from a reset link; uses the link up and signs out every session",
         "requestBody": {
-          "description": "Email, code and new password",
+          "description": "Token and new password",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "email": {
+                  "token": {
                     "type": "string",
-                    "format": "email",
-                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                  },
-                  "code": {
-                    "type": "string",
-                    "pattern": "^\\d{6}$"
+                    "minLength": 1,
+                    "maxLength": 128
                   },
                   "newPassword": {
                     "type": "string",
@@ -1628,8 +1622,7 @@
                   }
                 },
                 "required": [
-                  "email",
-                  "code",
+                  "token",
                   "newPassword"
                 ],
                 "additionalProperties": false
@@ -1639,7 +1632,7 @@
         },
         "responses": {
           "200": {
-            "description": "Password reset",
+            "description": "Password updated. Sign in with your new password",
             "content": {
               "application/json": {
                 "schema": {
@@ -1671,7 +1664,7 @@
             }
           },
           "400": {
-            "description": "Invalid, expired or reused OTP",
+            "description": "Invalid, used or expired link, or the current password",
             "content": {
               "application/json": {
                 "schema": {
@@ -1695,50 +1688,10 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "OTP_INVALID",
-                        "OTP_EXPIRED",
+                        "RESET_LINK_INVALID",
+                        "RESET_LINK_EXPIRED",
                         "PASSWORD_REUSE",
                         "VALIDATION_ERROR"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Unknown email",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        404
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "USER_NOT_FOUND"
                       ]
                     },
                     "details": {}

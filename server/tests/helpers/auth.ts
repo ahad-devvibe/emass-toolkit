@@ -9,7 +9,7 @@ import {
   hashPassword,
 } from "../../src/services/auth/auth.utils.js";
 
-const TEST_PASSWORD = "password123";
+export const TEST_PASSWORD = "password123";
 
 export interface TestUser {
   id: string;

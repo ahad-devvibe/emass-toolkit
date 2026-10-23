@@ -29,7 +29,12 @@ import { renderSignupRejectedEmail } from "./templates/signup-rejected.template.
 export interface EmailSender {
   assertReady(): Promise<void>;
   sendOtpEmail(email: string, code: string): Promise<void>;
-  sendPasswordResetEmail(email: string, code: string): Promise<void>;
+  sendPasswordResetEmail(
+    email: string,
+    firstName: string,
+    url: string,
+    expiresInMinutes: number,
+  ): Promise<void>;
   // TODO(auth-otp-signup): the two set-password emails are unused since OTP
   // signup, remove later
   sendSetPasswordEmail(
@@ -143,10 +148,16 @@ export function createOciEmailSender(
       await submit(email, template, "Unable to send verification email");
     },
 
-    async sendPasswordResetEmail(email: string, code: string): Promise<void> {
+    async sendPasswordResetEmail(
+      email: string,
+      firstName: string,
+      url: string,
+      expiresInMinutes: number,
+    ): Promise<void> {
       const template = renderPasswordResetEmail({
-        code,
-        expiresInMinutes: 10,
+        firstName,
+        url,
+        expiresInMinutes,
       });
       await submit(email, template, "Unable to send password reset email");
     },
@@ -226,11 +237,12 @@ export function createConsoleEmailSender(): EmailSender {
       logger.info({ email, code }, "console email sender: OTP email");
     },
 
-    async sendPasswordResetEmail(email: string, code: string): Promise<void> {
-      logger.info(
-        { email, code },
-        "console email sender: password reset email",
-      );
+    async sendPasswordResetEmail(
+      email: string,
+      _firstName: string,
+      url: string,
+    ): Promise<void> {
+      logger.info({ email, url }, "console email sender: password reset email");
     },
 
     async sendSetPasswordEmail(

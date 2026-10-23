@@ -12,6 +12,9 @@ export const REUSE_DETECTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const OTP_TTL_MS = 10 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_CODE_LENGTH = 6;
+// Forgot-password links: lifetime, and the quiet period between two emails
+export const RESET_LINK_TTL_MS = 30 * 60 * 1000;
+export const RESET_REQUEST_COOLDOWN_MS = 60 * 1000;
 
 const BCRYPT_ROUNDS = 12;
 const BCRYPT_OTP_ROUNDS = 12;

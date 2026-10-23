@@ -71,7 +71,7 @@ export function SignInPage() {
         <FormField id="email" label="Work email" error={fieldErrors.email}>
           <Input {...fieldA11y("email", fieldErrors.email)} type="email" autoComplete="email" placeholder="you@company.com" className="h-10" value={email} onChange={(event) => setEmail(event.target.value)} />
         </FormField>
-        <FormField id="password" label="Password" error={fieldErrors.password}>
+        <FormField id="password" label="Password" error={fieldErrors.password} labelAside={<Link to="/forgot-password" state={{ email: email.trim() }} className="text-sm font-medium text-primary hover:underline">Forgot password?</Link>}>
           <PasswordInput {...fieldA11y("password", fieldErrors.password)} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </FormField>
         <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Signing in…" : "Sign in"}</Button>

@@ -116,7 +116,8 @@ describe("POST /api/auth/signup", () => {
     "refuses an email that already has a %s account",
     async (status) => {
       const mail = captureEmails();
-      const email = uniqueEmail(`taken-${status}`);
+      // Lowercase: signup normalizes the email, but createUser stores it as given
+      const email = uniqueEmail(`taken-${status.toLowerCase()}`);
       await createUser(email, { status });
 
       const res = await postSignup(email);

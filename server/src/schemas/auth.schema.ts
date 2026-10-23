@@ -39,18 +39,25 @@ const nameField = (label: string, max = 80) =>
     .min(1, `${label} is required`)
     .max(max, `${label} must be at most ${max} characters`);
 
+// verify-otp only signs staff in; signup codes have their own endpoints and
+// password reset uses an emailed link
 const otpPurposeField = z
-  .enum(["MFA_LOGIN", "PASSWORD_RESET"], {
-    error: "Purpose must be MFA_LOGIN or PASSWORD_RESET",
-  })
+  .enum(["MFA_LOGIN"], { error: "Purpose must be MFA_LOGIN" })
   .default("MFA_LOGIN");
 
 // Resend also covers the signup code; verifying it has its own endpoint
 const resendPurposeField = z
-  .enum(["MFA_LOGIN", "PASSWORD_RESET", "SIGNUP_VERIFY"], {
-    error: "Purpose must be MFA_LOGIN, PASSWORD_RESET or SIGNUP_VERIFY",
+  .enum(["MFA_LOGIN", "SIGNUP_VERIFY"], {
+    error: "Purpose must be MFA_LOGIN or SIGNUP_VERIFY",
   })
   .default("MFA_LOGIN");
+
+// The token from a reset-password link (32 random bytes, base64url)
+const resetTokenField = z
+  .string({ error: required("Token") })
+  .trim()
+  .min(1, "Token is required")
+  .max(128, "Token must be at most 128 characters");
 
 export const signupSchema = z.object(
   {
@@ -128,10 +135,16 @@ export const forgotPasswordSchema = z.object(
   { error: bodyRequired },
 );
 
+export const resetPasswordCheckSchema = z.object(
+  {
+    token: resetTokenField,
+  },
+  { error: bodyRequired },
+);
+
 export const resetPasswordSchema = z.object(
   {
-    email: emailField,
-    code: otpCodeField,
+    token: resetTokenField,
     newPassword: newPasswordField,
   },
   { error: bodyRequired },

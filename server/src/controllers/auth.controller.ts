@@ -1,5 +1,4 @@
 import type { Request, Response } from "express";
-import { OtpPurpose } from "@prisma/client";
 import { ApiResponse } from "../utils/api-response.utils.js";
 import { ApiError } from "../utils/api-error.utils.js";
 import {
@@ -7,6 +6,7 @@ import {
   loginSchema,
   resendOtpSchema,
   resendSetPasswordSchema,
+  resetPasswordCheckSchema,
   resetPasswordSchema,
   setPasswordSchema,
   signupCompleteSchema,
@@ -16,6 +16,7 @@ import {
 } from "../schemas/auth.schema.js";
 import * as authService from "../services/auth/auth.service.js";
 import * as signupService from "../services/auth/signup.service.js";
+import * as passwordResetService from "../services/auth/password-reset.service.js";
 import { getSetPasswordInvite } from "../services/auth/set-password.service.js";
 import { createCaptchaChallenge } from "../services/captcha/captcha.service.js";
 import {
@@ -120,17 +121,16 @@ export const resendOtp = async (req: Request, res: Response) => {
 
 export const forgotPassword = async (req: Request, res: Response) => {
   const input = forgotPasswordSchema.parse(req.body);
-  await authService.forgotPassword(input.email);
-  res.json(ApiResponse.ok("OTP sent to your email"));
+  await passwordResetService.requestPasswordReset(input.email);
+  res.json(
+    ApiResponse.ok(
+      "If an account exists for that email, we've sent a reset link",
+    ),
+  );
 };
 
 export const verifyOtp = async (req: Request, res: Response) => {
   const input = verifyOtpSchema.parse(req.body);
-  if (input.purpose === OtpPurpose.PASSWORD_RESET) {
-    await authService.validateResetOtp(input.email, input.code);
-    res.json(ApiResponse.ok("OTP verified"));
-    return;
-  }
   const { accessToken, refreshToken, ...body } =
     await authService.verifyLoginOtp(input.email, input.code);
   setAuthCookies(res, { accessToken, refreshToken });
@@ -157,14 +157,21 @@ export const resendSetPassword = async (req: Request, res: Response) => {
   res.json(ApiResponse.ok("Set-password email sent"));
 };
 
+export const checkResetLink = async (req: Request, res: Response) => {
+  const input = resetPasswordCheckSchema.parse(req.body);
+  const result = await passwordResetService.checkPasswordResetToken(
+    input.token,
+  );
+  res.json(ApiResponse.success(result, "Reset link is valid"));
+};
+
 export const resetPassword = async (req: Request, res: Response) => {
   const input = resetPasswordSchema.parse(req.body);
-  await authService.resetPasswordWithOtp(
-    input.email,
-    input.code,
+  await passwordResetService.resetPasswordWithToken(
+    input.token,
     input.newPassword,
   );
-  res.json(ApiResponse.ok("Password reset — sign in with your new password"));
+  res.json(ApiResponse.ok("Password updated. Sign in with your new password"));
 };
 
 export const refresh = async (req: Request, res: Response) => {

@@ -4,10 +4,12 @@ import { AuthLayout } from "@/components/common/AuthLayout"
 import { RequireRole, RoleHome } from "@/auth/RequireRole"
 import type { UserRole } from "@/auth/auth.types"
 import { CatalogPage } from "@/pages/Catalog/CatalogPage"
+import { ForgotPasswordPage } from "@/pages/ForgotPassword/ForgotPasswordPage"
 import { ProductDetailsPage } from "@/pages/ProductDetails/ProductDetailsPage"
 import { ReleaseDetailPage } from "@/pages/ReleaseDetail/ReleaseDetailPage"
 import { ReleaseEditorPage } from "@/pages/ReleaseEditor/ReleaseEditorPage"
 import { ReleasesPage } from "@/pages/Releases/ReleasesPage"
+import { ResetPasswordPage } from "@/pages/ResetPassword/ResetPasswordPage"
 import { SignInPage } from "@/pages/SignIn/SignInPage"
 import { SignUpPage } from "@/pages/SignUp/SignUpPage"
 import { SignupsPage } from "@/pages/Signups/SignupsPage"
@@ -45,6 +47,9 @@ export default function App() {
           <Route element={<AuthLayout />}>
             <Route path="/sign-in" element={<GuestOnly><SignInPage /></GuestOnly>} />
             <Route path="/sign-up" element={<GuestOnly><SignUpPage /></GuestOnly>} />
+            <Route path="/forgot-password" element={<GuestOnly><ForgotPasswordPage /></GuestOnly>} />
+            {/* Not guest-only: the emailed link must work even in a signed-in browser */}
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
           </Route>
           <Route path="/catalog" element={customer(<CatalogPage />)} />
           <Route path="/catalog/:productId" element={customer(<ProductRoute />)} />

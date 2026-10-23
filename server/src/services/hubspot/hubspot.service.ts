@@ -118,10 +118,7 @@ export function createApiHubspotClient(
         );
         return null;
       }
-      logger.info(
-        { email: input.email, id },
-        "hubspot contact upserted",
-      );
+      logger.info({ email: input.email, id }, "hubspot contact upserted");
       return { id: String(id) };
     },
   };
@@ -164,10 +161,7 @@ export async function syncHubspotContact(
       jobTitle: user.jobTitle,
     });
   } catch (err) {
-    logger.warn(
-      { err, userId: user.id },
-      "hubspot contact sync failed",
-    );
+    logger.warn({ err, userId: user.id }, "hubspot contact sync failed");
     return;
   }
   if (!contact) return;

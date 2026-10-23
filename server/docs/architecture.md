@@ -74,7 +74,7 @@ scripts/
 ├── seed-products.ts      # npm run seed:products (fixed product ids)
 └── storage-smoke.ts / storage-copy-smoke.ts   # real-bucket checks (upload/abort; copy timing)
 
-prisma/schema.prisma   # auth (User, tokens, OTP, domain policy) + catalog (Product, Release, ReleaseFile, ReleaseEvent, ProductResource, DownloadToken, Download)
+prisma/schema.prisma   # auth (User, tokens, OTP, reset links, domain policy) + catalog (Product, Release, ReleaseFile, ReleaseEvent, ProductResource, DownloadToken, Download)
 prisma.config.ts       # datasource.url = env("DATABASE_URL"), migrations path
 eslint.config.js       # flat: js.recommended + typescript-eslint + prettier
 vitest.config.ts       # setupFiles + fileParallelism: false
@@ -165,7 +165,8 @@ known (e.g. "email already exists"); the middleware is the fallback.
 - Prisma 7 has no `url` in `schema.prisma`; the CLI reads it from `prisma.config.ts` (`defineConfig` + `env("DATABASE_URL")`)
 - Schema: `User` (email unique, password, emailVerified, role
   `CUSTOMER/DEV/ADMIN`), `RefreshToken`, `Otp`
-  (`MFA_LOGIN`/`PASSWORD_RESET`/`SIGNUP_VERIFY`) + enums — see
+  (`MFA_LOGIN`/`SIGNUP_VERIFY` in use; `PASSWORD_RESET` left unused),
+  `PasswordResetToken` (forgot-password links) + enums — see
   `prisma/schema.prisma`
 - Migrations: **never run without explicit approval**; apply to test DB via
   `npm run test:migrate`

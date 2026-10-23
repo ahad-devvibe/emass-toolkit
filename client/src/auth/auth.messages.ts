@@ -14,6 +14,9 @@ const messages: Record<string, string> = {
   CAPTCHA_INVALID: "The characters didn't match. Try the new image.",
   CAPTCHA_EXPIRED: "The image expired. Try the new one.",
   CAPTCHA_REQUIRED: "Reload the image and enter the characters shown.",
+  RESET_LINK_INVALID: "This reset link isn't valid or has already been used. Request a new one.",
+  RESET_LINK_EXPIRED: "This reset link has expired. Request a new one.",
+  PASSWORD_REUSE: "That's your current password. Choose a different one.",
   EMAIL_SEND_FAILED: "We couldn't send the email just now. Try again in a moment.",
 }
 

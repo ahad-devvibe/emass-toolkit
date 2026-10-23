@@ -142,7 +142,12 @@ describe("createOciEmailSender", () => {
       () => config,
     );
 
-    await sender.sendPasswordResetEmail("user@example.com", "654321");
+    await sender.sendPasswordResetEmail(
+      "user@example.com",
+      "Jane",
+      "https://portal.example.com/reset-password?token=abc",
+      30,
+    );
 
     expect(submitEmail).toHaveBeenCalledOnce();
     const request = submitEmail.mock.calls[0][0];
@@ -150,11 +155,15 @@ describe("createOciEmailSender", () => {
       to: [{ email: "user@example.com" }],
     });
     expect(request.submitEmailDetails.subject).toBe(
-      "Your EMASS Toolkit password reset code",
+      "Reset your EMASS Toolkit password",
     );
-    expect(request.submitEmailDetails.bodyHtml).toContain("654321");
-    expect(request.submitEmailDetails.bodyText).toContain("654321");
-    expect(request.submitEmailDetails.bodyText).toContain("10 minutes");
+    expect(request.submitEmailDetails.bodyHtml).toContain(
+      "https://portal.example.com/reset-password?token=abc",
+    );
+    expect(request.submitEmailDetails.bodyText).toContain(
+      "https://portal.example.com/reset-password?token=abc",
+    );
+    expect(request.submitEmailDetails.bodyText).toContain("30 minutes");
   });
 
   it("translates reset email failures without exposing provider details", async () => {
@@ -172,7 +181,12 @@ describe("createOciEmailSender", () => {
       .mockImplementation(() => undefined);
 
     await expect(
-      sender.sendPasswordResetEmail("user@example.com", "654321"),
+      sender.sendPasswordResetEmail(
+        "user@example.com",
+        "Jane",
+        "https://portal.example.com/reset-password?token=abc",
+        30,
+      ),
     ).rejects.toEqual(
       new ApiError(
         502,
@@ -195,7 +209,12 @@ describe("createConsoleEmailSender", () => {
       sender.sendOtpEmail("user@example.com", "123456"),
     ).resolves.toBeUndefined();
     await expect(
-      sender.sendPasswordResetEmail("user@example.com", "654321"),
+      sender.sendPasswordResetEmail(
+        "user@example.com",
+        "Jane",
+        "https://portal.example.com/reset-password?token=abc",
+        30,
+      ),
     ).resolves.toBeUndefined();
     await expect(
       sender.sendSetPasswordEmail(

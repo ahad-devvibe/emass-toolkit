@@ -51,30 +51,34 @@ describe("renderOtpVerificationEmail", () => {
 });
 
 describe("renderPasswordResetEmail", () => {
-  it("renders styled HTML and a matching plain-text fallback", () => {
+  const url = "https://portal.example.com/reset-password?token=abc";
+
+  it("renders a button to the reset link, with the expiry, in HTML and text", () => {
     const email = renderPasswordResetEmail({
-      code: "654321",
-      expiresInMinutes: 10,
+      firstName: "Jane",
+      url,
+      expiresInMinutes: 30,
     });
 
-    expect(email.subject).toBe("Your EMASS Toolkit password reset code");
+    expect(email.subject).toBe("Reset your EMASS Toolkit password");
     expect(email.html).toContain("<!doctype html>");
-    expect(email.html).toContain('role="presentation"');
-    expect(email.html).toContain(">654321</td>");
-    expect(email.html).toMatch(/This code expires in 10\s+minutes\./);
-    expect(email.html).toMatch(/your password will not change/);
-    expect(email.text).toContain("654321");
-    expect(email.text).toMatch(/your password\s+will not change/);
+    expect(email.html).toContain(`href="${url}"`);
+    expect(email.html).toContain("Choose a new password");
+    expect(email.html).toContain("in 30 minutes");
+    expect(email.html).toContain("Your password won't change");
+    expect(email.text).toContain(url);
+    expect(email.text).toContain("expires in 30 minutes and works once");
   });
 
   it("escapes dynamic HTML values", () => {
     const email = renderPasswordResetEmail({
-      code: "<123&",
-      expiresInMinutes: 10,
+      firstName: "<b>",
+      url: 'https://x.example/r?token="><script>',
+      expiresInMinutes: 30,
     });
 
-    expect(email.html).toContain("&lt;123&amp;");
-    expect(email.html).not.toContain("<123&");
+    expect(email.html).toContain("Hi &lt;b&gt;,");
+    expect(email.html).not.toContain("<script>");
   });
 });
 
@@ -206,7 +210,11 @@ describe("renderSignupRejectedEmail", () => {
 describe("shared layout", () => {
   const all = [
     renderOtpVerificationEmail({ code: "123456", expiresInMinutes: 10 }),
-    renderPasswordResetEmail({ code: "123456", expiresInMinutes: 10 }),
+    renderPasswordResetEmail({
+      firstName: "Jane",
+      url: "https://x.example/reset",
+      expiresInMinutes: 30,
+    }),
     renderMfaLoginEmail({ code: "123456", expiresInMinutes: 10 }),
     renderSetPasswordEmail({
       firstName: "Jane",
@@ -246,11 +254,7 @@ describe("shared layout", () => {
 
   it("pending approval shows where the request stands", () => {
     const email = renderPendingApprovalEmail({ firstName: "Jane" });
-    for (const step of [
-      "Request submitted",
-      "Team review",
-      "Sign in",
-    ]) {
+    for (const step of ["Request submitted", "Team review", "Sign in"]) {
       expect(email.html).toContain(step);
       expect(email.text).toContain(step);
     }

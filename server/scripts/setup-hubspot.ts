@@ -8,6 +8,7 @@ import { HUBSPOT_PORTAL_STATUS_PROPERTY } from "../src/services/hubspot/hubspot.
 //   npm run hubspot:setup [-- --dry-run]
 // The private-app token needs crm.schemas.contacts.write for this run.
 
+// TODO: Not needed to write portal status custom property
 const messages = {
   created: "created",
   updated: "updated",
