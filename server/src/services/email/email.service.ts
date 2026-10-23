@@ -30,6 +30,8 @@ export interface EmailSender {
   assertReady(): Promise<void>;
   sendOtpEmail(email: string, code: string): Promise<void>;
   sendPasswordResetEmail(email: string, code: string): Promise<void>;
+  // TODO(auth-otp-signup): the two set-password emails are unused since OTP
+  // signup, remove later
   sendSetPasswordEmail(
     email: string,
     firstName: string,

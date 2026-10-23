@@ -11,7 +11,7 @@ storage with short-lived PAR download URLs.
 - Prisma 7 + PostgreSQL
 - Zod 4 (DTO validation + env validation)
 - pino logging, ESLint 9 + Prettier
-- Vitest + Supertest (real `_test` Postgres)
+- Vitest + Supertest (real `-test` Postgres)
 - OCI SDKs: `oci-objectstorage`, `oci-emaildataplane`
 
 ## Quickstart
@@ -26,7 +26,7 @@ npm run dev                 # http://localhost:5000/api/health
 Tests:
 
 ```bash
-cp .env.test.example .env.test   # *_test DATABASE_URL, JWT_SECRET
+cp .env.test.example .env.test   # *-test DATABASE_URL, JWT_SECRET
 npm run test:migrate             # migrate the test DB (requires approval)
 npm run test
 ```
@@ -36,7 +36,7 @@ npm run test
 | Command                             | Purpose                                                        |
 | ----------------------------------- | -------------------------------------------------------------- |
 | `npm run dev`                       | dev server (tsx watch)                                         |
-| `npm run test` / `test:integration` | Vitest against the test DB (`_test`, injected via `.env.test`) |
+| `npm run test` / `test:integration` | Vitest against the test DB (`-test`, injected via `.env.test`) |
 | `npm run lint` / `lint:fix`         | ESLint                                                         |
 | `npm run format`                    | Prettier write                                                 |
 | `npm run docs`                      | regenerate OpenAPI spec + Redoc HTML                           |

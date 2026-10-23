@@ -8,7 +8,7 @@ import {
   normalizeEmail,
   verifyPassword,
 } from "./auth.utils.js";
-import { presentUser, translateUniqueSignupError } from "./auth.errors.js";
+import { presentUser } from "./auth.errors.js";
 import { issueOtp, checkOtp, verifyOtp } from "./otp.service.js";
 import {
   issueTokenPair,
@@ -16,106 +16,15 @@ import {
   revokeAllUserTokens,
   revokeRefreshToken,
 } from "./token.service.js";
-import { classifySignupEmail } from "./domains.service.js";
-import { verifyCaptcha } from "../captcha/captcha.service.js";
+import { resendSignupCode } from "./signup.service.js";
+// TODO(auth-otp-signup): unused since OTP signup, remove later. Re-exported
+// for the unmounted set-password controllers.
 import {
-  hubspotService,
-  syncHubspotContact,
-  type HubspotClient,
-} from "../hubspot/hubspot.service.js";
-import {
-  issueSetPasswordToken,
   redeemSetPasswordToken,
   resendSetPasswordEmail,
 } from "./set-password.service.js";
 
-export interface SignupInput {
-  email: string;
-  firstName: string;
-  middleName?: string;
-  lastName: string;
-  country: string;
-  companyName: string;
-  jobTitle: string;
-  captcha: string;
-}
-
-export async function signup(
-  input: SignupInput,
-  captchaCookie: string | undefined,
-  sender: EmailSender = emailService,
-  hubspot: HubspotClient = hubspotService,
-) {
-  verifyCaptcha(input.captcha, captchaCookie);
-  const email = normalizeEmail(input.email);
-  await sender.assertReady();
-
-  const domainClass = await classifySignupEmail(email);
-  const profile = {
-    email,
-    firstName: input.firstName,
-    middleName: input.middleName?.trim() || null,
-    lastName: input.lastName,
-    country: input.country.toUpperCase(),
-    companyName: input.companyName,
-    jobTitle: input.jobTitle,
-  };
-
-  if (domainClass === "COMPETITOR") {
-    // Keep an internal audit row (never synced to HubSpot). An existing row
-    // for this email is left untouched; the answer is the same either way.
-    await prisma.user
-      .create({ data: { ...profile, status: UserStatus.BLOCKED } })
-      .catch((err: unknown) => {
-        if (
-          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
-          err.code !== "P2002"
-        ) {
-          throw err;
-        }
-      });
-    throw new ApiError(
-      403,
-      "Signups from this domain are not accepted",
-      "DOMAIN_BLOCKED",
-    );
-  }
-
-  let user;
-  try {
-    user = await prisma.user.create({
-      data: {
-        ...profile,
-        status:
-          domainClass === "FREE_MAIL"
-            ? UserStatus.PENDING_APPROVAL
-            : UserStatus.PENDING_SET_PASSWORD,
-      },
-    });
-  } catch (err) {
-    translateUniqueSignupError(err);
-    throw err;
-  }
-
-  try {
-    if (domainClass === "FREE_MAIL") {
-      await sender.sendPendingApprovalEmail(user.email, user.firstName);
-    } else {
-      await issueSetPasswordToken(user.id, sender);
-    }
-  } catch (err) {
-    await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
-    throw err;
-  }
-
-  // Free-mail signups reach HubSpot only once an admin approves them
-  if (domainClass !== "FREE_MAIL") {
-    await syncHubspotContact(user, "pending_password", hubspot);
-  }
-
-  return presentUser(user);
-}
-
+// Signup lives in signup.service.ts
 export { redeemSetPasswordToken, resendSetPasswordEmail };
 
 export async function forgotPassword(
@@ -154,6 +63,9 @@ export async function resendOtp(
 ): Promise<void> {
   if (purpose === OtpPurpose.PASSWORD_RESET) {
     return forgotPassword(emailInput, sender);
+  }
+  if (purpose === OtpPurpose.SIGNUP_VERIFY) {
+    return resendSignupCode(emailInput, sender);
   }
   const user = await prisma.user.findUnique({
     where: { email: normalizeEmail(emailInput) },
@@ -230,11 +142,7 @@ export async function loginEmail(input: { email: string; password: string }) {
     );
   }
   if (user.status === UserStatus.PENDING_SET_PASSWORD) {
-    throw new ApiError(
-      403,
-      "Set your password before signing in",
-      "ACCOUNT_NOT_ACTIVE",
-    );
+    throw new ApiError(403, "Account is not active", "ACCOUNT_NOT_ACTIVE");
   }
 
   if (user.role === "DEV" || user.role === "ADMIN") {

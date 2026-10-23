@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_OBJECT_URL_TTL_SECONDS,
   buildObjectKey,
-  copyObject,
   deleteObject,
   deleteObjects,
   generateObjectKey,
@@ -24,8 +23,6 @@ const config: StorageConfig = {
 type MockedClient = {
   putObject: ReturnType<typeof vi.fn>;
   deleteObject: ReturnType<typeof vi.fn>;
-  copyObject: ReturnType<typeof vi.fn>;
-  getWorkRequest: ReturnType<typeof vi.fn>;
   createPreauthenticatedRequest: ReturnType<typeof vi.fn>;
 };
 
@@ -33,10 +30,6 @@ function mockClient(): MockedClient {
   return {
     putObject: vi.fn().mockResolvedValue({}),
     deleteObject: vi.fn().mockResolvedValue({}),
-    copyObject: vi.fn().mockResolvedValue({ opcWorkRequestId: "work-1" }),
-    getWorkRequest: vi
-      .fn()
-      .mockResolvedValue({ workRequest: { status: "COMPLETED" } }),
     createPreauthenticatedRequest: vi.fn().mockResolvedValue({
       preauthenticatedRequest: {
         accessUri: "https://objectstorage.example.com/p/par-token",
@@ -168,51 +161,6 @@ describe("deleteObject / deleteObjects", () => {
       deleteObjects(["a", "b"], injectors(client)),
     ).resolves.toBeUndefined();
     expect(client.deleteObject).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("copyObject", () => {
-  it("copies and waits for the work request to complete", async () => {
-    const client = mockClient();
-
-    await copyObject("src/a", "dest/a", injectors(client));
-
-    expect(client.copyObject).toHaveBeenCalledWith({
-      namespaceName: "test-namespace",
-      bucketName: "test-bucket",
-      copyObjectDetails: {
-        sourceObjectName: "src/a",
-        destinationRegion: "us-phoenix-1",
-        destinationNamespace: "test-namespace",
-        destinationBucket: "test-bucket",
-        destinationObjectName: "dest/a",
-      },
-    });
-    expect(client.getWorkRequest).toHaveBeenCalledWith({
-      workRequestId: "work-1",
-    });
-  });
-
-  it("throws COPY_FAILED when the work request fails", async () => {
-    const client = mockClient();
-    client.getWorkRequest.mockResolvedValue({
-      workRequest: { status: "FAILED" },
-    });
-
-    await expect(copyObject("a", "b", injectors(client))).rejects.toMatchObject(
-      {
-        code: "COPY_FAILED",
-      },
-    );
-  });
-
-  it("translates provider failures to COPY_FAILED", async () => {
-    const client = mockClient();
-    client.copyObject.mockRejectedValue(new Error("private detail"));
-
-    await expect(copyObject("a", "b", injectors(client))).rejects.toEqual(
-      new ApiError(502, "Unable to copy object", "COPY_FAILED"),
-    );
   });
 });
 

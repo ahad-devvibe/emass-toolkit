@@ -56,7 +56,7 @@ export function renderWelcomeEmail(
           "Your EMASS Toolkit account is active. Drivers, SDKs and tools for EMASS edge-AI hardware are ready for you.",
       },
       reason:
-        "You're receiving this because a password was just set for your EMASS Toolkit account.",
+        "You're receiving this because your EMASS Toolkit account is now active.",
       body: [
         paragraph(
           "Thanks for joining. Here's how to get from zero to a verified SDK on your machine.",
@@ -81,10 +81,10 @@ export function renderWelcomeEmail(
         featureGrid(features),
         linkFallback(url),
         securityNote(
-          "If you did not just set a password for this account, reset it from the sign-in page right away.",
+          "If you did not create this account, reset its password from the sign-in page right away.",
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Welcome\n\nWelcome, ${input.firstName}\n\nYour EMASS Toolkit account is active.\n\nGet started:\n1. Browse the catalog: pick EMASS Core or EMASS Vision and open the latest release.\n2. Download for your platform: Windows, macOS or Linux, with docs alongside.\n3. Verify the checksum against the SHA-256 shown next to the download:\n   macOS / Linux: ${MAC_LINUX_CHECKSUM}\n   Windows: ${WINDOWS_CHECKSUM}\n\nOpen the SDK catalog: ${input.catalogUrl}\n\nWhat's in the portal:\n${features.map((f) => `- ${f.title}: ${f.text}`).join("\n")}\n\nIf you did not just set a password for this account, reset it from the sign-in page right away.`,
+    text: `EMASS Toolkit · Welcome\n\nWelcome, ${input.firstName}\n\nYour EMASS Toolkit account is active.\n\nGet started:\n1. Browse the catalog: pick EMASS Core or EMASS Vision and open the latest release.\n2. Download for your platform: Windows, macOS or Linux, with docs alongside.\n3. Verify the checksum against the SHA-256 shown next to the download:\n   macOS / Linux: ${MAC_LINUX_CHECKSUM}\n   Windows: ${WINDOWS_CHECKSUM}\n\nOpen the SDK catalog: ${input.catalogUrl}\n\nWhat's in the portal:\n${features.map((f) => `- ${f.title}: ${f.text}`).join("\n")}\n\nIf you did not create this account, reset its password from the sign-in page right away.`,
   };
 }

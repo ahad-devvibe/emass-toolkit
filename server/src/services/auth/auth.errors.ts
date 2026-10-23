@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { ApiError } from "../../utils/api-error.utils.js";
 
-// Fields that never leave the server: the password hash and internal HubSpot refs
-type HiddenUserField = "password" | "hubspotContactId" | "hubspotSyncedAt";
+// Fields that never leave the server: the password hash, internal HubSpot refs
+// and the admin's rejection note
+type HiddenUserField =
+  "password" | "hubspotContactId" | "hubspotSyncedAt" | "rejectionReason";
 
 export function presentUser<T extends { password?: string | null }>(
   user: T,
@@ -11,6 +13,7 @@ export function presentUser<T extends { password?: string | null }>(
   delete rest.password;
   delete rest.hubspotContactId;
   delete rest.hubspotSyncedAt;
+  delete rest.rejectionReason;
   return rest as Omit<T, HiddenUserField>;
 }
 

@@ -17,7 +17,6 @@ const input: HubspotContactInput = {
   country: "US",
   companyName: "Acme",
   jobTitle: "CTO",
-  portalStatus: "active",
 };
 
 interface FakeResponseOptions {
@@ -42,7 +41,7 @@ function fakeFetch(overrides: FakeResponseOptions = {}) {
 }
 
 describe("createApiHubspotClient", () => {
-  it("POSTs an idempotent email-keyed upsert; active contacts are customers", async () => {
+  it("POSTs an idempotent email-keyed upsert as a lead", async () => {
     const { calls, fetchImpl } = fakeFetch();
     const client = createApiHubspotClient(() => config, fetchImpl);
 
@@ -66,20 +65,8 @@ describe("createApiHubspotClient", () => {
       country: "United States",
       company: "Acme",
       jobtitle: "CTO",
-      emass_portal_status: "active",
-      lifecyclestage: "customer",
+      lifecyclestage: "lead",
     });
-  });
-
-  it("marks accounts without a password as pending_password leads", async () => {
-    const { calls, fetchImpl } = fakeFetch();
-    const client = createApiHubspotClient(() => config, fetchImpl);
-
-    await client.upsertContact({ ...input, portalStatus: "pending_password" });
-
-    const { properties } = JSON.parse(String(calls[0].init.body)).inputs[0];
-    expect(properties.emass_portal_status).toBe("pending_password");
-    expect(properties.lifecyclestage).toBe("lead");
   });
 
   it("omits middlename when absent", async () => {
@@ -172,9 +159,9 @@ describe("createLogHubspotClient", () => {
 describe("syncHubspotContact", () => {
   const user = { ...input, id: "user-1" };
 
-  it("upserts with the given portal status", async () => {
+  it("upserts the user's contact details", async () => {
     const seen: HubspotContactInput[] = [];
-    await syncHubspotContact(user, "pending_password", {
+    await syncHubspotContact(user, {
       // No id returned, so nothing is written back to the DB
       upsertContact: async (contact) => {
         seen.push(contact);
@@ -182,15 +169,12 @@ describe("syncHubspotContact", () => {
       },
     });
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({
-      email: "jane@acme.example",
-      portalStatus: "pending_password",
-    });
+    expect(seen[0]).toEqual(input);
   });
 
   it("swallows HubSpot failures (best-effort)", async () => {
     await expect(
-      syncHubspotContact(user, "active", {
+      syncHubspotContact(user, {
         upsertContact: async () => {
           throw new Error("hubspot down");
         },

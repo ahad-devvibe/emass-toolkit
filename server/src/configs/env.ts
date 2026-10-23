@@ -49,7 +49,8 @@ export const envSchema = z
     APP_BASE_URL: z
       .string()
       .default("http://localhost:5173")
-      .describe("Frontend origin used to build set-password links"),
+      .describe("Frontend origin used to build links in emails"),
+    // TODO(auth-otp-signup): unused since OTP signup, remove later
     SET_PASSWORD_TTL_HOURS: z.coerce.number().int().positive().default(48),
     SET_PASSWORD_REMINDER_HOURS: z.coerce.number().int().positive().default(24),
     CAPTCHA_TTL_SECONDS: z.coerce.number().int().positive().default(600),
@@ -86,6 +87,54 @@ export const envSchema = z
     // storage
     OCI_OBJECT_NAMESPACE: z.string().optional(),
     OCI_BUCKET: z.string().optional(),
+    // Prod splits staging and release buckets; both default to OCI_BUCKET
+    OCI_STAGING_BUCKET: z.string().optional(),
+    OCI_RELEASE_BUCKET: z.string().optional(),
+    STORAGE_DRIVER: z
+      .enum(["local", "oci"], {
+        error: "STORAGE_DRIVER must be one of local, oci",
+      })
+      .default("local"),
+    STORAGE_LOCAL_DIR: z.string().min(1).default(".tmp/storage"),
+    MAX_UPLOAD_BYTES: z.coerce
+      .number({ error: "MAX_UPLOAD_BYTES must be a positive integer" })
+      .int({ error: "MAX_UPLOAD_BYTES must be a positive integer" })
+      .positive({ error: "MAX_UPLOAD_BYTES must be a positive integer" })
+      .default(1024 ** 3),
+    // Node's server-wide request timeout; uploads of ~1 GiB need far more
+    // than the 300 s default (slow clients are nginx's job in production)
+    UPLOAD_TIMEOUT_MS: z.coerce
+      .number({ error: "UPLOAD_TIMEOUT_MS must be a positive integer" })
+      .int({ error: "UPLOAD_TIMEOUT_MS must be a positive integer" })
+      .positive({ error: "UPLOAD_TIMEOUT_MS must be a positive integer" })
+      .default(2 * 60 * 60 * 1000),
+    // Publish copies each file staging → release; OCI runs the copy as a work
+    // request we poll. A 1 GiB copy needs well over the old 6 s budget
+    COPY_TIMEOUT_MS: z.coerce
+      .number({ error: "COPY_TIMEOUT_MS must be a positive integer" })
+      .int({ error: "COPY_TIMEOUT_MS must be a positive integer" })
+      .positive({ error: "COPY_TIMEOUT_MS must be a positive integer" })
+      .default(30 * 60 * 1000),
+    COPY_POLL_MS: z.coerce
+      .number({ error: "COPY_POLL_MS must be an integer >= 200" })
+      .int({ error: "COPY_POLL_MS must be an integer >= 200" })
+      .min(200, { error: "COPY_POLL_MS must be an integer >= 200" })
+      .default(1000),
+    // A finished publish job stays readable this long, so a reopened dialog
+    // still sees the result
+    PUBLISH_JOB_TTL_MS: z.coerce
+      .number({ error: "PUBLISH_JOB_TTL_MS must be a positive integer" })
+      .int({ error: "PUBLISH_JOB_TTL_MS must be a positive integer" })
+      .positive({ error: "PUBLISH_JOB_TTL_MS must be a positive integer" })
+      .default(10 * 60 * 1000),
+    // OCI multipart parts must be at least 10 MiB (except the last one)
+    UPLOAD_PART_BYTES: z.coerce
+      .number({ error: "UPLOAD_PART_BYTES must be an integer >= 10485760" })
+      .int({ error: "UPLOAD_PART_BYTES must be an integer >= 10485760" })
+      .min(10 * 1024 ** 2, {
+        error: "UPLOAD_PART_BYTES must be an integer >= 10485760",
+      })
+      .default(10 * 1024 ** 2),
 
     // hubspot (one-way customer contact sync)
     HUBSPOT_ENABLED: z
@@ -96,6 +145,14 @@ export const envSchema = z
     HUBSPOT_API_KEY: z.string().optional(),
   })
   .superRefine((value, ctx) => {
+    // The local driver writes to the VM disk; production must use OCI
+    if (value.NODE_ENV === "production" && value.STORAGE_DRIVER !== "oci") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STORAGE_DRIVER"],
+        message: "STORAGE_DRIVER must be oci in production",
+      });
+    }
     if (value.HUBSPOT_ENABLED === "true" && !value.HUBSPOT_API_KEY) {
       ctx.addIssue({
         code: "custom",

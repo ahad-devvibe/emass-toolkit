@@ -14,6 +14,7 @@ export interface OtpEmailTemplateInput {
   expiresInMinutes: number;
 }
 
+// Sent at signup, to prove the person owns the inbox before they set a password
 export function renderOtpVerificationEmail(
   input: OtpEmailTemplateInput,
 ): RenderedEmail {
@@ -27,14 +28,14 @@ export function renderOtpVerificationEmail(
       preheader: `Your verification code expires in ${input.expiresInMinutes} minutes.`,
       eyebrow: "Verification",
       hero: {
-        title: "Verify it's you",
-        subtitle: "One quick step to keep your account secure.",
+        title: "Confirm your email",
+        subtitle: "One quick step to finish creating your account.",
       },
       reason:
-        "You're receiving this because a verification code was requested for your EMASS Toolkit account.",
+        "You're receiving this because this address was used to sign up for EMASS Toolkit.",
       body: [
         paragraph(
-          "Enter this code to continue with your EMASS Toolkit account.",
+          "Enter this code on the sign-up page, then choose your password.",
         ),
         codeBlock(code, `This code expires in ${expiry} minutes.`),
         infoTable([
@@ -42,10 +43,10 @@ export function renderOtpVerificationEmail(
           ["Use", "Once"],
         ]),
         securityNote(
-          "For your security, never share this code. If you did not request it, you can safely ignore this email.",
+          "For your security, never share this code. If you did not sign up, you can safely ignore this email; no account is created without it.",
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Verification\n\nVerify it's you\n\nEnter this code to continue with your EMASS Toolkit account:\n\n    ${input.code}\n\nThis code expires in ${input.expiresInMinutes} minutes. It works once.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email.`,
+    text: `EMASS Toolkit · Verification\n\nConfirm your email\n\nEnter this code on the sign-up page, then choose your password:\n\n    ${input.code}\n\nThis code expires in ${input.expiresInMinutes} minutes. It works once.\n\nFor your security, never share this code. If you did not sign up, you can safely ignore this email; no account is created without it.`,
   };
 }

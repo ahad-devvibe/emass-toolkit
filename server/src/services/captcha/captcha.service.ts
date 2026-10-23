@@ -23,7 +23,6 @@ function hashCaptchaCode(code: string): string {
 }
 
 export function createCaptchaChallenge(): CaptchaChallenge {
-  // Monochrome + no background so restyleCaptchaSvg can apply brand colours
   const svg = svgCaptcha.create({
     size: CAPTCHA_LENGTH,
     charPreset: CAPTCHA_ALPHABET,

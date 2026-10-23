@@ -7,11 +7,12 @@ beforeAll(async () => {
 });
 
 describe("test database", () => {
-  it("is connected via a _test DATABASE_URL", async () => {
-    expect(process.env.DATABASE_URL).toContain("_test");
+  it("is connected via a -test database", async () => {
+    const name = new URL(process.env.DATABASE_URL ?? "").pathname.slice(1);
+    expect(name).toMatch(/-test$/);
   });
 
-  it("runs queries against the held_test database", async () => {
+  it("runs queries against the test database", async () => {
     const result = await prisma.$queryRaw<{ now: Date }[]>`SELECT now()`;
 
     expect(result).toHaveLength(1);

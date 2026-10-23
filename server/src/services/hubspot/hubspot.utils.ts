@@ -1,3 +1,6 @@
+// TODO(auth-otp-signup): unused since OTP signup. The portal no longer sends
+// emass_portal_status (customer contacts are only created once active); this
+// definition and `npm run hubspot:setup` may be removed later.
 // Definition of the custom HubSpot contact property that carries the portal
 // account status. Shared by the sync (hubspot.service.ts) and the one-off
 // setup script (scripts/setup-hubspot.ts) so both agree on name and options.

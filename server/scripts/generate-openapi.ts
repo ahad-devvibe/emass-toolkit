@@ -7,32 +7,33 @@ import {
   publicOperation,
   successResponse,
 } from "./openapi-helpers.js";
+import { releasePaths, releaseTags } from "./openapi-releases.js";
 import {
   forgotPasswordSchema,
   loginSchema,
   resendOtpSchema,
-  resendSetPasswordSchema,
   resetPasswordSchema,
-  setPasswordSchema,
+  signupCompleteSchema,
   signupSchema,
+  signupVerifySchema,
   verifyOtpSchema,
 } from "../src/schemas/auth.schema.js";
 import { rejectSignupSchema } from "../src/schemas/admin.schema.js";
 
 // The refresh token only travels in the httpOnly cookie (path /api/auth)
-const accessTokenSchema = {
+// Tokens never appear in bodies: login/verify/refresh set httpOnly cookies
+const signedInSchema = {
   type: "object",
   properties: {
-    accessToken: { type: "string" },
     user: { type: "object" },
   },
-  required: ["accessToken"],
+  required: ["user"],
 };
 
 const authTag = {
   name: "Auth",
   description:
-    "Policy-routed signups, set-password invites, MFA for staff, rotating refresh tokens",
+    "Signup with an emailed code, MFA for staff, rotating refresh tokens",
 };
 
 const adminTag = {
@@ -60,12 +61,16 @@ const authPaths = {
       ...publicOperation("signup"),
       tags: ["Auth"],
       summary:
-        "Sign up (no password) — competitor domains blocked, free-mail queued for approval, custom domains get a set-password email",
+        "Signup step 1: the form. Competitor domains are blocked; otherwise a 6-digit code is emailed. Signing up again before finishing resumes with a new code",
       requestBody: jsonBody(signupSchema, "Signup details + captcha"),
       responses: {
         201: successResponse(
-          "Account created — pending approval or set-password email sent",
-          undefined,
+          "Verification code sent",
+          {
+            type: "object",
+            properties: { email: { type: "string" } },
+            required: ["email"],
+          },
           201,
         ),
         400: errorResponse("Validation or captcha failed", [
@@ -85,6 +90,50 @@ const authPaths = {
       },
     },
   },
+  "/auth/signup/verify": {
+    post: {
+      ...publicOperation("signupVerify"),
+      tags: ["Auth"],
+      summary:
+        "Signup step 2: check the emailed code without using it up (unknown or finished accounts get OTP_INVALID)",
+      requestBody: jsonBody(signupVerifySchema, "Email and code"),
+      responses: {
+        200: successResponse("Email verified"),
+        400: errorResponse("Validation failed, or a bad code", [
+          "VALIDATION_ERROR",
+          "OTP_INVALID",
+          "OTP_EXPIRED",
+          "OTP_ATTEMPTS_EXCEEDED",
+        ]),
+      },
+    },
+  },
+  "/auth/signup/complete": {
+    post: {
+      ...publicOperation("signupComplete"),
+      tags: ["Auth"],
+      summary:
+        "Signup step 3: use the code and set the password. A company address becomes ACTIVE and is signed in (cookies); a free-mail address waits for admin approval",
+      requestBody: jsonBody(signupCompleteSchema, "Email, code and password"),
+      responses: {
+        200: successResponse("Account created", {
+          type: "object",
+          properties: {
+            user: { type: "object" },
+            signedIn: { type: "boolean" },
+          },
+          required: ["user", "signedIn"],
+        }),
+        400: errorResponse("Validation failed, or a bad code", [
+          "VALIDATION_ERROR",
+          "OTP_INVALID",
+          "OTP_EXPIRED",
+          "OTP_ATTEMPTS_EXCEEDED",
+        ]),
+        403: errorResponse("Domain not accepted", ["DOMAIN_BLOCKED"], 403),
+      },
+    },
+  },
   "/auth/login": {
     post: {
       ...publicOperation("login"),
@@ -97,7 +146,6 @@ const authPaths = {
           type: "object",
           properties: {
             mfaRequired: { type: "boolean" },
-            accessToken: { type: "string" },
             user: { type: "object" },
           },
           required: ["mfaRequired"],
@@ -119,7 +167,8 @@ const authPaths = {
     post: {
       ...publicOperation("resendOtp"),
       tags: ["Auth"],
-      summary: "Resend an MFA login OTP (DEV/ADMIN) or a password-reset OTP",
+      summary:
+        "Resend an MFA login OTP (DEV/ADMIN), a password-reset OTP or a signup code (SIGNUP_VERIFY: always 200, sent only for an unfinished signup)",
       requestBody: jsonBody(resendOtpSchema, "Email and purpose"),
       responses: {
         200: successResponse("OTP sent"),
@@ -146,7 +195,7 @@ const authPaths = {
         "Verify an MFA login OTP (issues tokens) or validate a reset OTP",
       requestBody: jsonBody(verifyOtpSchema, "Email, code and purpose"),
       responses: {
-        200: successResponse("Verified", accessTokenSchema),
+        200: successResponse("Verified", signedInSchema),
         400: errorResponse("Invalid or expired OTP", [
           "OTP_INVALID",
           "OTP_EXPIRED",
@@ -158,73 +207,6 @@ const authPaths = {
           403,
         ),
         404: errorResponse("Unknown email", ["USER_NOT_FOUND"], 404),
-      },
-    },
-  },
-  "/auth/set-password/{token}": {
-    get: {
-      ...publicOperation("getSetPasswordInvite"),
-      tags: ["Auth"],
-      summary: "Look up a set-password invite (email + expiry) for the UI",
-      parameters: [
-        {
-          name: "token",
-          in: "path",
-          required: true,
-          schema: { type: "string" },
-        },
-      ],
-      responses: {
-        200: successResponse("Invite details", {
-          type: "object",
-          properties: {
-            email: { type: "string" },
-            firstName: { type: "string" },
-            expiresAt: { type: "string", format: "date-time" },
-          },
-          required: ["email", "firstName", "expiresAt"],
-        }),
-        400: errorResponse("Expired", ["SET_PASSWORD_EXPIRED"], 400),
-        404: errorResponse(
-          "Invalid token",
-          ["SET_PASSWORD_TOKEN_INVALID"],
-          404,
-        ),
-      },
-    },
-  },
-  "/auth/set-password": {
-    post: {
-      ...publicOperation("setPassword"),
-      tags: ["Auth"],
-      summary: "Redeem a set-password token (activates the account)",
-      requestBody: jsonBody(setPasswordSchema, "Token and new password"),
-      responses: {
-        200: successResponse("Password set"),
-        400: errorResponse(
-          "Expired or invalid input",
-          ["SET_PASSWORD_EXPIRED", "VALIDATION_ERROR"],
-          400,
-        ),
-        404: errorResponse(
-          "Invalid token",
-          ["SET_PASSWORD_TOKEN_INVALID"],
-          404,
-        ),
-      },
-    },
-  },
-  "/auth/resend-set-password": {
-    post: {
-      ...publicOperation("resendSetPassword"),
-      tags: ["Auth"],
-      summary: "Request a fresh set-password email (PENDING_SET_PASSWORD only)",
-      requestBody: jsonBody(resendSetPasswordSchema, "Email"),
-      responses: {
-        200: successResponse("Set-password email sent"),
-        400: errorResponse("Validation failed", ["VALIDATION_ERROR"]),
-        404: errorResponse("Unknown email", ["USER_NOT_FOUND"], 404),
-        502: errorResponse("Email delivery failed", ["EMAIL_SEND_FAILED"], 502),
       },
     },
   },
@@ -276,9 +258,9 @@ const authPaths = {
       ...publicOperation("refresh"),
       tags: ["Auth"],
       summary:
-        "Rotate the refresh-token cookie and issue a new access token (cookie only; one call in flight per device)",
+        "Rotate the refresh-token cookie and set a new access-token cookie (cookies only; one call in flight per device)",
       responses: {
-        200: successResponse("Tokens refreshed", accessTokenSchema),
+        200: successResponse("Tokens refreshed"),
         401: errorResponse(
           "Missing, invalid, expired or reused refresh token",
           [
@@ -307,7 +289,7 @@ const authPaths = {
       operationId: "getMe",
       tags: ["Auth"],
       summary: "Current user profile",
-      security: [{ bearerAuth: [] }],
+      security: [{ cookieAuth: [] }],
       responses: {
         200: successResponse("Current user", { type: "object" }),
         401: errorResponse(
@@ -324,7 +306,7 @@ const authPaths = {
       tags: ["Admin"],
       summary:
         "List PENDING_APPROVAL signups oldest first, cursor-paginated, with name/email search (ADMIN only)",
-      security: [{ bearerAuth: [] }],
+      security: [{ cookieAuth: [] }],
       parameters: [
         {
           name: "limit",
@@ -376,8 +358,9 @@ const authPaths = {
     post: {
       operationId: "approveSignup",
       tags: ["Admin"],
-      summary: "Approve a signup — sends the set-password email",
-      security: [{ bearerAuth: [] }],
+      summary:
+        "Approve a free-mail signup: the account becomes ACTIVE, the person is emailed and a HubSpot contact is created",
+      security: [{ cookieAuth: [] }],
       parameters: [
         { name: "id", in: "path", required: true, schema: { type: "string" } },
       ],
@@ -399,7 +382,7 @@ const authPaths = {
       tags: ["Admin"],
       summary:
         "Reject a signup — blocks the account and emails the person (optional reason included)",
-      security: [{ bearerAuth: [] }],
+      security: [{ cookieAuth: [] }],
       parameters: [
         { name: "id", in: "path", required: true, schema: { type: "string" } },
       ],
@@ -437,6 +420,7 @@ const document: Record<string, unknown> = {
     { name: "Health", description: "Service health check" },
     authTag,
     adminTag,
+    ...releaseTags,
   ],
   paths: {
     "/health": {
@@ -450,10 +434,17 @@ const document: Record<string, unknown> = {
       },
     },
     ...authPaths,
+    ...releasePaths,
   },
   components: {
     securitySchemes: {
-      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      cookieAuth: {
+        type: "apiKey",
+        in: "cookie",
+        name: "accessToken",
+        description:
+          "httpOnly access-token cookie (15 min, path /api) set by login, MFA verify and refresh",
+      },
     },
   },
 };

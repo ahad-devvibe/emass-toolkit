@@ -3,17 +3,12 @@ import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { presentUser } from "./auth.errors.js";
-import {
-  afterCursor,
-  decodeCursor,
-  encodeCursor,
-  searchWhere,
-} from "./admin-signups.utils.js";
-import { issueSetPasswordToken } from "./set-password.service.js";
+import { decodeCursor, encodeCursor } from "../../utils/cursor.utils.js";
+import { afterCursor, searchWhere } from "./admin-signups.utils.js";
+import { onAccountActivated } from "./signup.service.js";
 import { emailService, type EmailSender } from "../email/email.service.js";
 import {
   hubspotService,
-  syncHubspotContact,
   type HubspotClient,
 } from "../hubspot/hubspot.service.js";
 
@@ -66,24 +61,19 @@ export async function approveSignup(
     throw ApiError.notFound("Pending signup not found", "SIGNUP_NOT_FOUND");
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { status: UserStatus.PENDING_SET_PASSWORD },
+  // The password was set during signup, so approval activates the account.
+  // Guarded so two admins approving at once activate (and email) only once.
+  const updated = await prisma.user.updateMany({
+    where: { id: user.id, status: UserStatus.PENDING_APPROVAL },
+    data: { status: UserStatus.ACTIVE },
   });
-  try {
-    await issueSetPasswordToken(user.id, sender);
-  } catch (err) {
-    await prisma.user
-      .update({
-        where: { id: user.id },
-        data: { status: UserStatus.PENDING_APPROVAL },
-      })
-      .catch(() => undefined);
-    throw err;
+  if (updated.count === 0) {
+    throw ApiError.notFound("Pending signup not found", "SIGNUP_NOT_FOUND");
   }
-  // Approved: from here on the person is a real lead in HubSpot
-  await syncHubspotContact(user, "pending_password", hubspot);
-  return presentUser({ ...user, status: UserStatus.PENDING_SET_PASSWORD });
+  const active = { ...user, status: UserStatus.ACTIVE };
+  // Approved: the "you can sign in" email, and from here on a HubSpot lead
+  await onAccountActivated(active, sender, hubspot);
+  return presentUser(active);
 }
 
 export async function rejectSignup(
@@ -97,7 +87,8 @@ export async function rejectSignup(
   }
   const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { status: UserStatus.BLOCKED },
+    // Kept for audit; the same text goes into the email below
+    data: { status: UserStatus.BLOCKED, rejectionReason: reason ?? null },
   });
   // Best-effort: the decision stands even if the notification can't be sent
   try {

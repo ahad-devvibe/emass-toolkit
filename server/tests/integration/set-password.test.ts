@@ -1,9 +1,10 @@
+// TODO(auth-otp-signup): covers the set-password service, unused since OTP
+// signup; remove together with it.
 import { beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { env } from "../../src/configs/env.js";
-import { signup } from "../../src/services/auth/auth.service.js";
 import {
   buildSetPasswordUrl,
   getSetPasswordInvite,
@@ -14,8 +15,6 @@ import {
 } from "../../src/services/auth/set-password.service.js";
 import { resetDb } from "../helpers/resetDb.js";
 import {
-  TEST_CAPTCHA_CODE,
-  captchaCookieFor,
   createUser,
   seedDomainPoliciesForTest,
   uniqueEmail,
@@ -24,23 +23,18 @@ import { createMockEmailSender } from "../helpers/email.js";
 
 const TOKEN_TTL_MS = env.SET_PASSWORD_TTL_HOURS * 60 * 60 * 1000;
 
+// What the old signup left behind: no password, and a set-password link
 async function signupPendingUser(
   email: string,
   sender = createMockEmailSender(),
 ) {
-  await signup(
-    {
-      email,
-      firstName: "Ada",
-      lastName: "Lovelace",
-      country: "GB",
-      companyName: "Co",
-      jobTitle: "Engineer",
-      captcha: TEST_CAPTCHA_CODE,
-    },
-    captchaCookieFor(TEST_CAPTCHA_CODE),
-    sender,
-  );
+  const user = await createUser(email, {
+    firstName: "Ada",
+    status: "PENDING_SET_PASSWORD",
+    password: null,
+    emailVerified: false,
+  });
+  await issueSetPasswordToken(user.id, sender);
   return sender;
 }
 
@@ -238,63 +232,20 @@ describe("24h reminder sweep", () => {
   });
 });
 
-describe("GET /api/auth/set-password/:token", () => {
-  it("exposes email + firstName + expiry for the UI", async () => {
-    const sender = createMockEmailSender();
-    const email = uniqueEmail("invite-api");
-    await signupPendingUser(email, sender);
-    const token = tokenFromUrl(sender.lastUrl(email)!);
-
-    const res = await request(app).get(`/api/auth/set-password/${token}`);
-    expect(res.status).toBe(200);
-    expect(res.body.data.email).toBe(email);
-    expect(res.body.data.firstName).toBe("Ada");
-    expect(res.body.data.expiresAt).toEqual(expect.any(String));
-  });
-
-  it("404s on a bad token", async () => {
-    const res = await request(app).get("/api/auth/set-password/nope");
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe("SET_PASSWORD_TOKEN_INVALID");
-  });
-});
-
-describe("POST /api/auth/set-password + resend-set-password (API)", () => {
-  it("full happy path through HTTP", async () => {
-    const sender = createMockEmailSender();
-    const email = uniqueEmail("api-set");
-    await signupPendingUser(email, sender);
-    const token = tokenFromUrl(sender.lastUrl(email)!);
-
-    const res = await request(app)
-      .post("/api/auth/set-password")
-      .send({ token, password: "brandnew123" });
-    expect(res.status).toBe(200);
-
-    const login = await request(app)
-      .post("/api/auth/login")
-      .send({ email, password: "brandnew123" });
-    expect(login.status).toBe(200);
-  });
-
-  it("resend-set-password works over HTTP", async () => {
-    const sender = createMockEmailSender();
-    const email = uniqueEmail("api-resend");
-    await signupPendingUser(email, sender);
-
-    const res = await request(app)
-      .post("/api/auth/resend-set-password")
-      .send({ email });
-    expect(res.status).toBe(200);
-    expect(sender.lastUrl(email)).toBeDefined();
-  });
-
-  it("resend-set-password hides unknown emails as USER_NOT_FOUND", async () => {
-    const res = await request(app)
-      .post("/api/auth/resend-set-password")
-      .send({ email: "ghost@example.com" });
-    expect(res.status).toBe(404);
-    expect(res.body.code).toBe("USER_NOT_FOUND");
+describe("set-password routes", () => {
+  it("are no longer mounted", async () => {
+    const calls = [
+      request(app).get("/api/auth/set-password/some-token"),
+      request(app)
+        .post("/api/auth/set-password")
+        .send({ token: "t", password: "brandnew123" }),
+      request(app)
+        .post("/api/auth/resend-set-password")
+        .send({ email: "ghost@example.com" }),
+    ];
+    for (const res of await Promise.all(calls)) {
+      expect(res.status).toBe(404);
+    }
   });
 });
 

@@ -110,62 +110,6 @@ export async function deleteObjects(
   );
 }
 
-const COPY_POLL_INTERVAL_MS = 200;
-const COPY_MAX_ATTEMPTS = 30;
-
-async function waitForCopy(
-  client: ObjectStorageClientLike,
-  workRequestId: string,
-): Promise<void> {
-  for (let attempt = 0; attempt < COPY_MAX_ATTEMPTS; attempt++) {
-    const res = await client.getWorkRequest({ workRequestId });
-    const status = res.workRequest.status;
-
-    if (status === "COMPLETED") return;
-    if (status === "FAILED" || status === "CANCELED") {
-      throw new ApiError(
-        502,
-        `Object copy ${status === "CANCELED" ? "canceled" : "failed"}`,
-        "COPY_FAILED",
-      );
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, COPY_POLL_INTERVAL_MS));
-  }
-
-  throw new ApiError(504, "Object copy timed out", "COPY_TIMEOUT");
-}
-
-export async function copyObject(
-  sourceKey: string,
-  destKey: string,
-  {
-    getClient = getStorageClient,
-    getConfig = getStorageConfig,
-  }: ClientInjectors = {},
-): Promise<void> {
-  const config = getConfig();
-  try {
-    const client = await getClient();
-    const result = await client.copyObject({
-      namespaceName: config.namespace,
-      bucketName: config.bucket,
-      copyObjectDetails: {
-        sourceObjectName: sourceKey,
-        destinationRegion: config.region,
-        destinationNamespace: config.namespace,
-        destinationBucket: config.bucket,
-        destinationObjectName: destKey,
-      },
-    });
-    await waitForCopy(client, result.opcWorkRequestId);
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    logger.error({ sourceKey, destKey, err: error }, "OCI copyObject failed");
-    throw new ApiError(502, "Unable to copy object", "COPY_FAILED");
-  }
-}
-
 /**
  * Mints a short-lived, read-only, object-level pre-authenticated request (PAR).
  * The bucket stays private; the returned URL is valid only for the TTL.

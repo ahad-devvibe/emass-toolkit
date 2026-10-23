@@ -9,29 +9,39 @@ import {
   resendSetPasswordSchema,
   resetPasswordSchema,
   setPasswordSchema,
+  signupCompleteSchema,
   signupSchema,
+  signupVerifySchema,
   verifyOtpSchema,
 } from "../schemas/auth.schema.js";
 import * as authService from "../services/auth/auth.service.js";
+import * as signupService from "../services/auth/signup.service.js";
 import { getSetPasswordInvite } from "../services/auth/set-password.service.js";
 import { createCaptchaChallenge } from "../services/captcha/captcha.service.js";
 import {
+  ACCESS_COOKIE_PATH,
+  ACCESS_TOKEN_COOKIE,
   CAPTCHA_COOKIE,
   LEGACY_REFRESH_COOKIE_PATH,
   REFRESH_COOKIE_PATH,
   REFRESH_TOKEN_COOKIE,
+  accessCookieOptions,
   captchaCookieOptions,
   refreshCookieOptions,
 } from "../configs/cookie.config.js";
+import type { TokenPair } from "../services/auth/token.service.js";
 
-// The refresh token only ever travels in the httpOnly cookie; the access
-// token is returned in the body and sent back as a Bearer header.
-function setRefreshCookie(res: Response, refreshToken: string) {
+function setAuthCookies(
+  res: Response,
+  { accessToken, refreshToken }: TokenPair,
+) {
   res.clearCookie(REFRESH_TOKEN_COOKIE, { path: LEGACY_REFRESH_COOKIE_PATH });
+  res.cookie(ACCESS_TOKEN_COOKIE, accessToken, accessCookieOptions);
   res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
 }
 
-function clearRefreshCookie(res: Response) {
+function clearAuthCookies(res: Response) {
+  res.clearCookie(ACCESS_TOKEN_COOKIE, { path: ACCESS_COOKIE_PATH });
   res.clearCookie(REFRESH_TOKEN_COOKIE, { path: REFRESH_COOKIE_PATH });
   res.clearCookie(REFRESH_TOKEN_COOKIE, { path: LEGACY_REFRESH_COOKIE_PATH });
 }
@@ -50,13 +60,39 @@ export const captcha = async (_req: Request, res: Response) => {
 export const signup = async (req: Request, res: Response) => {
   const input = signupSchema.parse(req.body);
   const captchaCookie = req.cookies?.[CAPTCHA_COOKIE] as string | undefined;
-  const user = await authService.signup(input, captchaCookie);
+  const result = await signupService.signup(input, captchaCookie);
   res.clearCookie(CAPTCHA_COOKIE, { path: "/" });
-  const message =
-    user.status === "PENDING_APPROVAL"
-      ? "Account created — pending team review"
-      : "Account created — check your email to set your password";
-  res.status(201).json(ApiResponse.success(user, message, 201));
+  res
+    .status(201)
+    .json(
+      ApiResponse.success(result, "Verification code sent to your email", 201),
+    );
+};
+
+export const signupVerify = async (req: Request, res: Response) => {
+  const input = signupVerifySchema.parse(req.body);
+  await signupService.verifySignupCode(input.email, input.code);
+  res.json(ApiResponse.ok("Email verified"));
+};
+
+export const signupComplete = async (req: Request, res: Response) => {
+  const input = signupCompleteSchema.parse(req.body);
+  const { user, tokens } = await signupService.completeSignup(
+    input.email,
+    input.code,
+    input.password,
+  );
+  if (tokens) {
+    setAuthCookies(res, tokens);
+    res.json(ApiResponse.success({ user, signedIn: true }, "Account created"));
+    return;
+  }
+  res.json(
+    ApiResponse.success(
+      { user, signedIn: false },
+      "Account created — pending team review",
+    ),
+  );
 };
 
 export const login = async (req: Request, res: Response) => {
@@ -71,8 +107,8 @@ export const login = async (req: Request, res: Response) => {
     );
     return;
   }
-  const { refreshToken, ...body } = result;
-  setRefreshCookie(res, refreshToken);
+  const { accessToken, refreshToken, ...body } = result;
+  setAuthCookies(res, { accessToken, refreshToken });
   res.json(ApiResponse.success(body, "Logged in"));
 };
 
@@ -95,14 +131,14 @@ export const verifyOtp = async (req: Request, res: Response) => {
     res.json(ApiResponse.ok("OTP verified"));
     return;
   }
-  const { refreshToken, ...body } = await authService.verifyLoginOtp(
-    input.email,
-    input.code,
-  );
-  setRefreshCookie(res, refreshToken);
+  const { accessToken, refreshToken, ...body } =
+    await authService.verifyLoginOtp(input.email, input.code);
+  setAuthCookies(res, { accessToken, refreshToken });
   res.json(ApiResponse.success(body, "Logged in"));
 };
 
+// TODO(auth-otp-signup): unused since OTP signup, remove later. The three
+// set-password handlers below are no longer mounted in auth.routes.ts.
 export const getSetPassword = async (req: Request, res: Response) => {
   const token = String(req.params.token ?? "");
   const invite = await getSetPasswordInvite(token);
@@ -136,15 +172,14 @@ export const refresh = async (req: Request, res: Response) => {
   if (!current) {
     throw new ApiError(401, "Missing refresh token", "REFRESH_TOKEN_MISSING");
   }
-  const { accessToken, refreshToken } = await authService.refresh(current);
-  setRefreshCookie(res, refreshToken);
-  res.json(ApiResponse.success({ accessToken }, "Tokens refreshed"));
+  setAuthCookies(res, await authService.refresh(current));
+  res.json(ApiResponse.ok("Tokens refreshed"));
 };
 
 export const logout = async (req: Request, res: Response) => {
   const refreshToken = readRefreshCookie(req);
   if (refreshToken) await authService.logout(refreshToken);
-  clearRefreshCookie(res);
+  clearAuthCookies(res);
   res.json(ApiResponse.ok("Logged out"));
 };
 

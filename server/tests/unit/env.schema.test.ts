@@ -193,4 +193,57 @@ describe("envSchema", () => {
       "HUBSPOT_ENABLED must be true or false",
     );
   });
+
+  it("defaults storage to the local driver with a 1 GiB cap and 10 MiB parts", () => {
+    const env = parseEnv(base);
+    expect(env.STORAGE_DRIVER).toBe("local");
+    expect(env.STORAGE_LOCAL_DIR).toBe(".tmp/storage");
+    expect(env.MAX_UPLOAD_BYTES).toBe(1024 ** 3);
+    expect(env.UPLOAD_PART_BYTES).toBe(10 * 1024 ** 2);
+  });
+
+  it("requires the oci storage driver in production", () => {
+    expect(() => parseEnv({ ...base, NODE_ENV: "production" })).toThrow(
+      "STORAGE_DRIVER must be oci in production",
+    );
+    const env = parseEnv({
+      ...base,
+      NODE_ENV: "production",
+      STORAGE_DRIVER: "oci",
+    });
+    expect(env.STORAGE_DRIVER).toBe("oci");
+  });
+
+  it("rejects an invalid STORAGE_DRIVER", () => {
+    expect(() => parseEnv({ ...base, STORAGE_DRIVER: "s3" })).toThrow(
+      "STORAGE_DRIVER must be one of local, oci",
+    );
+  });
+
+  it("rejects upload parts below the OCI 10 MiB minimum", () => {
+    expect(() => parseEnv({ ...base, UPLOAD_PART_BYTES: "1024" })).toThrow(
+      "UPLOAD_PART_BYTES must be an integer >= 10485760",
+    );
+  });
+
+  it("defaults the publish copy timeout and poll interval", () => {
+    const env = parseEnv(base);
+    expect(env.COPY_TIMEOUT_MS).toBe(30 * 60 * 1000);
+    expect(env.COPY_POLL_MS).toBe(1000);
+  });
+
+  it("validates the copy settings", () => {
+    expect(() => parseEnv({ ...base, COPY_TIMEOUT_MS: "0" })).toThrow(
+      "COPY_TIMEOUT_MS must be a positive integer",
+    );
+    expect(() => parseEnv({ ...base, COPY_POLL_MS: "50" })).toThrow(
+      "COPY_POLL_MS must be an integer >= 200",
+    );
+  });
+
+  it("rejects a non-positive MAX_UPLOAD_BYTES", () => {
+    expect(() => parseEnv({ ...base, MAX_UPLOAD_BYTES: "0" })).toThrow(
+      "MAX_UPLOAD_BYTES must be a positive integer",
+    );
+  });
 });

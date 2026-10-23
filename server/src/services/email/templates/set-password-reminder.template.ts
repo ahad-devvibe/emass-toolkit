@@ -1,3 +1,4 @@
+// TODO(auth-otp-signup): unused since OTP signup, remove later
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
   bulletList,

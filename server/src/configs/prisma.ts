@@ -31,13 +31,14 @@ export function inlineSqlParams(
   query: string,
   paramsJson: string,
 ): string | null {
-  let values: unknown;
+  let parsed: unknown;
   try {
-    values = JSON.parse(paramsJson);
+    parsed = JSON.parse(paramsJson);
   } catch {
     return null;
   }
-  if (!Array.isArray(values)) return null;
+  if (!Array.isArray(parsed)) return null;
+  const values: unknown[] = parsed;
 
   let inRange = true;
   const inlined = query.replace(/\$(\d+)/g, (placeholder, n: string) => {

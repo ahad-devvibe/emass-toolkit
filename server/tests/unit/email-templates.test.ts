@@ -249,7 +249,7 @@ describe("shared layout", () => {
     for (const step of [
       "Request submitted",
       "Team review",
-      "Set your password",
+      "Sign in",
     ]) {
       expect(email.html).toContain(step);
       expect(email.text).toContain(step);

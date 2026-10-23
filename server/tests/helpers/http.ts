@@ -20,3 +20,17 @@ export function refreshCookie(headers: Record<string, unknown>): string {
   if (!cookie) throw new Error("response did not set a refreshToken cookie");
   return cookie.split(";")[0];
 }
+
+/** Cookie header value that authenticates as the holder of `token`. */
+export function accessCookie(token: string): string {
+  return `accessToken=${token}`;
+}
+
+/** The live `accessToken=<value>` pair a login/refresh response set. */
+export function accessCookieFrom(headers: Record<string, unknown>): string {
+  const cookie = setCookies(headers).find(
+    (c) => c.startsWith("accessToken=") && !c.startsWith("accessToken=;"),
+  );
+  if (!cookie) throw new Error("response did not set an accessToken cookie");
+  return cookie.split(";")[0];
+}

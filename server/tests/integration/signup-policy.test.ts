@@ -1,8 +1,13 @@
 import { UserStatus } from "@prisma/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import request from "supertest";
+import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { ApiError } from "../../src/utils/api-error.utils.js";
-import { signup } from "../../src/services/auth/auth.service.js";
+import {
+  completeSignup,
+  signup,
+} from "../../src/services/auth/signup.service.js";
 import { resetDb } from "../helpers/resetDb.js";
 import {
   TEST_CAPTCHA_CODE,
@@ -11,19 +16,17 @@ import {
   uniqueEmail,
 } from "../helpers/auth.js";
 import { createMockEmailSender } from "../helpers/email.js";
+import {
+  SIGNUP_PASSWORD,
+  signUpFully,
+  signupInput,
+  startSignup,
+} from "../helpers/signup.js";
 import { classifySignupEmail } from "../../src/services/auth/domains.service.js";
 
-const signupInput = (email: string) => ({
-  email,
-  firstName: "Ada",
-  lastName: "Lovelace",
-  country: "GB",
-  companyName: "Analytical Engines",
-  jobTitle: "Engineer",
-  captcha: TEST_CAPTCHA_CODE,
-});
-
 const captchaCookie = () => captchaCookieFor(TEST_CAPTCHA_CODE);
+const gmail = (prefix: string) =>
+  `${uniqueEmail(prefix).split("@")[0]}@gmail.com`;
 
 beforeAll(async () => {
   await resetDb();
@@ -44,105 +47,74 @@ describe("classifySignupEmail", () => {
   });
 });
 
-describe("signup domain routing", () => {
+describe("signup step 1: the form", () => {
   it("blocks competitor domains, keeping a BLOCKED audit row and sending nothing", async () => {
     const sender = createMockEmailSender();
-    const email = uniqueEmail("blocked");
-    const fullEmail = email.replace(/@.*$/, "@blocked-competitor.example");
+    const email = uniqueEmail("blocked").replace(
+      /@.*$/,
+      "@blocked-competitor.example",
+    );
 
     await expect(
-      signup(signupInput(fullEmail), captchaCookie(), sender),
+      signup(signupInput(email), captchaCookie(), sender),
     ).rejects.toMatchObject({ code: "DOMAIN_BLOCKED" });
 
-    const user = await prisma.user.findUnique({ where: { email: fullEmail } });
+    const user = await prisma.user.findUnique({ where: { email } });
     expect(user?.status).toBe("BLOCKED");
     expect(user?.password).toBeNull();
     expect(sender.sent).toHaveLength(0);
   });
 
-  it("queues free-mail signups as PENDING_APPROVAL and emails a notice", async () => {
-    const sender = createMockEmailSender();
-    const email = `free-${uniqueEmail("x").split("@")[0]}@gmail.com`;
+  it.each([
+    ["a company address", () => uniqueEmail("corp")],
+    ["a free-mail address", () => gmail("free")],
+  ])(
+    "emails a code for %s and creates an unfinished signup",
+    async (_, make) => {
+      const sender = createMockEmailSender();
+      const email = make();
 
-    const result = await signup(signupInput(email), captchaCookie(), sender);
+      const result = await signup(signupInput(email), captchaCookie(), sender);
 
-    expect(result.status).toBe("PENDING_APPROVAL");
-    expect(result).not.toHaveProperty("password");
-    const row = await prisma.user.findUnique({ where: { email } });
-    expect(row?.status).toBe(UserStatus.PENDING_APPROVAL);
-    expect(row?.password).toBeNull();
-    expect(sender.sent).toHaveLength(1);
-    expect(sender.sent[0].kind).toBe("pendingApproval");
-    expect(sender.sent[0].firstName).toBe("Ada");
-  });
-
-  it("activates custom-domain signups for set-password and emails the link", async () => {
-    const sender = createMockEmailSender();
-    const email = uniqueEmail("corp");
-
-    const result = await signup(signupInput(email), captchaCookie(), sender);
-
-    expect(result.status).toBe("PENDING_SET_PASSWORD");
-    const row = await prisma.user.findUnique({ where: { email } });
-    expect(row?.status).toBe(UserStatus.PENDING_SET_PASSWORD);
-    expect(row?.country).toBe("GB");
-    expect(row?.middleName).toBeNull();
-
-    expect(sender.sent).toHaveLength(1);
-    expect(sender.sent[0].kind).toBe("setPassword");
-    expect(sender.sent[0].url).toMatch(/\/set-password\?token=/);
-    expect(sender.sent[0].expiresInHours).toBe(48);
-
-    const tokens = await prisma.setPasswordToken.findMany({
-      where: { userId: row!.id },
-    });
-    expect(tokens).toHaveLength(1);
-    expect(tokens[0].expiresAt.getTime()).toBeGreaterThan(Date.now());
-    expect(tokens[0].reminderSentAt).toBeNull();
-  });
+      expect(result).toEqual({ email });
+      const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(row.status).toBe(UserStatus.PENDING_SET_PASSWORD);
+      expect(row.password).toBeNull();
+      expect(row.emailVerified).toBe(false);
+      expect(row.country).toBe("GB");
+      expect(row.middleName).toBeNull();
+      expect(sender.sent.map((e) => e.kind)).toEqual(["otp"]);
+      expect(sender.lastCode(email)).toMatch(/^\d{6}$/);
+    },
+  );
 
   it("stores middleName when provided", async () => {
-    const sender = createMockEmailSender();
     const email = uniqueEmail("middle");
-    await signup(
-      { ...signupInput(email), middleName: "Byron" },
-      captchaCookie(),
-      sender,
-    );
+    await startSignup(email, createMockEmailSender(), { middleName: "Byron" });
     const row = await prisma.user.findUnique({ where: { email } });
     expect(row?.middleName).toBe("Byron");
   });
 
-  it("rejects duplicate signups with EMAIL_TAKEN", async () => {
-    const sender = createMockEmailSender();
-    const email = uniqueEmail("dupe");
-    await signup(signupInput(email), captchaCookie(), sender);
-
-    await expect(
-      signup(signupInput(email), captchaCookie(), sender),
-    ).rejects.toMatchObject({ code: "EMAIL_TAKEN" });
-  });
-
+  // Country is validated by the route's Zod schema, so this goes through HTTP
   it("rejects a malformed country code", async () => {
-    const sender = createMockEmailSender();
     const email = uniqueEmail("country");
-    await expect(
-      signup(
-        { ...signupInput(email), country: "USA" },
-        captchaCookie(),
-        sender,
-      ),
-    ).rejects.toBeInstanceOf(ApiError);
+    const res = await request(app)
+      .post("/api/auth/signup")
+      .set("Cookie", [`captcha=${captchaCookie()}`])
+      .send({ ...signupInput(email), country: "USA" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("VALIDATION_ERROR");
+    expect(res.body.details.fieldErrors.country).toContain(
+      "Country must be a valid ISO 3166-1 alpha-2 code",
+    );
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
   });
 
-  it("compensates by deleting the user when the email send fails", async () => {
+  it("deletes a new user when the code email fails", async () => {
     const sender = createMockEmailSender();
-    sender.sendSetPasswordEmail = async () => {
-      throw new ApiError(
-        502,
-        "Unable to send set-password email",
-        "EMAIL_SEND_FAILED",
-      );
+    sender.sendOtpEmail = async () => {
+      throw new ApiError(502, "Unable to send email", "EMAIL_SEND_FAILED");
     };
     const email = uniqueEmail("sendfail");
 
@@ -150,7 +122,62 @@ describe("signup domain routing", () => {
       signup(signupInput(email), captchaCookie(), sender),
     ).rejects.toMatchObject({ code: "EMAIL_SEND_FAILED" });
 
-    const row = await prisma.user.findUnique({ where: { email } });
-    expect(row).toBeNull();
+    expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
+  });
+
+  it("keeps a resumed signup when the new code email fails", async () => {
+    const email = uniqueEmail("resume-sendfail");
+    await startSignup(email);
+    const sender = createMockEmailSender();
+    sender.sendOtpEmail = async () => {
+      throw new ApiError(502, "Unable to send email", "EMAIL_SEND_FAILED");
+    };
+
+    await expect(
+      signup(signupInput(email), captchaCookie(), sender),
+    ).rejects.toMatchObject({ code: "EMAIL_SEND_FAILED" });
+
+    expect(await prisma.user.findUnique({ where: { email } })).not.toBeNull();
+  });
+});
+
+describe("signup step 3: where each domain ends up", () => {
+  it("a company address is ACTIVE and gets tokens", async () => {
+    const email = uniqueEmail("corp-done");
+    const result = await signUpFully(email);
+
+    expect(result.user.status).toBe("ACTIVE");
+    expect(result.user).not.toHaveProperty("password");
+    expect(result.tokens?.accessToken).toBeTruthy();
+    const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+    expect(row.status).toBe(UserStatus.ACTIVE);
+    expect(row.emailVerified).toBe(true);
+    expect(row.password).not.toBeNull();
+  });
+
+  it("a free-mail address waits for approval, without tokens", async () => {
+    const email = gmail("free-done");
+    const result = await signUpFully(email);
+
+    expect(result.user.status).toBe("PENDING_APPROVAL");
+    expect(result.tokens).toBeNull();
+    const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+    expect(row.status).toBe(UserStatus.PENDING_APPROVAL);
+    expect(row.emailVerified).toBe(true);
+  });
+
+  it("re-checks the domain, so a domain blocked mid-signup stays blocked", async () => {
+    const domain = `turned-rival-${Date.now()}.example`;
+    const email = `someone@${domain}`;
+    const code = await startSignup(email);
+    await prisma.emailDomainPolicy.create({
+      data: { domain, kind: "COMPETITOR" },
+    });
+
+    await expect(
+      completeSignup(email, code, SIGNUP_PASSWORD, createMockEmailSender()),
+    ).rejects.toMatchObject({ code: "DOMAIN_BLOCKED" });
+    const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+    expect(row.password).toBeNull();
   });
 });

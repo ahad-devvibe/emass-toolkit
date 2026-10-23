@@ -1,7 +1,7 @@
 ---
 title: EMASS-Toolkit — Architecture
 status: active
-updated: 2026-10-17
+updated: 2026-10-23
 ---
 
 # EMASS-Toolkit — Architecture
@@ -12,7 +12,7 @@ Backend for the EMASS-Toolkit gated download portal (Nanoveu SDKs/docs).
 Layered Express API with a strict response contract and mandatory data
 isolation between users. Built by materializing the auth, email and storage
 feature code directly into `src/` — the starter-kit scaffold/overlay model was
-retired (see §12).
+retired (see §13).
 
 | Layer       | Technology                                                                                     |
 | ----------- | ---------------------------------------------------------------------------------------------- |
@@ -20,7 +20,7 @@ retired (see §12).
 | Web         | Express 5                                                                                      |
 | Language    | TypeScript (strict, `module: NodeNext`) — `tsc` = TS 7 (native), `tsc6` = TS 6 API for tooling |
 | ORM         | Prisma 7 + `@prisma/adapter-pg`                                                                |
-| DB          | PostgreSQL (dev + test `_test`)                                                                |
+| DB          | PostgreSQL (dev + test `-test`)                                                                |
 | Validation  | Zod 4                                                                                          |
 | Logging     | pino + pino-http                                                                               |
 | Lint/Format | ESLint 9 (flat) + Prettier                                                                     |
@@ -51,25 +51,34 @@ src/
 │   ├── index.ts   # imports every router, mounted at /api
 │   ├── health.routes.ts
 │   ├── docs.routes.ts
-│   └── auth.routes.ts
-├── controllers/   # flat handler files (health, docs, auth)
-├── middleware/    # auth (requireAuth), admin, upload (multer), error-handler
+│   ├── auth.routes.ts / admin.routes.ts
+│   ├── products.routes.ts
+│   └── releases.routes.ts      # releases, files, review, publish
+├── controllers/   # flat handler files (health, docs, auth, products, releases, release-files)
+├── middleware/    # auth (requireAuth), role (requireRole), admin, upload (multer, images), error-handler
 ├── services/      # per-module folders (the only folders allowed)
 │   ├── auth/      # auth.service, token.service, otp.service, auth.utils, auth.errors
 │   ├── email/     # email.service, email.utils, templates/
-│   └── storage/   # storage.service (generic OCI objects + PAR URLs)
-├── schemas/       # zod DTO schemas (auth.schema.ts)
-└── utils/         # truly cross-cutting: api-response, api-error, error-handler
+│   ├── products/  # products.service (active products)
+│   ├── releases/  # releases.service (drafts, state machine, locks), release-files.service
+│   │              # (busboy uploads), publish.service (background job), presenter, errors, utils
+│   └── storage/   # storage.service (images + PAR URLs), storage.utils (keys, safeName),
+│                  # drivers/ (StorageDriver: local | oci — putStream, copyObject, deleteObject)
+├── schemas/       # zod DTO schemas (auth, admin, releases, release-files)
+└── utils/         # truly cross-cutting: api-response, api-error, error-handler, cursor
 
 scripts/
 ├── generate-openapi.ts   # health + auth paths, EMASS Toolkit spec
-└── openapi-helpers.ts    # { success, statusCode, message, data? } envelope helpers
+├── openapi-releases.ts   # product + release paths, merged into the spec
+├── openapi-helpers.ts    # { success, statusCode, message, data? } envelope helpers
+├── seed-products.ts      # npm run seed:products (fixed product ids)
+└── storage-smoke.ts / storage-copy-smoke.ts   # real-bucket checks (upload/abort; copy timing)
 
-prisma/schema.prisma   # User/RefreshToken/Otp + User/OtpPurpose enums
+prisma/schema.prisma   # auth (User, tokens, OTP, domain policy) + catalog (Product, Release, ReleaseFile, ReleaseEvent, ProductResource, DownloadToken, Download)
 prisma.config.ts       # datasource.url = env("DATABASE_URL"), migrations path
 eslint.config.js       # flat: js.recommended + typescript-eslint + prettier
 vitest.config.ts       # setupFiles + fileParallelism: false
-vitest.setup.ts        # refuses to run unless DATABASE_URL contains "_test"
+vitest.setup.ts        # refuses to run unless the DATABASE_URL db name ends in "-test"
 bruno/starterkit/      # runnable API collection (health + Auth)
 tests/
 ├── helpers/       # shared utilities (resetDb, auth factories)
@@ -154,8 +163,9 @@ known (e.g. "email already exists"); the middleware is the fallback.
 
 - Connection uses the **driver adapter**: `PrismaPg({ connectionString: process.env.DATABASE_URL })` + `PrismaClient({ adapter })` — singleton in `src/configs/prisma.ts`
 - Prisma 7 has no `url` in `schema.prisma`; the CLI reads it from `prisma.config.ts` (`defineConfig` + `env("DATABASE_URL")`)
-- Schema: `User` (email unique, password, emailVerified, role `USER/DEV/ADMIN`),
-  `RefreshToken`, `Otp` (`SIGNUP_VERIFY`/`PASSWORD_RESET`) + enums — see
+- Schema: `User` (email unique, password, emailVerified, role
+  `CUSTOMER/DEV/ADMIN`), `RefreshToken`, `Otp`
+  (`MFA_LOGIN`/`PASSWORD_RESET`/`SIGNUP_VERIFY`) + enums — see
   `prisma/schema.prisma`
 - Migrations: **never run without explicit approval**; apply to test DB via
   `npm run test:migrate`
@@ -177,7 +187,7 @@ migration folder per change — delete empty leftovers.
 | File           | Purpose                                                                               | Loaded by                                      |
 | -------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `.env`         | dev: `PORT`, `DATABASE_URL`, `JWT_SECRET`, logging, optional email/storage keys       | `dotenv/config` in server.ts; prisma.config.ts |
-| `.env.test`    | tests: `DATABASE_URL` → `*_test`, `JWT_SECRET`, `EMAIL_PROVIDER=console` (gitignored) | dotenv-cli in test scripts                     |
+| `.env.test`    | tests: `DATABASE_URL` → `*-test`, `JWT_SECRET`, `EMAIL_PROVIDER=console` (gitignored) | dotenv-cli in test scripts                     |
 | `.env.example` | tracked template of all vars                                                          | manual copy                                    |
 
 - `src/configs/env.ts` validates the environment with zod **eagerly on import**
@@ -232,7 +242,8 @@ shareable static HTML page with Redocly.
 | `npm run docs`      | both                                                                                                                      |
 
 - Auth paths and schemas live in `scripts/generate-openapi.ts` alongside the
-  health paths (no marker indirection).
+  health paths (no marker indirection); product and release paths live in
+  `scripts/openapi-releases.ts` and are merged in.
 - **Regenerate whenever a route or schema changes** — the spec is derived from
   the schemas, so drift only happens if you forget to run `npm run docs`.
 
@@ -245,18 +256,51 @@ shareable static HTML page with Redocly.
 5. `src/routes/index.ts` — one line: `router.use({module}Routes)`
 6. `tests/integration/{module}.test.ts` — Supertest suite, `beforeAll(resetDb)` if DB-touching
 
-## 12. Roadmap / known gaps
+## 12. Release files: storage, uploads, publishing
+
+Full decisions in `docs/releases/release-management.md`; deploy steps in
+`docs/operations/release-storage.md`.
+
+- **Storage drivers** (`services/storage/drivers/`): `StorageDriver` has
+  `putStream`, `copyObject` and `deleteObject`. `STORAGE_DRIVER=local` writes
+  under `STORAGE_LOCAL_DIR` (dev/tests, no cloud); `oci` uses the OCI SDK and
+  is enforced in production at boot. Writes and copies go through `.part` /
+  multipart and only appear when complete.
+- **Buckets:** keys always carry a prefix: `staged/{productId}/{releaseId}/{uuid}/{name}`
+  and `releases/{productId}/{version}/{uuid}/{name}`. Dev uses one bucket
+  (`OCI_BUCKET`); prod sets `OCI_STAGING_BUCKET` and `OCI_RELEASE_BUCKET`. Same
+  code path, no environment branch.
+- **Uploads:** `POST /releases/:id/files` is parsed by **busboy** as a stream
+  (fields before the file), hashed (SHA-256) and counted on the fly, and
+  piped into an OCI multipart upload, one `UPLOAD_PART_BYTES` part in memory.
+  Over `MAX_UPLOAD_BYTES` → 413 with the upload aborted.
+  `server.requestTimeout = UPLOAD_TIMEOUT_MS` (2 h; Node only has a
+  server-wide setting).
+- **Locks:** every release mutation runs in a transaction that starts with
+  `SELECT … FOR UPDATE` on the release row; publish and rollback first lock
+  every release of the product, which serialises changes to "the published
+  one".
+- **Publish** (`publish.service.ts`) is an in-memory background job (one
+  VM): `copyObject` per file (OCI work request polled every `COPY_POLL_MS`,
+  bounded by `COPY_TIMEOUT_MS`), then one transaction that archives the
+  previous release and publishes, then the staged objects are deleted.
+  All-or-nothing; a restart loses the job but never half-publishes, and a
+  retry is safe (deterministic keys). Results are readable for
+  `PUBLISH_JOB_TTL_MS`. Measured: 1 GiB copies in ~12 s in-region, with
+  `percentComplete` jumping 0 → 100.
+
+## 13. Roadmap / known gaps
 
 - **Gate G1 — migration** (blocking): splice is in `prisma/schema.prisma`, no
   migration run. Recommended: wipe 18 legacy Held migrations → one clean `init`
   migration → `npm run test:migrate`, then unblock the auth integration suites.
-- **Release module** — products/versions/files, staged → published → archived
-  flow, upload (multer + `storage.uploadObject`), download via 1h token +
-  60-second object PAR, SHA-256 checksums, roles (`DEV` stages, `ADMIN`
-  approves/rolls back).
+- **Release module downloads**: customer catalog API, ~60 s object PARs on
+  the release bucket, the `Download` log, and rollback emails to
+  downloaders. Release management itself (drafts, uploads, review, publish,
+  rollback) is built; see §12.
 - **Rate limiting** on auth endpoints before production exposure.
-- **Signup domain approval / waitlist** — spec'd in `docs/auth/auth-module.md`,
-  deliberately not built yet.
-- **HubSpot contact sync** (one-way outbound) — later, per AGENTS.md.
+- **Removing the hidden set-password flow** (code marked
+  `TODO(auth-otp-signup)`, plus the `SetPasswordToken` table) once the OTP
+  signup has settled; see `docs/auth/auth-module.md`.
 
 > [!info] Keep this doc current: update it whenever a dependency, contract, or structural decision changes.

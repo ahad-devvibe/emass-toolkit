@@ -2,129 +2,209 @@
 
 ## What was built
 
-The complete auth stack for the EMASS-Toolkit API: policy-routed signups
-(no password at signup), a 48h set-password email link as the verification for
-custom/corporate domains, an admin approval queue for free-mail signups,
-distorted-text captcha, login (customers: password; DEV/ADMIN: + email-OTP MFA),
-rotating DB-backed refresh tokens, and OTP-based password reset — routes under
-`/api/auth` plus `/api/auth/admin`. See `tasks/auth.md` for the original spec.
+The auth stack for the EMASS-Toolkit API, under `/api/auth` plus
+`/api/auth/admin`. It covers:
+
+- signup on one page: form, then an emailed 6-digit code, then a password;
+- domain policy, with free-mail signups going to an admin approval queue;
+- a distorted-text captcha;
+- login: a password for customers, plus email-OTP MFA for DEV and ADMIN;
+- rotating, DB-backed refresh tokens;
+- OTP-based password reset.
+
+The original spec is `tasks/auth.md`.
 
 ## Key decisions
 
-- **No password at signup.** Signup form: work email, firstName, middleName?,
-  lastName, country (ISO alpha-2), companyName, jobTitle + captcha. The account
-  is created in a pending state.
-- **Domain policy** (`EmailDomainPolicy` table, seeded via `npm run seed:domains`):
-  - COMPETITOR (seed: `blocked-competitor.example`) → `403 DOMAIN_BLOCKED`.
-    A `BLOCKED` user row (no password) is kept as an audit trail; repeat
-    attempts with the same email get the same 403 and don't add rows.
-  - FREE_MAIL (seed: gmail/yahoo/outlook/hotmail/icloud/aol) →
-    `PENDING_APPROVAL`; admin approval (`/auth/admin/signups/*`) later sends
-    the set-password email.
-  - anything else (custom/corporate) → `PENDING_SET_PASSWORD` + set-password
-    email immediately. **The set-password link is the email verification** —
-    no signup OTP.
-- **Set-password token**: random 32 bytes, sha256-hashed at rest, TTL
-  `SET_PASSWORD_TTL_HOURS` (48), single-use; redeeming sets the password,
-  marks email verified, activates the account.
-- **24h reminder** (`node-cron` sweep every 30 min, started in `server.ts`,
-  skipped under test): because tokens are hashed, the reminder **re-issues**
-  a token that keeps the **original `expiresAt`** (no expiry extension) and
-  invalidates the old link. One reminder per invite; failed sends retry on the
-  next sweep.
-- **Roles** are `enum UserRole { CUSTOMER DEV ADMIN }` (`USER` renamed).
-  `requireAuth` + `requireAdmin` enforce server-side; `requireDev` lands with
-  the releases module.
-- **MFA**: DEV/ADMIN login returns `{ mfaRequired: true }` + an emailed
-  6-digit OTP (`OtpPurpose.MFA_LOGIN`, 10-min TTL, 5 attempts); `verify-otp`
-  exchanges it for tokens. MFA on every staff login; customers never see it.
-  `SIGNUP_VERIFY` OTP retired entirely.
-- **Captcha**: `svg-captcha` 6-char distorted text (ambiguous glyphs removed),
-  served as a data-URI image; expected code stored sha256-hashed inside an
-  httpOnly HMAC-signed cookie (10-min TTL). Required on signup.
-- **Tokens**: 15-minute access JWT, returned in the response body only and sent
-  back as `Authorization: Bearer` (the SPA keeps it in memory; there is no
-  access cookie). 14-day rotating refresh token (hashed), **cookie only**:
-  httpOnly + `sameSite=strict`, path `/api/auth` so both `/refresh` and
-  `/logout` receive it; it is never in a response body and a body token is
-  ignored. Logout revokes it.
-- **Reuse detection**: rotating a token revokes it. Presenting a revoked token
-  returns `401 REFRESH_TOKEN_REUSED` and revokes every token the user has (all
-  devices). Two concurrent refreshes with the same cookie trip this, so clients
-  must keep one `/refresh` in flight per device. `issueTokenPair` prunes the
-  user's expired tokens and tokens revoked more than
-  `REUSE_DETECTION_WINDOW_MS` (24h) ago; younger revoked rows stay so replays
-  are still detected.
-- **CORS**: localhost and private-network origins with credentials; anything
-  else gets `403 CORS_ORIGIN_DENIED` in the standard error envelope.
-- **Staff accounts**: `npm run seed:users` upserts the users in the gitignored
-  `data/staff-users.json` (template: `data/staff-users.example.json`) as
-  ACTIVE with bcrypt-hashed passwords. Idempotent; never deletes; existing
-  passwords are kept unless `--reset-passwords`; `--dry-run` prints the plan.
-- **HubSpot** (one-way, email-keyed upsert; logged only unless
-  `HUBSPOT_ENABLED=true`). Every legitimate account gets a contact before it
-  has a password; blocked and rejected sign-ups never reach HubSpot (their DB
-  row is the audit trail):
+- **Signup proves the inbox before an account counts** (2026-10-23; replaced
+  the set-password-link flow). It runs in three steps on `/sign-up`:
+  1. **`POST /auth/signup`**
+     - Takes the profile (work email, firstName, middleName?, lastName,
+       country as ISO alpha-2, companyName, jobTitle) plus the captcha, with
+       no password.
+     - Emails a code (`OtpPurpose.SIGNUP_VERIFY`, 10-minute TTL, 5 attempts)
+       and answers `201 { email }`.
+  2. **`POST /auth/signup/verify {email, code}`** checks the code without
+     using it up.
+  3. **`POST /auth/signup/complete {email, code, password}`** uses up the code
+     and sets the password (6–72 characters, bcrypt) and `emailVerified`, in
+     one transaction. The domain is classified again here, so a policy change
+     made mid-signup still applies.
+  - **Until step 3 the row is an "unfinished signup":** `PENDING_SET_PASSWORD`
+    with no password. It can't sign in (no password means
+    `INVALID_CREDENTIALS`).
+    - Signing up again with the same email **resumes** it: the details are
+      refreshed and a new code sent.
+    - An email with an `ACTIVE`, `PENDING_APPROVAL` or `BLOCKED` account gets
+      `409 EMAIL_TAKEN`.
+    - If the first code email fails, a brand-new row is deleted again.
+  - **Verify, complete and resend don't reveal accounts:** an unknown email or
+    a finished account gets the same `OTP_INVALID` as a wrong code. Resend
+    (`POST /auth/resend-otp`, purpose `SIGNUP_VERIFY`) answers 200 and sends
+    only for an unfinished signup.
+  - **No new user status and no background jobs.**
+- **Domain policy** (`EmailDomainPolicy` table, seeded with
+  `npm run seed:domains`):
+  - **COMPETITOR** (seed: `blocked-competitor.example`): `403 DOMAIN_BLOCKED`
+    at step 1, before any code is sent.
+    - A `BLOCKED` user row with no password is kept as an audit trail.
+    - Repeat attempts with the same email get the same 403 and add no rows.
+  - **FREE_MAIL** (seed: gmail, yahoo, outlook, hotmail, icloud, aol):
+    - Step 3 ends in `PENDING_APPROVAL`, with the "request received" email,
+      and answers `{ user, signedIn: false }`.
+    - An admin approves (`POST /auth/admin/signups/:id/approve`): the
+      account becomes `ACTIVE`, the person gets the "you can sign in" email
+      and a HubSpot contact is created.
+    - Approval is guarded, so two admins approving at once activate and
+      email only once.
+    - Reject is unchanged: `BLOCKED`, plus an email with the optional reason.
+  - **Anything else** (company domains): step 3 ends `ACTIVE`, **signed in
+    directly** (cookies set, `{ user, signedIn: true }`), with the welcome
+    email and a HubSpot contact.
+- **The set-password-link flow is hidden, not deleted.** Its code is kept and
+  marked `// TODO(auth-otp-signup): unused since OTP signup, remove later`:
+  - `set-password.service.ts` and its three controllers (the routes are
+    unmounted, so `/auth/set-password*` and `/auth/resend-set-password` now
+    404);
+  - the reminder job in `scheduler.service.ts`, off through
+    `SET_PASSWORD_REMINDERS_ENABLED = false`;
+  - the set-password and reminder email templates;
+  - the `SET_PASSWORD_*` env vars;
+  - the `setPasswordSchema` / `resendSetPasswordSchema` schemas;
+  - `hubspot.utils.ts` (the portal-status property);
+  - the `SetPasswordToken` table, which stays in the schema so no destructive
+    migration is needed.
 
-  | Event | DB status | HubSpot `emass_portal_status` | `lifecyclestage` |
-  |---|---|---|---|
-  | Sign-up, company domain | `PENDING_SET_PASSWORD` | `pending_password` | `lead` |
-  | Sign-up, free mail | `PENDING_APPROVAL` | none | none |
-  | Sign-up, competitor domain | `BLOCKED` (audit row) | none | none |
-  | Admin approves a free-mail request | `PENDING_SET_PASSWORD` | `pending_password` | `lead` |
-  | Admin rejects a free-mail request | `BLOCKED` | none | none |
-  | Password set | `ACTIVE` | `active` | `customer` |
+  The client's `/set-password` page is removed.
+- **Roles** are `enum UserRole { CUSTOMER DEV ADMIN }`, enforced on the server
+  (`requireAuth`, `requireRole`).
+- **MFA**:
+  - DEV/ADMIN login returns `{ mfaRequired: true }` and emails a 6-digit OTP
+    (`OtpPurpose.MFA_LOGIN`, 10-minute TTL, 5 attempts).
+  - `verify-otp` exchanges the code for tokens. `verify-otp` accepts only
+    `MFA_LOGIN` and `PASSWORD_RESET`; signup codes have their own endpoints.
+  - MFA applies to every staff login; customers never see it.
+- **Captcha**:
+  - `svg-captcha` with 6 distorted characters (ambiguous glyphs removed),
+    served as a data-URI image.
+  - The expected code is stored sha256-hashed inside an httpOnly,
+    HMAC-signed cookie (10-minute TTL).
+  - Required on signup step 1, and single-use: the cookie is cleared on
+    success.
+- **Tokens** travel **only in httpOnly cookies**. No response body ever
+  carries a token, and JS never reads one.
+  - **Access token:**
+    - a 15-minute JWT in the `accessToken` cookie, `sameSite=strict`, path
+      `/api`, with max-age equal to the JWT lifetime;
+    - `requireAuth` reads only this cookie; an `Authorization: Bearer` header
+      is ignored, giving `401 TOKEN_MISSING`.
+  - **Refresh token:**
+    - a 14-day rotating token (stored hashed) in the `refreshToken` cookie,
+      `sameSite=strict`, path `/api/auth`, so both `/refresh` and `/logout`
+      receive it; a token sent in the body is ignored;
+    - login, MFA verify, signup completion (company address) and refresh set
+      both cookies; logout revokes the refresh token and clears both.
+  - **CSRF** is covered by `sameSite=strict` plus the CORS origin check
+    (`app.ts`), which rejects disallowed origins with
+    `403 CORS_ORIGIN_DENIED` before any route runs. The SPA and API share one
+    origin.
+  - **Client** (`client/src/auth/session.ts`): on
+    `401 TOKEN_MISSING/EXPIRED/INVALID` it runs one `/refresh` (single-flight,
+    with a device-wide lock) and retries once.
+- **Reuse detection**:
+  - Rotating a token revokes it. Presenting a revoked token returns
+    `401 REFRESH_TOKEN_REUSED` and revokes every token the user has, on all
+    devices.
+  - Two concurrent refreshes with the same cookie trip this, so clients must
+    keep one `/refresh` in flight per device.
+  - `issueTokenPair` prunes the user's expired tokens and the tokens revoked
+    more than `REUSE_DETECTION_WINDOW_MS` (24 h) ago. Younger revoked rows
+    stay, so replays are still detected.
+- **CORS** allows localhost and private-network origins with credentials.
+  Anything else gets `403 CORS_ORIGIN_DENIED` in the standard error envelope.
+- **Staff accounts**: `npm run seed:users` upserts the users listed in the
+  gitignored `data/staff-users.json` (template:
+  `data/staff-users.example.json`) as ACTIVE, with bcrypt-hashed passwords.
+  - It is idempotent and never deletes.
+  - Existing passwords are kept unless you pass `--reset-passwords`.
+  - `--dry-run` prints the plan.
+- **HubSpot** is a one-way, email-keyed upsert. It is only logged unless
+  `HUBSPOT_ENABLED=true`.
+  - **A contact is created only once an account is `ACTIVE`,** sent as
+    `lifecyclestage: "lead"` with the name, country, company and job title.
+  - **The custom `emass_portal_status` property is no longer sent:** customer
+    accounts only ever reach HubSpot as active.
 
-  `emass_portal_status` is a custom **enumeration** contact property (options
-  `pending_password`, `active`) that must exist before enabling the
-  integration, or HubSpot rejects every upsert. Create it from code once per
-  HubSpot portal with `npm run hubspot:setup` (`-- --dry-run` to preview). It's
-  idempotent: it creates the property, or brings an existing one in line with
-  the definition (label "EMASS Portal Status", description, missing options)
-  in one PATCH, and never removes options or changes the type. Re-run it after
-  changing the definition. The private-app token needs `crm.schemas.contacts.write` for
-  that run and `crm.objects.contacts.write` for normal syncing. Manual
-  alternative: HubSpot Settings → Properties → Contact → Create property, with
-  internal name `emass_portal_status`, field type Dropdown select and the two
-  options above. The definition lives in `src/services/hubspot/hubspot.utils.ts`.
-- **HubSpot contact reference**: each successful upsert stores HubSpot's record
-  ID on the user (`User.hubspotContactId`, unique, plus `hubspotSyncedAt`).
-  It's `null` until the first successful sync, is internal only (`presentUser`
-  strips it) and is what future events and reconcile jobs target. If HubSpot
-  returns an ID already linked to another user, nothing is overwritten and a
-  warning is logged for a human to resolve. All syncs go through `syncHubspotContact`
-  and are best-effort: a failure is logged and never fails sign-up, approval
-  or activation; the next transition re-upserts the contact.
-- **Email**: console sender by default, OCI Email Delivery when
-  `EMAIL_PROVIDER=oci`. Templates: set-password, set-password reminder,
-  pending-approval, MFA login, password reset (de-branded, no external assets).
+  | Event | DB status | HubSpot |
+  |---|---|---|
+  | Step 1 (form + code), any domain | `PENDING_SET_PASSWORD` (unfinished) | nothing |
+  | Competitor domain | `BLOCKED` (audit row) | nothing |
+  | Step 3, company domain | `ACTIVE` | contact upserted (`lead`) |
+  | Step 3, free mail | `PENDING_APPROVAL` | nothing |
+  | Admin approves a free-mail request | `ACTIVE` | contact upserted (`lead`) |
+  | Admin rejects a free-mail request | `BLOCKED` | nothing |
+
+  - **The private-app token** needs `crm.objects.contacts.write`.
+    `npm run hubspot:setup`, which creates the old status property, is no
+    longer needed.
+- **HubSpot contact reference**: each successful upsert stores HubSpot's
+  record ID on the user (`User.hubspotContactId`, unique, plus
+  `hubspotSyncedAt`).
+  - It stays `null` until the first successful sync.
+  - It is internal only: `presentUser` strips it.
+  - If HubSpot returns an ID already linked to another user, nothing is
+    overwritten and a warning is logged.
+  - Syncs (`syncHubspotContact`, called from `onAccountActivated` in
+    `signup.service.ts`) are best-effort: a failure is logged and never fails
+    signup or approval.
+- **Email** uses a console sender by default, and OCI Email Delivery when
+  `EMAIL_PROVIDER=oci`. Templates in use:
+  - signup code ("Confirm your email");
+  - request received (pending approval);
+  - welcome / approved;
+  - signup rejected;
+  - MFA login;
+  - password reset.
+
+  None of them load external assets.
 
 ## Assumptions
 
-- Signup enumerates existing emails via `409 EMAIL_TAKEN` (accepted for MVP).
-- Country is stored as an uppercase ISO 3166-1 alpha-2 code, validated against
-  the assigned list in `src/utils/country.utils.ts` (signup and `seed:users`;
-  the client picker uses the same list). HubSpot receives the English name
-  ("SG" -> "Singapore").
-- Competitor/free-mail lists are DB rows but admin CRUD endpoints are follow-up
-  work (seed script only for now).
-- Rejecting a sign-up (BLOCKED) emails the person; the admin can add an
-  optional reason (≤500 chars) that is included in the email but not stored.
-  The email is best-effort: a send failure is logged and the reject stands.
+- **Signup enumerates existing emails** through `409 EMAIL_TAKEN` (accepted
+  for the MVP). The verify, complete and resend steps don't.
+- **Country** is stored as an uppercase ISO 3166-1 alpha-2 code, validated
+  against the assigned list in `src/utils/country.utils.ts`. Signup and
+  `seed:users` use that list, and so does the client picker. HubSpot receives
+  the English name ("SG" becomes "Singapore").
+- **The competitor and free-mail lists** are DB rows, but their admin CRUD
+  endpoints are follow-up work; only the seed script exists for now.
+- **Rejecting a signup** (BLOCKED) emails the person.
+  - The admin can add an optional reason (up to 500 characters). It goes into
+    the email and is stored on `User.rejectionReason` for audit (null when
+    none was given; never returned by the API).
+  - Approvals carry no note.
+  - The email is best-effort: a failed send is logged and the rejection
+    stands.
+- **No accounts from the old flow are expected to remain** (pre-launch).
+  - A `PENDING_APPROVAL` row created before this change has no password.
+    Approving it would make it `ACTIVE` with no way to sign in
+    (`forgot-password` refuses passwordless accounts).
+  - Reject such rows, and the person signs up again.
 
 ## Risks / follow-ups
 
-- Rate limiting on signup/login/forgot-password/captcha — before production.
-  Competitor-domain attempts now write a `BLOCKED` row, so without rate
-  limiting (captcha is the only guard) they can grow the `User` table.
-- HubSpot reconcile job: a contact missed during an outage is only repaired at
-  the next transition (approval or activation); an `ACTIVE` user missed at
-  activation stays `pending_password` in HubSpot until reconciled.
-- Admin CRUD for `EmailDomainPolicy`; rejection email.
-- "Remember device" MFA — explicitly out for MVP.
-- DB schema is in `prisma/schema.prisma`; **no migration has been run**
-  (`prisma generate` only). Integration suites for these flows are written but
-  gated until the schema is applied (`db push` / `migrate` — needs explicit
-  go).
-- Older flows documented in `docs/auth/password-reset.md` still apply
+- **Rate limiting** on signup, signup/verify, login, forgot-password and the
+  captcha, before production.
+  - Competitor attempts and unfinished signups both write `User` rows, and the
+    captcha is their only guard.
+  - Wrong codes are capped at 5 per code, but resend can issue new ones.
+- **Unfinished signups are never cleaned up.** They are harmless (no password,
+  no HubSpot contact) and are resumed by signing up again; a cleanup job can
+  come later.
+- **HubSpot reconcile job:** a contact missed during an outage is not retried.
+- **Admin CRUD** for `EmailDomainPolicy`.
+- **"Remember device"** for MFA is explicitly out of scope for the MVP.
+- **Removing the hidden set-password code:** delete everything marked
+  `TODO(auth-otp-signup)`, then drop `SetPasswordToken` in a migration.
+- **Password reset** still works as described in `docs/auth/password-reset.md`
   (OTP reset for all roles).

@@ -10,6 +10,8 @@ export default tseslint.config(
       "docs/**",
       "bruno/**",
       "prisma/migrations/**",
+      // Local storage driver: uploaded files, not source
+      ".tmp/**",
     ],
   },
   js.configs.recommended,

@@ -1,3 +1,6 @@
+// TODO(auth-otp-signup): unused since OTP signup, remove later. Signup now
+// verifies the email with a code and sets the password on the signup page
+// (signup.service.ts); nothing issues set-password links any more.
 import { createHash, randomBytes } from "node:crypto";
 import { UserStatus } from "@prisma/client";
 import { env } from "../../configs/env.js";
@@ -11,6 +14,7 @@ import {
   syncHubspotContact,
   type HubspotClient,
 } from "../hubspot/hubspot.service.js";
+import { buildCatalogUrl } from "./signup.service.js";
 
 export function buildSetPasswordUrl(token: string): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, "")}/set-password?token=${encodeURIComponent(token)}`;
@@ -18,10 +22,6 @@ export function buildSetPasswordUrl(token: string): string {
 
 function hashSetPasswordToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
-}
-
-export function buildCatalogUrl(): string {
-  return `${env.APP_BASE_URL.replace(/\/+$/, "")}/catalog`;
 }
 
 export function setPasswordTtlMs(): number {
@@ -174,7 +174,7 @@ export async function redeemSetPasswordToken(
   }
 
   // Best-effort: the contact already exists as pending_password; mark it active
-  await syncHubspotContact(row.user, "active", hubspot);
+  await syncHubspotContact(row.user, hubspot);
 }
 
 export async function resendSetPasswordEmail(

@@ -11,7 +11,12 @@ import {
   seedDomainPoliciesForTest,
   uniqueEmail,
 } from "../helpers/auth.js";
-import { refreshCookie, setCookies } from "../helpers/http.js";
+import {
+  accessCookie,
+  accessCookieFrom,
+  refreshCookie,
+  setCookies,
+} from "../helpers/http.js";
 
 beforeAll(async () => {
   await resetDb();
@@ -43,8 +48,14 @@ describe("POST /api/auth/login", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.mfaRequired).toBe(false);
-    expect(res.body.data.accessToken).toEqual(expect.any(String));
+    expect(res.body.data).not.toHaveProperty("accessToken");
     expect(res.body.data.user.email).toBe(email);
+    const access = setCookies(res.headers).find((c) =>
+      c.startsWith("accessToken="),
+    );
+    expect(access).toContain("HttpOnly");
+    expect(access).toContain("Path=/api;");
+    expect(access).toContain("SameSite=Strict");
     expect(res.body.data.user).not.toHaveProperty("password");
     expect(
       setCookies(res.headers).some((c) => c.startsWith("refreshToken=")),
@@ -127,7 +138,7 @@ describe("GET /api/auth/me", () => {
 
     const res = await request(app)
       .get("/api/auth/me")
-      .set("Authorization", `Bearer ${user.accessToken}`);
+      .set("Cookie", accessCookie(user.accessToken));
 
     expect(res.status).toBe(200);
     expect(res.body.data.email).toBe(user.email);
@@ -141,10 +152,19 @@ describe("GET /api/auth/me", () => {
     expect(res.body.code).toBe("TOKEN_MISSING");
   });
 
+  it("ignores a Bearer header: only the cookie authenticates", async () => {
+    const user = await createUser(uniqueEmail("bearer"));
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("TOKEN_MISSING");
+  });
+
   it("rejects an invalid token", async () => {
     const res = await request(app)
       .get("/api/auth/me")
-      .set("Authorization", "Bearer not-a-token");
+      .set("Cookie", accessCookie("not-a-token"));
     expect(res.status).toBe(401);
     expect(res.body.code).toBe("TOKEN_INVALID");
   });
@@ -160,21 +180,23 @@ describe("refresh + logout", () => {
     return { user, login, cookie: refreshCookie(login.headers) };
   }
 
-  it("keeps the refresh token out of response bodies", async () => {
+  it("keeps both tokens out of response bodies", async () => {
     const { login, cookie } = await loginCookie("session-body");
     expect(login.body.data).not.toHaveProperty("refreshToken");
+    expect(login.body.data).not.toHaveProperty("accessToken");
     const raw = setCookies(login.headers).find((c) => c.startsWith(cookie));
     expect(raw).toContain("HttpOnly");
     expect(raw).toContain("Path=/api/auth;");
-    expect(
-      setCookies(login.headers).some((c) => c.startsWith("accessToken=")),
-    ).toBe(false);
 
+    // Refresh answers with fresh cookies and an empty body
     const refreshed = await request(app)
       .post("/api/auth/refresh")
       .set("Cookie", cookie);
     expect(refreshed.status).toBe(200);
-    expect(refreshed.body.data).toEqual({ accessToken: expect.any(String) });
+    expect(refreshed.body).not.toHaveProperty("data");
+    const access = accessCookieFrom(refreshed.headers);
+    const me = await request(app).get("/api/auth/me").set("Cookie", access);
+    expect(me.status).toBe(200);
   });
 
   it("rotates via the cookie and revokes every session on reuse", async () => {
@@ -226,6 +248,18 @@ describe("refresh + logout", () => {
       .post("/api/auth/logout")
       .set("Cookie", cookie);
     expect(logout.status).toBe(200);
+    // Both cookies are cleared (expired) on their own paths
+    const cleared = setCookies(logout.headers);
+    expect(
+      cleared.some(
+        (c) => c.startsWith("accessToken=;") && c.includes("Path=/api;"),
+      ),
+    ).toBe(true);
+    expect(
+      cleared.some(
+        (c) => c.startsWith("refreshToken=;") && c.includes("Path=/api/auth;"),
+      ),
+    ).toBe(true);
     expect(
       await prisma.refreshToken.count({
         where: { userId: user.id, revokedAt: null },
@@ -276,7 +310,7 @@ describe("cross-user isolation", () => {
 
     const res = await request(app)
       .get("/api/auth/me")
-      .set("Authorization", `Bearer ${a.accessToken}`);
+      .set("Cookie", accessCookie(a.accessToken));
 
     expect(res.body.data.id).toBe(a.id);
     expect(res.body.data.id).not.toBe(b.id);
@@ -290,7 +324,7 @@ describe("cross-user isolation", () => {
     );
     const res = await request(app)
       .get("/api/auth/me")
-      .set("Authorization", `Bearer ${admin.accessToken}`);
+      .set("Cookie", accessCookie(admin.accessToken));
     expect(res.body.data.role).toBe("ADMIN");
   });
 });

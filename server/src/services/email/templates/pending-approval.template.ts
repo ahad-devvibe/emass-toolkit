@@ -40,8 +40,8 @@ export function renderPendingApprovalEmail(
             state: "current",
           },
           {
-            label: "Set your password",
-            note: "Once approved, we'll email you a link to activate your account.",
+            label: "Sign in",
+            note: "Once approved, we'll email you and you can sign in with the password you just set.",
             state: "next",
           },
         ]),
@@ -53,6 +53,6 @@ export function renderPendingApprovalEmail(
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Request received\n\nThanks, ${input.firstName}.\n\nBecause you registered with a personal email address, our team reviews each request by hand. There's nothing you need to do right now.\n\nWhere things stand:\n[x] Request submitted\n[ ] Team review (usually within one business day)\n[ ] Set your password (we'll email you a link once approved)\n\nTip: signing up with your company email address skips the review.\n\nIf you did not sign up, you can safely ignore this email.`,
+    text: `EMASS Toolkit · Request received\n\nThanks, ${input.firstName}.\n\nBecause you registered with a personal email address, our team reviews each request by hand. There's nothing you need to do right now.\n\nWhere things stand:\n[x] Request submitted\n[ ] Team review (usually within one business day)\n[ ] Sign in (we'll email you once approved; use the password you just set)\n\nTip: signing up with your company email address skips the review.\n\nIf you did not sign up, you can safely ignore this email.`,
   };
 }

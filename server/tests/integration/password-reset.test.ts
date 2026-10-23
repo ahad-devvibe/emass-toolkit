@@ -4,6 +4,7 @@ import request from "supertest";
 import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { emailService } from "../../src/services/email/email.service.js";
+import { ApiError } from "../../src/utils/api-error.utils.js";
 import { forgotPassword } from "../../src/services/auth/auth.service.js";
 import { hashOtpCode } from "../../src/services/auth/auth.utils.js";
 import { createUser, uniqueEmail } from "../helpers/auth.js";
@@ -93,8 +94,13 @@ describe("POST /api/auth/forgot-password", () => {
     const email = uniqueEmail("forgot-fail");
     await createUser(email);
     vi.spyOn(emailService, "assertReady").mockResolvedValue(undefined);
+    // Real senders turn transport failures into this 502 (see email.service.ts)
     vi.spyOn(emailService, "sendPasswordResetEmail").mockRejectedValue(
-      new Error("boom"),
+      new ApiError(
+        502,
+        "Could not send the password reset email",
+        "EMAIL_SEND_FAILED",
+      ),
     );
 
     const res = await request(app)

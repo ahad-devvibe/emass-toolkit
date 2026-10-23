@@ -20,10 +20,17 @@ const emailField = z.email({
       : "Invalid email address",
 });
 
-const newPasswordField = z
-  .string({ error: required("New password") })
-  .min(6, "Password must be at least 6 characters")
-  .max(72, "Password must be at most 72 characters");
+const passwordField = (label: string) =>
+  z
+    .string({ error: required(label) })
+    .min(6, "Password must be at least 6 characters")
+    .max(72, "Password must be at most 72 characters");
+
+const newPasswordField = passwordField("New password");
+
+const otpCodeField = z
+  .string({ error: required("OTP code") })
+  .regex(/^\d{6}$/, "OTP must be 6 digits");
 
 const nameField = (label: string, max = 80) =>
   z
@@ -35,6 +42,13 @@ const nameField = (label: string, max = 80) =>
 const otpPurposeField = z
   .enum(["MFA_LOGIN", "PASSWORD_RESET"], {
     error: "Purpose must be MFA_LOGIN or PASSWORD_RESET",
+  })
+  .default("MFA_LOGIN");
+
+// Resend also covers the signup code; verifying it has its own endpoint
+const resendPurposeField = z
+  .enum(["MFA_LOGIN", "PASSWORD_RESET", "SIGNUP_VERIFY"], {
+    error: "Purpose must be MFA_LOGIN, PASSWORD_RESET or SIGNUP_VERIFY",
   })
   .default("MFA_LOGIN");
 
@@ -76,7 +90,24 @@ export const loginSchema = z.object(
 export const resendOtpSchema = z.object(
   {
     email: emailField,
-    purpose: otpPurposeField,
+    purpose: resendPurposeField,
+  },
+  { error: bodyRequired },
+);
+
+export const signupVerifySchema = z.object(
+  {
+    email: emailField,
+    code: otpCodeField,
+  },
+  { error: bodyRequired },
+);
+
+export const signupCompleteSchema = z.object(
+  {
+    email: emailField,
+    code: otpCodeField,
+    password: passwordField("Password"),
   },
   { error: bodyRequired },
 );
@@ -84,9 +115,7 @@ export const resendOtpSchema = z.object(
 export const verifyOtpSchema = z.object(
   {
     email: emailField,
-    code: z
-      .string({ error: required("OTP code") })
-      .regex(/^\d{6}$/, "OTP must be 6 digits"),
+    code: otpCodeField,
     purpose: otpPurposeField,
   },
   { error: bodyRequired },
@@ -102,14 +131,13 @@ export const forgotPasswordSchema = z.object(
 export const resetPasswordSchema = z.object(
   {
     email: emailField,
-    code: z
-      .string({ error: required("OTP code") })
-      .regex(/^\d{6}$/, "OTP must be 6 digits"),
+    code: otpCodeField,
     newPassword: newPasswordField,
   },
   { error: bodyRequired },
 );
 
+// TODO(auth-otp-signup): unused since OTP signup, remove later
 export const setPasswordSchema = z.object(
   {
     token: z
@@ -121,6 +149,7 @@ export const setPasswordSchema = z.object(
   { error: bodyRequired },
 );
 
+// TODO(auth-otp-signup): unused since OTP signup, remove later
 export const resendSetPasswordSchema = z.object(
   {
     email: emailField,

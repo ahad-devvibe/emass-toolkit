@@ -9,6 +9,8 @@ datasource db {
 enum OtpPurpose {
   MFA_LOGIN
   PASSWORD_RESET
+  // Signup: proves the person owns the inbox before they set a password
+  SIGNUP_VERIFY
 }
 
 enum UserRole {
@@ -51,13 +53,17 @@ model User {
   hubspotContactId String?   @unique
   hubspotSyncedAt  DateTime?
 
+  rejectionReason String? @db.Text
+
   refreshTokens     RefreshToken[]
   otps              Otp[]
   setPasswordTokens SetPasswordToken[]
 
-  // releasesCreated   Release[]      @relation("ReleaseCreatedBy")
-  // releasesPublished Release[]      @relation("ReleasePublishedBy")
-  // releaseEvents     ReleaseEvent[]
+  releasesCreated   Release[]         @relation("ReleaseCreatedBy")
+  releasesPublished Release[]         @relation("ReleasePublishedBy")
+  releaseEvents     ReleaseEvent[]
+  resourcesUpdated  ProductResource[]
+  // downloads         Download[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -108,107 +114,168 @@ model EmailDomainPolicy {
 }
 
 // ---------------------------------------------------------------------------
-// Releases (see tasks/release-management.md). Products are defined in code;
-// productId is validated against that list in the service layer.
+// Catalog + releases (see tasks/release-management.md).
+// Products are seeded (npm run seed:products, fixed ids); admin CRUD comes later.
 
-// enum ReleaseStatus {
-//   DRAFT
-//   IN_REVIEW
-//   CHANGES_REQUESTED
-//   PUBLISHED
-//   ARCHIVED
-//   ROLLED_BACK
-// }
+model Product {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  detail      String? @db.Text
+  imageUrl    String?
+  sortOrder   Int     @default(0)
 
-// enum ReleaseFileKind {
-//   SDK
-//   DOC
-// }
+  isActive Boolean @default(true)
 
-// enum SdkPlatform {
-//   WINDOWS
-//   MACOS
-//   UBUNTU
-// }
+  releases  Release[]
+  resources ProductResource[]
 
-// enum ReleaseEventType {
-//   CREATED
-//   EDITED
-//   FILE_ADDED
-//   FILE_REMOVED
-//   FILE_REMAPPED
-//   SUBMITTED
-//   WITHDRAWN
-//   CHANGES_REQUESTED
-//   PUBLISHED
-//   ARCHIVED
-//   ROLLED_BACK
-//   RESTORED
-//   NOTES_EDITED
-// }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-// model Release {
-//   id           String        @id @default(uuid())
-//   productId    String
-//   version      String
-//   // Parsed semver parts, for ordering and "newer than shipped" checks
-//   versionMajor Int
-//   versionMinor Int
-//   versionPatch Int
-//   status       ReleaseStatus @default(DRAFT)
-//   // Optional Markdown; empty means no release-notes tab (PDF notes ship as a DOC file)
-//   notes        String        @default("") @db.Text
+  @@index([isActive, sortOrder])
+}
 
-//   createdById   String
-//   createdBy     User      @relation("ReleaseCreatedBy", fields: [createdById], references: [id])
-//   publishedAt   DateTime?
-//   publishedById String?
-//   publishedBy   User?     @relation("ReleasePublishedBy", fields: [publishedById], references: [id])
+enum ReleaseStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  PUBLISHED
+  ARCHIVED
+  ROLLED_BACK
+}
 
-//   files  ReleaseFile[]
-//   events ReleaseEvent[]
+enum ReleaseFileKind {
+  SDK
+  DOC
+}
 
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
+enum SdkPlatform {
+  WINDOWS
+  MACOS
+  UBUNTU
+}
 
-//   @@unique([productId, version])
-//   @@index([productId, status])
-//   @@index([status, updatedAt])
-// }
+enum ReleaseEventType {
+  CREATED
+  SUBMITTED
+  WITHDRAWN
+  CHANGES_REQUESTED
+  PUBLISHED
+  ARCHIVED
+  ROLLED_BACK
+  RESTORED
+  NOTES_EDITED
+}
 
-// model ReleaseFile {
-//   id        String          @id @default(uuid())
-//   releaseId String
-//   release   Release         @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-//   kind      ReleaseFileKind
-//   // SDK files need a platform (one per platform per release; NULLs for docs
-//   // don't collide). Docs are shown by their original file name.
-//   platform  SdkPlatform?
+model Release {
+  id           String        @id @default(uuid())
+  productId    String
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  version      String
+  // Parsed semver parts, for ordering and "newer than shipped" checks
+  versionMajor Int
+  versionMinor Int
+  versionPatch Int
+  status       ReleaseStatus @default(DRAFT)
 
-//   originalName String
-//   contentType  String
-//   sizeBytes    BigInt
-//   sha256       String
-//   // staged/... until publish, then releases/...; never overwritten
-//   objectKey    String @unique
+  releaseNotes String @default("") @db.Text
 
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
+  createdById String
+  createdBy   User   @relation("ReleaseCreatedBy", fields: [createdById], references: [id])
 
-//   @@unique([releaseId, platform])
-//   @@index([releaseId])
-// }
+  publishedAt   DateTime?
+  publishedById String?
+  publishedBy   User?     @relation("ReleasePublishedBy", fields: [publishedById], references: [id])
 
-// model ReleaseEvent {
-//   id        String           @id @default(uuid())
-//   releaseId String
-//   release   Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-//   type      ReleaseEventType
-//   actorId   String
-//   actor     User             @relation(fields: [actorId], references: [id])
-//   note      String?          @db.Text
-//   meta      Json?
-//   createdAt DateTime         @default(now())
+  files  ReleaseFile[]
+  events ReleaseEvent[]
 
-//   @@index([releaseId, createdAt])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, version])
+  @@index([productId, status])
+  @@index([status, createdAt])
+  @@index([productId, publishedAt])
+}
+
+model ReleaseFile {
+  id        String          @id @default(uuid())
+  releaseId String
+  release   Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  // Null while drafting: the file uploaded before anyone picked its type.
+  // Submit requires a kind on every file (and a platform on every SDK).
+  kind      ReleaseFileKind?
+
+  platform SdkPlatform?
+
+  originalName String
+  contentType  String
+  sizeBytes    BigInt
+  sha256       String
+  // staged/... until publish, then releases/...; never overwritten
+  objectKey    String @unique
+
+  // downloads Download[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([releaseId, platform])
+}
+
+model ReleaseEvent {
+  id        String           @id @default(uuid())
+  releaseId String
+  release   Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  type      ReleaseEventType
+  actorId   String
+  actor     User             @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  note      String?          @db.Text
+  createdAt DateTime         @default(now())
+
+  @@index([releaseId, createdAt])
+}
+
+model ProductResource {
+  id           String  @id @default(uuid())
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  title        String
+  originalName String
+  contentType  String
+  sizeBytes    BigInt
+  sha256       String
+  objectKey    String  @unique
+
+  updatedById String
+  updatedBy   User   @relation(fields: [updatedById], references: [id])
+
+  // downloads Download[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+// One row per authorized download click (cookie-authenticated; the server
+// checks access, then issues a ~60s read-only PAR). Exactly one of
+// releaseFileId / resourceId is set (CHECK constraint in the migration).
+// HubSpot download properties are computed from these rows.
+// model Download {
+//   id            String           @id @default(uuid())
+//   userId        String
+//   user          User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+//   releaseFileId String?
+//   releaseFile   ReleaseFile?     @relation(fields: [releaseFileId], references: [id], onDelete: SetNull)
+//   resourceId    String?
+//   resource      ProductResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+//   // Denormalized so rollback recipients are one indexed query
+//   releaseId     String?
+//   createdAt     DateTime         @default(now())
+
+//   @@index([releaseId, userId])
+//   @@index([userId, createdAt])
 // }

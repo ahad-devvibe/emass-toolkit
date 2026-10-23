@@ -127,8 +127,11 @@ describe("MFA login (API)", () => {
       .send({ email: user.email, code, purpose: "MFA_LOGIN" });
 
     expect(verify.status).toBe(200);
-    expect(verify.body.data.accessToken).toEqual(expect.any(String));
+    expect(verify.body.data).not.toHaveProperty("accessToken");
     expect(verify.body.data.user.role).toBe("ADMIN");
+    expect(
+      setCookies(verify.headers).some((c) => c.startsWith("accessToken=")),
+    ).toBe(true);
     expect(verify.body.data).not.toHaveProperty("refreshToken");
     expect(
       setCookies(verify.headers).some((c) => c.startsWith("refreshToken=")),
@@ -144,7 +147,9 @@ describe("MFA login (API)", () => {
 
     expect(login.status).toBe(200);
     expect(login.body.data.mfaRequired).toBe(false);
-    expect(login.body.data.accessToken).toEqual(expect.any(String));
+    expect(
+      setCookies(login.headers).some((c) => c.startsWith("accessToken=")),
+    ).toBe(true);
   });
 
   it("resend-otp MFA_LOGIN works over HTTP for staff", async () => {

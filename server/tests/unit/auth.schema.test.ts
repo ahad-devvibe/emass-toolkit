@@ -6,7 +6,9 @@ import {
   resendSetPasswordSchema,
   resetPasswordSchema,
   setPasswordSchema,
+  signupCompleteSchema,
   signupSchema,
+  signupVerifySchema,
   verifyOtpSchema,
 } from "../../src/schemas/auth.schema.js";
 
@@ -142,7 +144,7 @@ describe("otp purposes", () => {
     ).toBe(true);
   });
 
-  it("rejects SIGNUP_VERIFY (retired)", () => {
+  it("rejects SIGNUP_VERIFY (signup has its own verify endpoint)", () => {
     const result = verifyOtpSchema.safeParse({
       email: "a@b.com",
       code: "123456",
@@ -171,6 +173,94 @@ describe("otp purposes", () => {
     const result = resendOtpSchema.safeParse({ email: "a@b.com" });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.purpose).toBe("MFA_LOGIN");
+  });
+
+  it("resendOtpSchema accepts SIGNUP_VERIFY", () => {
+    const result = resendOtpSchema.safeParse({
+      email: "a@b.com",
+      purpose: "SIGNUP_VERIFY",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("resendOtpSchema names all three purposes when wrong", () => {
+    const result = resendOtpSchema.safeParse({
+      email: "a@b.com",
+      purpose: "NOPE",
+    });
+    expect(result.success).toBe(false);
+    expect(
+      (result as { error: { issues: { message: string }[] } }).error.issues[0]
+        .message,
+    ).toBe("Purpose must be MFA_LOGIN, PASSWORD_RESET or SIGNUP_VERIFY");
+  });
+});
+
+type Issues = {
+  error: { issues: { path: (string | number)[]; message: string }[] };
+};
+const issuesOf = (result: unknown) =>
+  (result as Issues).error.issues.map(({ path, message }) => ({
+    path,
+    message,
+  }));
+
+describe("signupVerifySchema", () => {
+  it("accepts email + 6-digit code", () => {
+    expect(
+      signupVerifySchema.safeParse({ email: "a@b.com", code: "123456" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("reports missing fields", () => {
+    expect(issuesOf(signupVerifySchema.safeParse({}))).toEqual([
+      { path: ["email"], message: "Email is required" },
+      { path: ["code"], message: "OTP code is required" },
+    ]);
+  });
+
+  it("rejects a malformed code", () => {
+    expect(
+      issuesOf(signupVerifySchema.safeParse({ email: "a@b.com", code: "12a" })),
+    ).toEqual([{ path: ["code"], message: "OTP must be 6 digits" }]);
+  });
+});
+
+describe("signupCompleteSchema", () => {
+  const valid = { email: "a@b.com", code: "123456", password: "secret1" };
+
+  it("accepts email, code and password", () => {
+    expect(signupCompleteSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it("reports missing fields with a plain Password label", () => {
+    expect(issuesOf(signupCompleteSchema.safeParse({}))).toEqual([
+      { path: ["email"], message: "Email is required" },
+      { path: ["code"], message: "OTP code is required" },
+      { path: ["password"], message: "Password is required" },
+    ]);
+  });
+
+  it("tells a wrong type apart from a missing password", () => {
+    expect(
+      issuesOf(signupCompleteSchema.safeParse({ ...valid, password: 123 })),
+    ).toEqual([
+      {
+        path: ["password"],
+        message: "Invalid input: expected string, received number",
+      },
+    ]);
+  });
+
+  it("enforces 6 to 72 characters", () => {
+    expect(
+      signupCompleteSchema.safeParse({ ...valid, password: "short" }).success,
+    ).toBe(false);
+    expect(
+      signupCompleteSchema.safeParse({ ...valid, password: "x".repeat(73) })
+        .success,
+    ).toBe(false);
   });
 });
 

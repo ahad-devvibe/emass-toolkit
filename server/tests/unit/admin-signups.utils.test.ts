@@ -1,32 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   afterCursor,
-  decodeCursor,
-  encodeCursor,
   searchWhere,
 } from "../../src/services/auth/admin-signups.utils.js";
 
-describe("signup cursor", () => {
-  it("round-trips createdAt and id", () => {
-    const cursor = {
-      createdAt: new Date("2026-10-19T08:30:00.123Z"),
-      id: "0e21dd0e-5bef-4048-9816-4133492f9679",
-    };
-    expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor);
-  });
-
-  it("rejects garbage and malformed dates", () => {
-    for (const raw of [
-      "garbage",
-      Buffer.from("not-a-date|abc").toString("base64url"),
-      Buffer.from("2026-10-19T08:30:00.000Z|").toString("base64url"),
-    ]) {
-      expect(() => decodeCursor(raw)).toThrowError(
-        expect.objectContaining({ code: "INVALID_CURSOR" }),
-      );
-    }
-  });
-
+describe("signup afterCursor", () => {
   it("selects rows strictly after the cursor", () => {
     const createdAt = new Date("2026-10-19T00:00:00.000Z");
     expect(afterCursor({ createdAt, id: "b" })).toEqual({

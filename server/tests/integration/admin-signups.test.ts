@@ -6,24 +6,25 @@ import { prisma } from "../../src/configs/prisma.js";
 import { resetDb } from "../helpers/resetDb.js";
 import { createUser, promoteToAdmin, uniqueEmail } from "../helpers/auth.js";
 import { createMockEmailSender } from "../helpers/email.js";
-import { rejectSignup } from "../../src/services/auth/admin-signups.service.js";
+import { createMockHubspotClient } from "../helpers/hubspot.js";
+import { accessCookie } from "../helpers/http.js";
+import {
+  approveSignup,
+  rejectSignup,
+} from "../../src/services/auth/admin-signups.service.js";
 
 beforeAll(async () => {
   await resetDb();
 });
 
+// A free-mail signup that verified its email and set a password
 async function pendingSignup(email: string) {
-  const user = await createUser(email, {
-    status: "PENDING_APPROVAL",
-    password: null,
-    emailVerified: false,
-  });
-  return user;
+  return createUser(email, { status: "PENDING_APPROVAL" });
 }
 
 async function adminAuthHeader() {
   const admin = await promoteToAdmin(await createUser(uniqueEmail("admin")));
-  return { Authorization: `Bearer ${admin.accessToken}` };
+  return { Cookie: accessCookie(admin.accessToken) };
 }
 
 describe("GET /api/auth/admin/signups/pending", () => {
@@ -52,7 +53,7 @@ describe("GET /api/auth/admin/signups/pending", () => {
     const customer = await createUser(uniqueEmail("cust"));
     const forbidden = await request(app)
       .get("/api/auth/admin/signups/pending")
-      .set("Authorization", `Bearer ${customer.accessToken}`);
+      .set("Cookie", accessCookie(customer.accessToken));
     expect(forbidden.status).toBe(403);
     expect(forbidden.body.code).toBe("FORBIDDEN");
 
@@ -70,7 +71,7 @@ describe("GET /api/auth/admin/signups/pending", () => {
     });
     const res = await request(app)
       .get("/api/auth/admin/signups/pending")
-      .set("Authorization", `Bearer ${generateAccessToken(dev.id, "DEV")}`);
+      .set("Cookie", accessCookie(generateAccessToken(dev.id, "DEV")));
     expect(res.status).toBe(403);
   });
 });
@@ -160,24 +161,81 @@ describe("GET /api/auth/admin/signups/pending (pagination + search)", () => {
 });
 
 describe("POST /api/auth/admin/signups/:id/approve", () => {
-  it("approves: status PENDING_SET_PASSWORD + set-password email", async () => {
+  it("approves: the account is ACTIVE and can sign in", async () => {
     const headers = await adminAuthHeader();
     const user = await pendingSignup(uniqueEmail("approve"));
+
+    const before = await request(app)
+      .post("/api/auth/login")
+      .send({ email: user.email, password: user.password });
+    expect(before.status).toBe(403);
+    expect(before.body.code).toBe("ACCOUNT_PENDING_APPROVAL");
 
     const res = await request(app)
       .post(`/api/auth/admin/signups/${user.id}/approve`)
       .set(headers);
 
     expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe("PENDING_SET_PASSWORD");
+    expect(res.body.data.status).toBe("ACTIVE");
+    expect(res.body.data).not.toHaveProperty("password");
 
     const row = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(row?.status).toBe(UserStatus.PENDING_SET_PASSWORD);
+    expect(row?.status).toBe(UserStatus.ACTIVE);
+    expect(
+      await prisma.setPasswordToken.count({ where: { userId: user.id } }),
+    ).toBe(0);
 
-    const tokens = await prisma.setPasswordToken.findMany({
-      where: { userId: user.id },
-    });
-    expect(tokens).toHaveLength(1);
+    const after = await request(app)
+      .post("/api/auth/login")
+      .send({ email: user.email, password: user.password });
+    expect(after.status).toBe(200);
+  });
+
+  it("emails the person and creates the HubSpot contact", async () => {
+    const sender = createMockEmailSender();
+    const hubspot = createMockHubspotClient();
+    const user = await pendingSignup(uniqueEmail("approve-notify"));
+
+    await approveSignup(user.id, sender, hubspot);
+
+    expect(sender.sent).toEqual([
+      {
+        kind: "welcome",
+        email: user.email,
+        firstName: "Test",
+        url: "http://localhost:5173/catalog",
+      },
+    ]);
+    expect(hubspot.upserted.map((c) => c.email)).toEqual([user.email]);
+  });
+
+  it("still activates when the email and HubSpot both fail", async () => {
+    const sender = createMockEmailSender();
+    sender.sendWelcomeEmail = async () => {
+      throw new Error("smtp down");
+    };
+    const hubspot = createMockHubspotClient();
+    hubspot.upsertContact = async () => {
+      throw new Error("hubspot down");
+    };
+    const user = await pendingSignup(uniqueEmail("approve-fail"));
+
+    await expect(
+      approveSignup(user.id, sender, hubspot),
+    ).resolves.toMatchObject({ status: "ACTIVE" });
+  });
+
+  it("approves only once: a second approval is SIGNUP_NOT_FOUND", async () => {
+    const sender = createMockEmailSender();
+    const user = await pendingSignup(uniqueEmail("approve-twice"));
+
+    const results = await Promise.allSettled([
+      approveSignup(user.id, sender, createMockHubspotClient()),
+      approveSignup(user.id, sender, createMockHubspotClient()),
+    ]);
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(sender.sent.filter((e) => e.kind === "welcome")).toHaveLength(1);
   });
 
   it("404s for non-pending users", async () => {
@@ -206,11 +264,13 @@ describe("POST /api/auth/admin/signups/:id/reject", () => {
 
     const row = await prisma.user.findUnique({ where: { id: user.id } });
     expect(row?.status).toBe(UserStatus.BLOCKED);
+    expect(row?.rejectionReason).toBeNull();
 
     const login = await request(app)
       .post("/api/auth/login")
-      .send({ email: user.email, password: "password123" });
-    expect(login.status).toBe(401);
+      .send({ email: user.email, password: user.password });
+    expect(login.status).toBe(403);
+    expect(login.body.code).toBe("ACCOUNT_BLOCKED");
   });
 
   it("404s for unknown ids", async () => {
@@ -240,6 +300,11 @@ describe("POST /api/auth/admin/signups/:id/reject", () => {
       .send({ reason: "Please use your company email" });
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe("BLOCKED");
+    // Stored for audit, but internal only
+    expect(res.body.data).not.toHaveProperty("rejectionReason");
+
+    const row = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(row?.rejectionReason).toBe("Please use your company email");
   });
 
   it("emails the person, including the reason when given", async () => {
@@ -280,7 +345,7 @@ describe("cross-role access", () => {
     const active = await createUser(uniqueEmail("active-cust"));
     const res = await request(app)
       .post(`/api/auth/admin/signups/${user.id}/approve`)
-      .set("Authorization", `Bearer ${active.accessToken}`);
+      .set("Cookie", accessCookie(active.accessToken));
     expect(res.status).toBe(403);
 
     const row = await prisma.user.findUnique({ where: { id: user.id } });

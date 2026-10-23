@@ -3,12 +3,6 @@ import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
 import { getHubspotConfig, type HubspotConfig } from "../../configs/hubspot.js";
 import { countryName } from "../../utils/country.utils.js";
-import {
-  HUBSPOT_PORTAL_STATUS_PROPERTY,
-  type HubspotPortalStatus,
-} from "./hubspot.utils.js";
-
-export type { HubspotPortalStatus } from "./hubspot.utils.js";
 
 export interface HubspotContactInput {
   email: string;
@@ -18,7 +12,6 @@ export interface HubspotContactInput {
   country: string;
   companyName: string;
   jobTitle: string;
-  portalStatus: HubspotPortalStatus;
 }
 
 /**
@@ -45,9 +38,9 @@ function toContactProperties(
     country: countryName(input.country),
     company: input.companyName,
     jobtitle: input.jobTitle,
-    [HUBSPOT_PORTAL_STATUS_PROPERTY]: input.portalStatus,
-    // Lifecycle only moves forward in HubSpot: lead until the account is active
-    lifecyclestage: input.portalStatus === "active" ? "customer" : "lead",
+    // Contacts are only created once the portal account is active (verified
+    // email, password set, approved if needed); sales qualifies them from here
+    lifecyclestage: "lead",
   };
   if (input.middleName) properties.middlename = input.middleName;
   return properties;
@@ -57,7 +50,7 @@ export function createLogHubspotClient(): HubspotClient {
   return {
     async upsertContact(input) {
       logger.info(
-        { email: input.email, portalStatus: input.portalStatus },
+        { email: input.email },
         "hubspot contact (disabled, logged only)",
       );
       return null;
@@ -126,7 +119,7 @@ export function createApiHubspotClient(
         return null;
       }
       logger.info(
-        { email: input.email, portalStatus: input.portalStatus, id },
+        { email: input.email, id },
         "hubspot contact upserted",
       );
       return { id: String(id) };
@@ -142,21 +135,21 @@ export function createHubspotClient(): HubspotClient {
 
 export const hubspotService: HubspotClient = createHubspotClient();
 
-export type HubspotContactSource = Omit<HubspotContactInput, "portalStatus"> & {
+export type HubspotContactSource = HubspotContactInput & {
   /** Our user id, used to store the HubSpot record ID back on the row. */
   id: string;
 };
 
 /**
- * Best-effort sync used by signup, approval and activation: a HubSpot outage
- * is logged and never fails the caller. Upserts are keyed by email, so the
+ * Best-effort sync, called once an account becomes ACTIVE (company signup
+ * completed, or a free-mail signup approved): a HubSpot outage is logged and
+ * never fails the caller. Upserts are keyed by email, so the
  * next transition repairs a contact missed during an outage. The returned
  * HubSpot record ID is stored on the user (`hubspotContactId`) for later
  * events and reconciliation.
  */
 export async function syncHubspotContact(
   user: HubspotContactSource,
-  portalStatus: HubspotPortalStatus,
   client: HubspotClient = hubspotService,
 ): Promise<void> {
   let contact: { id: string } | null;
@@ -169,11 +162,10 @@ export async function syncHubspotContact(
       country: user.country,
       companyName: user.companyName,
       jobTitle: user.jobTitle,
-      portalStatus,
     });
   } catch (err) {
     logger.warn(
-      { err, userId: user.id, portalStatus },
+      { err, userId: user.id },
       "hubspot contact sync failed",
     );
     return;
