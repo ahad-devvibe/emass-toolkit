@@ -8,8 +8,15 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   // Proxy /api so the browser sees one origin: the sameSite=strict refresh
   // cookie then works on localhost and on the LAN address alike
+  // Long timeouts so release uploads (up to 1 GiB) aren't cut off in dev
+  const uploadTimeoutMs = 2 * 60 * 60 * 1000
   const proxy = {
-    '/api': { target: env.VITE_API_TARGET || 'http://localhost:5000', changeOrigin: false },
+    '/api': {
+      target: env.VITE_API_TARGET || 'http://localhost:5000',
+      changeOrigin: false,
+      timeout: uploadTimeoutMs,
+      proxyTimeout: uploadTimeoutMs,
+    },
   }
 
   return {

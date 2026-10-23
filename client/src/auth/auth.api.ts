@@ -1,19 +1,22 @@
 import { apiRequest } from "@/lib/api/http"
-import type { SessionUser, SetPasswordInvite, SignupInput } from "./auth.types"
+import type { SessionUser, SignupInput } from "./auth.types"
 import { authorizedRequest } from "./session"
 
-type LoginResponse = { mfaRequired: true } | { mfaRequired: false; accessToken: string; user: SessionUser }
+type LoginResponse = { mfaRequired: true } | { mfaRequired: false; user: SessionUser }
+// signedIn: a company address is active and its cookies are set; a personal one awaits review
+type SignupCompleteResponse = { user: SessionUser; signedIn: boolean }
 
-// The refresh token never appears here: the server keeps it in an httpOnly cookie
+// No token ever appears here: the server sets both as httpOnly cookies
 export const authApi = {
   captcha: () => apiRequest<{ image: string }>("/auth/captcha"),
-  signup: (input: SignupInput) => apiRequest<SessionUser>("/auth/signup", { method: "POST", body: input }),
+  // Signup: the form emails a code, the code is checked, then the password finishes the account
+  signup: (input: SignupInput) => apiRequest<{ email: string }>("/auth/signup", { method: "POST", body: input }),
+  signupVerify: (email: string, code: string) => apiRequest<void>("/auth/signup/verify", { method: "POST", body: { email, code } }),
+  signupComplete: (email: string, code: string, password: string) => apiRequest<SignupCompleteResponse>("/auth/signup/complete", { method: "POST", body: { email, code, password } }),
+  resendSignupCode: (email: string) => apiRequest<void>("/auth/resend-otp", { method: "POST", body: { email, purpose: "SIGNUP_VERIFY" } }),
   login: (email: string, password: string) => apiRequest<LoginResponse>("/auth/login", { method: "POST", body: { email, password } }),
-  verifyMfa: (email: string, code: string) => apiRequest<{ accessToken: string; user: SessionUser }>("/auth/verify-otp", { method: "POST", body: { email, code, purpose: "MFA_LOGIN" } }),
+  verifyMfa: (email: string, code: string) => apiRequest<{ user: SessionUser }>("/auth/verify-otp", { method: "POST", body: { email, code, purpose: "MFA_LOGIN" } }),
   resendMfa: (email: string) => apiRequest<void>("/auth/resend-otp", { method: "POST", body: { email, purpose: "MFA_LOGIN" } }),
-  getSetPasswordInvite: (token: string) => apiRequest<SetPasswordInvite>(`/auth/set-password/${encodeURIComponent(token)}`),
-  setPassword: (token: string, password: string) => apiRequest<void>("/auth/set-password", { method: "POST", body: { token, password } }),
-  resendSetPassword: (email: string) => apiRequest<void>("/auth/resend-set-password", { method: "POST", body: { email } }),
   logout: () => apiRequest<void>("/auth/logout", { method: "POST" }),
   me: () => authorizedRequest<SessionUser>("/auth/me"),
 }

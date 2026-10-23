@@ -31,16 +31,24 @@ download versioned files. This is an MVP: keep it simple.
   Enforce roles on the server, never only in the UI.
 - Files: private OCI bucket, never public. A release file is never overwritten;
   every version is a new object.
-- Downloads: user gets a 1h token from our DB; on click we check it, log the
-  download, then redirect to an object-level, read-only OCI PAR (~60 seconds).
-  OCI access uses an instance principal, no keys on disk.
+- Downloads: on click the client calls our API (cookie auth); we check access,
+  log the download, and return an object-level, read-only OCI PAR (~60
+  seconds) for the published object. No PAR outlives a click, and none is
+  ever created for staged objects. OCI access uses an instance principal, no
+  keys on disk.
+- Buckets: always private. Dev uses one bucket with `staged/` and `releases/`
+  prefixes; prod uses separate staging and release buckets
+  (`OCI_STAGING_BUCKET` / `OCI_RELEASE_BUCKET`, both defaulting to
+  `OCI_BUCKET`). Publishing copies staged → release, then deletes the staged
+  object.
 - Checksums: we compute SHA-256 on upload, store it per file, show it next to
   the download.
 - Release states: staged -> published -> archived. Publishing archives the
   previous version. Rollback restores it and emails everyone who downloaded the
   bad build.
-- Catalog: the two products are defined in code. Versions and files live in
-  Postgres.
+- Catalog: products live in Postgres (`Product`, addressed by UUID, seeded
+  by `npm run seed:products`; admin CRUD comes later). Versions, files and
+  product-level resources live in Postgres too.
 - HubSpot: used only to create/update customer contacts, one-way from our
   portal. Never read business logic from it. Download and activity logs live in
   our database.
@@ -93,11 +101,11 @@ download versioned files. This is an MVP: keep it simple.
 
 ## Testing DB
 
-- Tests run against a separate Postgres DB (`starterkit_test`), injected via
+- Tests run against a separate Postgres DB (`emass-toolkit-test`), injected via
   dotenv-cli from `.env.test` — never .env.
   Scripts: `npm run test` (everything), `npm run test:integration` (integration dir),
   `npm run test:migrate` (migrate the test DB schema).
-- vitest.setup.ts refuses to run if DATABASE_URL doesn't contain "\_test" — this is intentional,
+- vitest.setup.ts refuses to run unless the DATABASE_URL database name ends with "-test" — this is intentional,
   don't remove it. If you see this error, you're loading the wrong env file.
 - Tables are truncated before each test file via resetDb() — don't rely on test ordering
   or manual cleanup in individual tests.

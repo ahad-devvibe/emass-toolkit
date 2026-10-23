@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Copy } from "lucide-react"
+import { ArrowDownToLine, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { fileKindMeta, isSdkFile, osMeta } from "@/pages/Catalog/catalog.meta"
@@ -10,7 +10,8 @@ function FileIcon({ file }: { file: ReleaseFile }) {
   return <Icon aria-hidden className="size-[18px]" />
 }
 
-export function FileRow({ file, recommended, onDownload, onCopy }: { file: ReleaseFile; recommended: boolean; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }) {
+// The checksum lives in the details dialog; the row stays scannable
+export function FileRow({ file, recommended, onDownload, onDetails }: { file: ReleaseFile; recommended: boolean; onDownload: (file: ReleaseFile) => void; onDetails: (file: ReleaseFile) => void }) {
   const title = isSdkFile(file) ? osMeta[file.os].label : file.title
   const detail = isSdkFile(file) ? file.arch : file.format
 
@@ -23,17 +24,12 @@ export function FileRow({ file, recommended, onDownload, onCopy }: { file: Relea
           <span className="text-muted-foreground">{detail}</span>
           {recommended && <span className="rounded-full bg-primary/10 px-2 py-px text-[11px] font-medium text-primary">Your OS</span>}
         </p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>{file.size}</span>
-          <span aria-hidden>·</span>
-          <Tooltip>
-            <TooltipTrigger render={<button type="button" aria-label={`Copy SHA-256 checksum for ${file.name}`} onClick={() => onCopy(file.checksum, "Checksum")} className="inline-flex items-center gap-1 rounded font-mono outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50" />}>
-              sha256:{file.checksum.slice(0, 10)}<Copy className="size-3" />
-            </TooltipTrigger>
-            <TooltipContent className="max-w-sm break-all font-mono">{file.checksum}</TooltipContent>
-          </Tooltip>
-        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{file.size}</p>
       </div>
+      <Tooltip>
+        <TooltipTrigger render={<Button size="icon-sm" variant="ghost" aria-label={`Details for ${file.name}`} onClick={() => onDetails(file)} />}><Info /></TooltipTrigger>
+        <TooltipContent>File details & checksum</TooltipContent>
+      </Tooltip>
       <Button size="sm" variant={recommended ? "default" : "outline"} aria-label={`Download ${file.name}`} onClick={() => onDownload(file)}><ArrowDownToLine /><span className="hidden sm:inline">Download</span></Button>
     </li>
   )

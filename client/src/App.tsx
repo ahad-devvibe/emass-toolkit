@@ -8,8 +8,6 @@ import { ProductDetailsPage } from "@/pages/ProductDetails/ProductDetailsPage"
 import { ReleaseDetailPage } from "@/pages/ReleaseDetail/ReleaseDetailPage"
 import { ReleaseEditorPage } from "@/pages/ReleaseEditor/ReleaseEditorPage"
 import { ReleasesPage } from "@/pages/Releases/ReleasesPage"
-import { ReleasesProvider } from "@/pages/Releases/ReleasesProvider"
-import { SetPasswordPage } from "@/pages/SetPassword/SetPasswordPage"
 import { SignInPage } from "@/pages/SignIn/SignInPage"
 import { SignUpPage } from "@/pages/SignUp/SignUpPage"
 import { SignupsPage } from "@/pages/Signups/SignupsPage"
@@ -41,27 +39,24 @@ const customer = (page: ReactNode) => <RequireAuth><RequireRole roles={["CUSTOME
 export default function App() {
   return (
     <AuthProvider>
-      <ReleasesProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* One persistent shell so the brand panel doesn't remount between auth pages */}
-            <Route element={<AuthLayout />}>
-              <Route path="/sign-in" element={<GuestOnly><SignInPage /></GuestOnly>} />
-              <Route path="/sign-up" element={<GuestOnly><SignUpPage /></GuestOnly>} />
-              {/* Public even when signed in: the link belongs to whoever received the email */}
-              <Route path="/set-password" element={<SetPasswordPage />} />
-            </Route>
-            <Route path="/catalog" element={customer(<CatalogPage />)} />
-            <Route path="/catalog/:productId" element={customer(<ProductRoute />)} />
-            <Route path="/releases" element={staff(<ReleasesPage />)} />
-            <Route path="/releases/new" element={staff(<ReleaseEditorPage key="new" />)} />
-            <Route path="/releases/:releaseId" element={staff(<ReleaseRoute />)} />
-            <Route path="/releases/:releaseId/edit" element={staff(<ReleaseEditRoute />)} />
-            <Route path="/admin/signups" element={<RequireAuth><RequireRole roles={["ADMIN"]}><SignupsPage /></RequireRole></RequireAuth>} />
-            <Route path="*" element={<RequireAuth><RoleHome /></RequireAuth>} />
-          </Routes>
-        </BrowserRouter>
-      </ReleasesProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* One persistent shell so the brand panel doesn't remount between auth pages */}
+          <Route element={<AuthLayout />}>
+            <Route path="/sign-in" element={<GuestOnly><SignInPage /></GuestOnly>} />
+            <Route path="/sign-up" element={<GuestOnly><SignUpPage /></GuestOnly>} />
+          </Route>
+          <Route path="/catalog" element={customer(<CatalogPage />)} />
+          <Route path="/catalog/:productId" element={customer(<ProductRoute />)} />
+          <Route path="/releases" element={staff(<ReleasesPage />)} />
+          {/* Only DEVs create releases; admins review them */}
+          <Route path="/releases/new" element={<RequireAuth><RequireRole roles={["DEV"]}><ReleaseEditorPage key="new" /></RequireRole></RequireAuth>} />
+          <Route path="/releases/:releaseId" element={staff(<ReleaseRoute />)} />
+          <Route path="/releases/:releaseId/edit" element={staff(<ReleaseEditRoute />)} />
+          <Route path="/admin/signups" element={<RequireAuth><RequireRole roles={["ADMIN"]}><SignupsPage /></RequireRole></RequireAuth>} />
+          <Route path="*" element={<RequireAuth><RoleHome /></RequireAuth>} />
+        </Routes>
+      </BrowserRouter>
     </AuthProvider>
   )
 }

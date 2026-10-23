@@ -1,48 +1,53 @@
 import { apiRequest, ApiRequestError, type RequestOptions } from "@/lib/api/http"
+import { uploadCancelled, uploadMultipart, type UploadOptions } from "@/lib/api/upload"
 
 /*
- * Access token + refresh coordination.
+ * Session + refresh coordination.
  *
- * The access token (15 min) lives in memory only. The refresh token is an
- * httpOnly cookie the server rotates on every /auth/refresh. Two refreshes
- * carrying the same cookie make the server treat the second as token reuse and
- * revoke every session the user has, so this module guarantees one /refresh in
- * flight per device:
+ * Both tokens are httpOnly cookies set by the server: the access cookie
+ * (15 min, sent to every /api route) and the refresh cookie (rotated on every
+ * /auth/refresh). JS never reads either; when a request comes back 401 because
+ * the access cookie expired, we refresh once and retry.
+ *
+ * Two refreshes carrying the same refresh cookie make the server treat the
+ * second as token reuse and revoke every session the user has, so this module
+ * guarantees one /refresh in flight per device:
  *   - within a tab, callers share one pending promise;
  *   - across tabs, the refresh runs under a device-wide lock (Web Locks, or a
  *     localStorage lease where Web Locks are unavailable, e.g. plain-http LAN);
- *   - the new token is broadcast to other tabs, and a tab that waited on the
- *     lock reuses it instead of calling /refresh again.
+ *   - a tab that waited on the lock while another tab refreshed reuses that
+ *     result instead of calling /refresh again (the cookies are shared).
  */
 
-export type SessionEvent = { type: "token"; fromOtherTab: boolean } | { type: "signed-out" }
+export type SessionEvent = { type: "active"; fromOtherTab: boolean } | { type: "signed-out" }
 
 const CHANNEL_NAME = "emass-auth"
 const LOCK_NAME = "emass-auth-refresh"
 const LEASE_KEY = "emass-auth-refresh-lease"
 // A flag only (never a token): lets an anonymous visit skip the boot refresh
 const HINT_KEY = "emass-has-session"
-const EXPIRY_SKEW_MS = 30_000
 const REFRESH_TIMEOUT_MS = 8_000
 const LEASE_MS = 10_000
+// Codes requireAuth answers with when the access cookie is gone or unusable
+const RETRYABLE_AUTH_CODES = new Set(["TOKEN_MISSING", "TOKEN_EXPIRED", "TOKEN_INVALID"])
 
-type BroadcastMessage = { type: "token"; accessToken: string } | { type: "signed-out" }
+type BroadcastMessage = { type: "active" } | { type: "signed-out" }
 
-let accessToken: string | null = null
-// Bumped whenever the token changes, so a tab can tell another tab refreshed while it waited
+// Bumped on every session change (here or in another tab), so a tab can tell
+// the session moved on while it waited for the lock; `active` is where it landed
 let generation = 0
-let inflight: Promise<string | null> | null = null
+let active = false
+let inflight: Promise<boolean> | null = null
 const listeners = new Set<(event: SessionEvent) => void>()
 
 const tabId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(CHANNEL_NAME)
 
 channel?.addEventListener("message", (event: MessageEvent<BroadcastMessage>) => {
-  const message = event.data
-  if (message.type === "token") {
-    setToken(message.accessToken)
-    emit({ type: "token", fromOtherTab: true })
-  } else if (message.type === "signed-out") {
+  if (event.data.type === "active") {
+    markActive()
+    emit({ type: "active", fromOtherTab: true })
+  } else if (event.data.type === "signed-out") {
     clearLocal()
     emit({ type: "signed-out" })
   }
@@ -52,13 +57,13 @@ function emit(event: SessionEvent) {
   listeners.forEach((listener) => listener(event))
 }
 
-function setToken(token: string) {
-  accessToken = token
+function markActive() {
+  active = true
   generation += 1
 }
 
 function clearLocal() {
-  accessToken = null
+  active = false
   generation += 1
   writeHint(false)
 }
@@ -85,11 +90,11 @@ export function subscribe(listener: (event: SessionEvent) => void): () => void {
   return () => listeners.delete(listener)
 }
 
-/** Called after login / MFA verification hands us a fresh access token. */
-export function startSession(token: string) {
-  setToken(token)
+/** Called after login / MFA verification (or a refresh) set fresh cookies. */
+export function startSession() {
+  markActive()
   writeHint(true)
-  channel?.postMessage({ type: "token", accessToken: token } satisfies BroadcastMessage)
+  channel?.postMessage({ type: "active" } satisfies BroadcastMessage)
 }
 
 /** Drops the session in this tab and tells the other tabs. */
@@ -97,16 +102,6 @@ export function endSession() {
   clearLocal()
   channel?.postMessage({ type: "signed-out" } satisfies BroadcastMessage)
   emit({ type: "signed-out" })
-}
-
-function expiresSoon(token: string): boolean {
-  try {
-    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")
-    const { exp } = JSON.parse(atob(payload)) as { exp?: number }
-    return !exp || exp * 1000 - Date.now() < EXPIRY_SKEW_MS
-  } catch {
-    return true
-  }
 }
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -154,52 +149,71 @@ function withDeviceLock<T>(task: () => Promise<T>): Promise<T> {
   return withLease(task)
 }
 
-async function runRefresh(): Promise<string | null> {
+async function runRefresh(): Promise<boolean> {
   const seen = generation
   return withDeviceLock(async () => {
-    // Another tab refreshed while we queued for the lock: reuse its token
-    if (generation !== seen && accessToken && !expiresSoon(accessToken)) return accessToken
+    // Another tab refreshed (or signed out) while we queued: its cookies are ours too
+    if (generation !== seen) return active
     try {
-      const data = await apiRequest<{ accessToken: string }>("/auth/refresh", { method: "POST", signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS) })
-      startSession(data.accessToken)
-      return data.accessToken
+      await apiRequest<void>("/auth/refresh", { method: "POST", signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS) })
+      startSession()
+      return true
     } catch (error) {
       // Missing, expired, revoked or reused refresh cookie: the session is over
       if (error instanceof ApiRequestError && error.status === 401) {
         endSession()
-        return null
+        return false
       }
       throw error
     }
   })
 }
 
-/** Single-flight refresh. Resolves to the new access token, or null when signed out. */
-export function refreshAccessToken(): Promise<string | null> {
+/** Single-flight refresh. Resolves true when fresh cookies are in place, false when signed out. */
+export function refreshSession(): Promise<boolean> {
   inflight ??= runRefresh().finally(() => {
     inflight = null
   })
   return inflight
 }
 
-async function validToken(): Promise<string | null> {
-  if (accessToken && !expiresSoon(accessToken)) return accessToken
-  return refreshAccessToken()
-}
-
 const sessionEnded = () => new ApiRequestError(401, "SESSION_ENDED", "Your session has ended. Sign in again.")
 
-/** apiRequest with a Bearer token; refreshes first if needed and retries once on a rejected token. */
-export async function authorizedRequest<T>(path: string, options: Omit<RequestOptions, "token"> = {}): Promise<T> {
-  const token = await validToken()
-  if (!token) throw sessionEnded()
+/** apiRequest for signed-in calls: on an expired or missing access cookie, refreshes once and retries. */
+export async function authorizedRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const seen = generation
   try {
-    return await apiRequest<T>(path, { ...options, token })
+    return await apiRequest<T>(path, options)
   } catch (error) {
-    if (!(error instanceof ApiRequestError) || error.status !== 401 || (error.code !== "TOKEN_EXPIRED" && error.code !== "TOKEN_INVALID")) throw error
-    // Another caller may already have replaced the rejected token
-    const next = accessToken && accessToken !== token ? accessToken : await refreshAccessToken()
-    if (!next) throw sessionEnded()
-    return apiRequest<T>(path, { ...options, token: next })
+    if (!(error instanceof ApiRequestError) || error.status !== 401 || !RETRYABLE_AUTH_CODES.has(error.code)) throw error
+    // Another caller may already have refreshed since this request went out
+    const ok = generation !== seen ? active : await refreshSession()
+    if (!ok) throw sessionEnded()
+    return apiRequest<T>(path, options)
+  }
+}
+
+/**
+ * Multipart upload for signed-in calls. The server checks the cookie at the
+ * start of the request but only answers once the whole body has arrived, so
+ * a cheap authorized call first refreshes an expiring cookie before any
+ * bytes go out; a 401 that still slips through refreshes once and resends.
+ */
+export async function authorizedUpload<T>(path: string, fields: [string, string][], file: File, options: UploadOptions = {}): Promise<T> {
+  try {
+    await authorizedRequest("/auth/me", { signal: options.signal })
+  } catch (error) {
+    // fetch reports an abort as TIMEOUT; for an upload it's a cancel
+    if (options.signal?.aborted) throw uploadCancelled()
+    throw error
+  }
+  const seen = generation
+  try {
+    return await uploadMultipart<T>(path, fields, file, options)
+  } catch (error) {
+    if (!(error instanceof ApiRequestError) || error.status !== 401 || !RETRYABLE_AUTH_CODES.has(error.code)) throw error
+    const ok = generation !== seen ? active : await refreshSession()
+    if (!ok) throw sessionEnded()
+    return uploadMultipart<T>(path, fields, file, options)
   }
 }

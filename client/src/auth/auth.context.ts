@@ -1,11 +1,12 @@
 import { createContext } from "react"
-import type { AuthStatus, SessionUser, SignInResult } from "./auth.types"
+import type { AuthStatus, CompleteSignupResult, SessionUser, SignInResult } from "./auth.types"
 
 export type AuthContextValue = {
   status: AuthStatus
   user: SessionUser | null
   signIn: (email: string, password: string) => Promise<SignInResult>
   verifyMfa: (email: string, code: string) => Promise<void>
+  completeSignup: (email: string, code: string, password: string) => Promise<CompleteSignupResult>
   signOut: () => Promise<void>
 }
 

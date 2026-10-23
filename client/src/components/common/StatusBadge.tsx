@@ -1,35 +1,22 @@
+import { Archive, CircleCheck, Clock3, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// Catalog statuses (title case) plus the staff release workflow (snake case)
+// Customer catalog statuses; staff pages use pages/Releases/components/ReleaseStatusBadge
 export type ReleaseStatus = "Published" | "Archived" | "Staged"
-export type WorkflowStatus = "draft" | "in_review" | "changes_requested" | "published" | "archived" | "rolled_back"
 
-const tone = {
-  success: { badge: "bg-success/10 text-success ring-success/25", dot: "bg-success" },
-  muted: { badge: "bg-muted text-muted-foreground ring-border", dot: "bg-muted-foreground/60" },
-  amber: { badge: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300", dot: "bg-amber-500" },
-  info: { badge: "bg-primary/10 text-primary ring-primary/25", dot: "bg-primary" },
-  danger: { badge: "bg-destructive/10 text-destructive ring-destructive/25", dot: "bg-destructive" },
+// Same visual language as the staff badge: soft tint, same-hue text, an icon, squared corners
+const styles: Record<ReleaseStatus, { Icon: LucideIcon; tone: string }> = {
+  Published: { Icon: CircleCheck, tone: "bg-success/10 text-success dark:bg-success/15" },
+  Archived: { Icon: Archive, tone: "bg-muted text-muted-foreground" },
+  Staged: { Icon: Clock3, tone: "bg-amber-500/12 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300" },
 }
 
-const styles: Record<ReleaseStatus | WorkflowStatus, { tone: keyof typeof tone; label: string }> = {
-  Published: { tone: "success", label: "Published" },
-  Archived: { tone: "muted", label: "Archived" },
-  Staged: { tone: "amber", label: "Staged" },
-  draft: { tone: "muted", label: "Draft" },
-  in_review: { tone: "info", label: "In review" },
-  changes_requested: { tone: "amber", label: "Changes requested" },
-  published: { tone: "success", label: "Published" },
-  archived: { tone: "muted", label: "Archived" },
-  rolled_back: { tone: "danger", label: "Rolled back" },
-}
-
-export function StatusBadge({ status, label, className }: { status: ReleaseStatus | WorkflowStatus; label?: string; className?: string }) {
-  const style = tone[styles[status].tone]
+export function StatusBadge({ status, label, className }: { status: ReleaseStatus; label?: string; className?: string }) {
+  const { Icon, tone } = styles[status]
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset", style.badge, className)}>
-      <span className={cn("size-1.5 rounded-full", style.dot)} />
-      {label ?? styles[status].label}
+    <span className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium whitespace-nowrap", tone, className)}>
+      <Icon aria-hidden className="size-3.5" strokeWidth={2.25} />
+      {label ?? status}
     </span>
   )
 }

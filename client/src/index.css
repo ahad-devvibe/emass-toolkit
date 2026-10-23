@@ -30,6 +30,12 @@
 }
 
 @theme inline {
+  /* A light sweep across a progress bar whose real progress can't move (e.g. an OCI copy, 0 until done) */
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+  @keyframes shimmer {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(400%); }
+  }
   --font-display: "Arboria", "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-sans);
   --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
@@ -96,7 +102,8 @@
   --brand-powder: #c3dfff;
   --brand-shadow: 0 1px 2px oklch(0.3 0.03 250 / 5%), 0 4px 12px -6px oklch(0.3 0.03 250 / 8%);
   --brand-shadow-lg: 0 2px 4px oklch(0.3 0.08 250 / 6%), 0 22px 44px -14px oklch(0.45 0.15 245 / 32%);
-  --background: oklch(0.982 0.009 235);
+  /* Brand page colour from the Figma frames (#E7F6FF) */
+  --background: #e7f6ff;
   --foreground: oklch(0.25 0.06 262);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.25 0.06 262);
@@ -114,6 +121,9 @@
   --border: oklch(0.91 0.022 245);
   --input: oklch(0.89 0.026 245);
   --ring: #2ea7f5;
+  /* Thin scrollbar thumb: slate at rest, brand blue on hover; the track stays transparent */
+  --scrollbar-thumb: oklch(0.55 0.05 250 / 30%);
+  --scrollbar-thumb-hover: oklch(0.55 0.13 245 / 60%);
   --success: oklch(0.62 0.15 160);
   --chart-1: #0976bc;
   --chart-2: #2ea7f5;
@@ -121,13 +131,15 @@
   --chart-4: #0f3678;
   --chart-5: #93a3bd;
   --radius: 0.75rem;
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.25 0.06 262);
-  --sidebar-primary: #0976bc;
+  /* Staff sidebar: navy, as in the Figma reference */
+  --sidebar: #0f3678;
+  --sidebar-to: #001a46;
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: #0d72b9;
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: #e6f4ff;
-  --sidebar-accent-foreground: #0f3678;
-  --sidebar-border: oklch(0.91 0.022 245);
+  --sidebar-accent: #0d72b9;
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: #2ea7f5;
 }
 
@@ -153,20 +165,28 @@
   --border: oklch(0.75 0.05 245 / 14%);
   --input: oklch(0.75 0.05 245 / 20%);
   --ring: #2ea7f5;
+  --scrollbar-thumb: oklch(0.8 0.04 245 / 22%);
+  --scrollbar-thumb-hover: oklch(0.72 0.13 240 / 55%);
   --success: oklch(0.74 0.15 160);
   --chart-1: #2ea7f5;
   --chart-2: #7cc6f8;
   --chart-3: #93a3bd;
   --chart-4: #c3dfff;
   --chart-5: #6a7fa3;
-  --sidebar: oklch(0.19 0.04 262);
-  --sidebar-foreground: oklch(0.96 0.012 240);
-  --sidebar-primary: #2ea7f5;
-  --sidebar-primary-foreground: oklch(0.18 0.05 262);
-  --sidebar-accent: oklch(0.28 0.065 252);
-  --sidebar-accent-foreground: oklch(0.95 0.02 240);
-  --sidebar-border: oklch(0.75 0.05 245 / 14%);
+  --sidebar: #0b1d3d;
+  --sidebar-to: #06122a;
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: #0d72b9;
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: #0d72b9;
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: #2ea7f5;
+}
+
+/* Navy gradient behind the staff sidebar (and its mobile sheet) */
+@utility bg-sidebar-navy {
+  background-image: linear-gradient(to bottom, var(--sidebar), var(--sidebar-to));
 }
 
 @utility bg-brand-gradient-deep {
@@ -225,8 +245,37 @@
   }
 }
 
-/* Auth form panel: only scrolls when a form outgrows a short screen; keep it subtle */
-.auth-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(9 118 188 / 0.35) transparent;
+/* Thin, theme-aware scrollbars everywhere (page and inner scroll areas) */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *:hover {
+    scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+  }
+
+  /* Safari has no scrollbar-color yet; Chromium and Firefox use the standard properties above */
+  @supports not (scrollbar-color: auto) {
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 9999px;
+      background: var(--scrollbar-thumb) padding-box;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--scrollbar-thumb-hover) padding-box;
+    }
+  }
 }

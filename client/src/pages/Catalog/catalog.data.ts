@@ -13,8 +13,8 @@ export const products: Product[] = [
           { kind: "sdk", name: "emass-core-sdk-2.4.0-linux-x64.tar.gz", os: "linux", arch: "x64", size: "41 MB", checksum: "f455ddf1bbfb29d6c14377c104154066b592e19677df1531fa815433df30eb4a" },
           { kind: "sdk", name: "emass-core-sdk-2.4.0-linux-arm64.tar.gz", os: "linux", arch: "arm64", size: "39 MB", checksum: "cd2b729f4e0ff01669f50b4a0fb6212be8c73e8856081c83c7d22be55fd87325" },
           { kind: "documentation", name: "emass-core-sdk-2.4.0-api-reference.pdf", title: "API reference", format: "PDF", size: "4.2 MB", checksum: "68fd5fdc4b092e8e199558ea5b25a2da172c1d4765e5877edfc3e3072fdb63cd" },
-          { kind: "manual", name: "emass-core-2.4-integration-guide.pdf", title: "Integration guide", format: "PDF", size: "6.8 MB", checksum: "5d33366824d088ebb57683d79aec5b8a0dd018b914a64571c1ac5a61f1f02844" },
-          { kind: "manual", name: "emass-core-2.4-hardware-setup.pdf", title: "Hardware setup manual", format: "PDF", size: "3.1 MB", checksum: "b974207b4a560b640b16721a7a68de0bf5f6d59a340b82fb715f7cdee3b6efb7" },
+          { kind: "documentation", name: "emass-core-2.4-integration-guide.pdf", title: "Integration guide", format: "PDF", size: "6.8 MB", checksum: "5d33366824d088ebb57683d79aec5b8a0dd018b914a64571c1ac5a61f1f02844" },
+          { kind: "documentation", name: "emass-core-2.4-hardware-setup.pdf", title: "Hardware setup manual", format: "PDF", size: "3.1 MB", checksum: "b974207b4a560b640b16721a7a68de0bf5f6d59a340b82fb715f7cdee3b6efb7" },
         ],
         releaseNotes: "## Highlights\n\n- **Faster device discovery**: enumeration on USB hubs is up to 3\u00d7 quicker.\n- **Improved USB stability** during long-running sessions.\n- New `emass-cli` tools for provisioning and diagnostics.\n\n## Fixes\n\n- Fixed a reconnect loop when a device was unplugged mid-transfer.\n- Corrected firmware version reporting on macOS.\n\n## Upgrade notes\n\n> Drivers from 2.3.x must be uninstalled before installing 2.4.0 on Windows.\n\n| Component | Version |\n| --- | --- |\n| Device driver | 2.4.0 |\n| Runtime | 1.12.3 |\n",
       },
@@ -35,6 +35,11 @@ export const products: Product[] = [
         ],
       },
     ],
+    resources: [
+      { name: "emass-core-datasheet.pdf", title: "Product datasheet", format: "PDF", size: "1.8 MB", updated: "2026-09-02" },
+      { name: "emass-evb-schematics.pdf", title: "Evaluation board schematics", format: "PDF", size: "5.4 MB", updated: "2026-07-18" },
+      { name: "emass-brand-pack.zip", title: "Brand & logo pack", format: "ZIP", size: "12 MB", updated: "2026-05-11" },
+    ],
   },
   {
     id: "vision", name: "EMASS Vision SDK", description: "Computer vision libraries and calibrated drivers for EMASS imaging hardware.", detail: "Build vision experiences with calibrated imaging drivers, frame-processing libraries, and tools for validating camera performance across supported platforms.", icon: Package, imageUrl: "https://images.unsplash.com/photo-1535378917042-10a22c95931a?auto=format&fit=crop&w=1200&q=80",
@@ -45,7 +50,7 @@ export const products: Product[] = [
           { kind: "sdk", name: "emass-vision-sdk-1.8.2-win-x64.zip", os: "windows", arch: "x64", size: "126 MB", checksum: "e7f2a9566f96ec2beaba7be17045fb0ed4ccdedab5f5c0599f412ad35118289d" },
           { kind: "sdk", name: "emass-vision-sdk-1.8.2-linux-x64.tar.gz", os: "linux", arch: "x64", size: "121 MB", checksum: "88464930b330343d41269ae1bd25e9c573c3f1a5d2400f679b6fd6a24fdc522a" },
           { kind: "documentation", name: "emass-vision-sdk-1.8.2-api-reference.pdf", title: "API reference", format: "PDF", size: "5.6 MB", checksum: "7fe1b534fe1dbfa6dde508b0a5a3fc3b8756abc9e71e9725c915313bc33ef829" },
-          { kind: "manual", name: "emass-vision-1.8-calibration-manual.pdf", title: "Calibration manual", format: "PDF", size: "8.4 MB", checksum: "989c09ab88fbaebdbfeb6565b5ae84ad19a219c646ca422d08b761384086c1a5" },
+          { kind: "documentation", name: "emass-vision-1.8-calibration-manual.pdf", title: "Calibration manual", format: "PDF", size: "8.4 MB", checksum: "989c09ab88fbaebdbfeb6565b5ae84ad19a219c646ca422d08b761384086c1a5" },
         ],
         releaseNotes: "## Highlights\n\n- New **calibration utilities** with guided lens profiling.\n- Frame pipeline is ~20% faster on supported GPUs.\n- Added NVIDIA runtime support on Windows and Linux.\n\n## Known issues\n\n- Low-light calibration may need a second pass on very dark scenes.\n",
       },
@@ -62,6 +67,10 @@ export const products: Product[] = [
           { kind: "sdk", name: "emass-vision-sdk-1.7.0-win-x64.zip", os: "windows", arch: "x64", size: "117 MB", checksum: "3c3c893eaaf2e3d594ef5daf17c15a5d327ac087dc5cf6e8ae2fff0200b7eed0" },
         ],
       },
+    ],
+    resources: [
+      { name: "emass-vision-datasheet.pdf", title: "Product datasheet", format: "PDF", size: "2.1 MB", updated: "2026-08-21" },
+      { name: "emass-vision-sensor-specs.pdf", title: "Image sensor specifications", format: "PDF", size: "3.3 MB", updated: "2026-06-30" },
     ],
   },
 ]

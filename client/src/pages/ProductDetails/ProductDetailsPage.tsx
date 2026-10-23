@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { AppShell } from "@/components/common/AppShell"
 import { products } from "@/pages/Catalog/catalog.data"
-import type { ReleaseFile } from "@/pages/Catalog/catalog.types"
+import type { ReleaseFile, ResourceFile } from "@/pages/Catalog/catalog.types"
 import { detectOs } from "./detect-os"
 import { ProductHeader } from "./components/ProductHeader"
 import { ReleaseFiles } from "./components/ReleaseFiles"
@@ -30,7 +30,7 @@ export function ProductDetailsPage({ productId }: { productId?: string }) {
     requestAnimationFrame(() => document.getElementById("release-notes")?.scrollIntoView({ block: "start" }))
   }
   async function copy(value: string, label: string) { try { await navigator.clipboard.writeText(value); toast.success(`${label} copied to clipboard`) } catch { toast.error("Clipboard access is unavailable in this browser") } }
-  function download(file: ReleaseFile) { toast.success(`${file.name} is ready to download`) }
+  function download(file: ReleaseFile | ResourceFile) { toast.success(`${file.name} is ready to download`) }
 
   return (
     <AppShell>
@@ -45,10 +45,10 @@ export function ProductDetailsPage({ productId }: { productId?: string }) {
         )}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start">
           <div className="space-y-4">
-            <ReleaseFiles files={release.files} recommendedOs={recommendedOs} onDownload={download} onCopy={copy} />
+            <ReleaseFiles files={release.files} version={release} recommendedOs={recommendedOs} onDownload={download} onCopy={copy} />
             {release.releaseNotes && <ReleaseNotes notes={release.releaseNotes} open={notesOpen} onOpenChange={setNotesOpen} />}
           </div>
-          <ReleaseSidebar product={product} release={release} onVersionChange={selectVersion} onOpenNotes={release.releaseNotes ? openNotes : undefined} hasDocumentation={release.files.some((file) => file.kind === "documentation")} />
+          <ReleaseSidebar product={product} release={release} onOpenNotes={release.releaseNotes ? openNotes : undefined} onDownloadResource={download} />
         </div>
         <section id="support" className="flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">Questions about integrating {product.name}? The EMASS team can help.</p>

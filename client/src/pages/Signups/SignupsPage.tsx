@@ -101,7 +101,7 @@ export function SignupsPage() {
     try {
       if (kind === "approve") {
         await signupsApi.approve(signup.id)
-        toast.success(`Approved ${signup.firstName}`, { description: `A set-password link is on its way to ${signup.email}.` })
+        toast.success(`Approved ${signup.firstName}`, { description: "They've been emailed and can sign in now." })
       } else {
         await signupsApi.reject(signup.id, reason || undefined)
         toast.success(`Rejected ${signup.firstName}`, { description: `We've emailed ${signup.email} to let them know.` })

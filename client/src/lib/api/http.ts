@@ -1,7 +1,8 @@
 // Thin fetch wrapper for the Express API. Every call goes to same-origin /api
 // (proxied by Vite), sends cookies, and unwraps the { success, data } envelope.
+// Auth rides on httpOnly cookies the browser attaches; JS never sees a token.
 
-const API_BASE = "/api"
+export const API_BASE = "/api"
 
 export type FieldErrors = Record<string, string[] | undefined>
 
@@ -11,22 +12,37 @@ export class ApiRequestError extends Error {
   readonly status: number
   readonly code: string
   readonly fieldErrors: FieldErrors
+  /** Everything else the server put in `details` (e.g. PLATFORM_TAKEN's fileId). */
+  readonly details: Record<string, unknown>
 
-  constructor(status: number, code: string, message: string, fieldErrors: FieldErrors = {}) {
+  constructor(status: number, code: string, message: string, fieldErrors: FieldErrors = {}, details: Record<string, unknown> = {}) {
     super(message)
     this.name = "ApiRequestError"
     this.status = status
     this.code = code
     this.fieldErrors = fieldErrors
+    this.details = details
   }
 }
 
-export type RequestOptions = { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown; token?: string; signal?: AbortSignal }
+export type RequestOptions = { method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; body?: unknown; signal?: AbortSignal }
 
-export async function apiRequest<T>(path: string, { method = "GET", body, token, signal }: RequestOptions = {}): Promise<T> {
+/** Unwraps a parsed response body; shared by fetch requests and XHR uploads. */
+export function parseEnvelope<T>(status: number, payload: unknown): T {
+  const body = payload as { success?: boolean; data?: T } | ErrorEnvelope | null
+  const ok = status >= 200 && status < 300
+  if (!ok || !body || body.success === false) {
+    // No envelope means the proxy answered (API down) or something non-JSON came back
+    if (!body || typeof body !== "object" || !("code" in body)) throw new ApiRequestError(status, "SERVER_UNAVAILABLE", "The server is unavailable right now. Try again in a moment.")
+    const { fieldErrors = {}, ...details } = body.details ?? {}
+    throw new ApiRequestError(status, body.code, body.message, fieldErrors, details)
+  }
+  return (body as { data?: T }).data as T
+}
+
+export async function apiRequest<T>(path: string, { method = "GET", body, signal }: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" }
   if (body !== undefined) headers["Content-Type"] = "application/json"
-  if (token) headers.Authorization = `Bearer ${token}`
 
   let response: Response
   try {
@@ -36,12 +52,5 @@ export async function apiRequest<T>(path: string, { method = "GET", body, token,
     throw new ApiRequestError(0, "NETWORK_ERROR", "Can't reach the server. Check your connection and try again.")
   }
 
-  const payload = (await response.json().catch(() => null)) as { success?: boolean; data?: T } | ErrorEnvelope | null
-
-  if (!response.ok || !payload || payload.success === false) {
-    // No envelope means the proxy answered (API down) or something non-JSON came back
-    if (!payload || !("code" in payload)) throw new ApiRequestError(response.status, "SERVER_UNAVAILABLE", "The server is unavailable right now. Try again in a moment.")
-    throw new ApiRequestError(response.status, payload.code, payload.message, payload.details?.fieldErrors ?? {})
-  }
-  return (payload as { data?: T }).data as T
+  return parseEnvelope<T>(response.status, await response.json().catch(() => null))
 }

@@ -16,7 +16,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     statusRef.current = state.status
   }, [state.status])
 
-  // /me goes through authorizedRequest, which restores the access token via the
+  // /me goes through authorizedRequest: an expired access cookie triggers the
   // single-flight refresh (StrictMode's double effect shares the same request)
   const loadUser = useCallback(async () => {
     try {
@@ -47,15 +47,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const result = await authApi.login(email, password)
     if (result.mfaRequired) return { mfaRequired: true }
-    startSession(result.accessToken)
+    startSession()
     setState({ status: "authenticated", user: result.user })
     return { mfaRequired: false }
   }, [])
 
   const verifyMfa = useCallback(async (email: string, code: string) => {
     const result = await authApi.verifyMfa(email, code)
-    startSession(result.accessToken)
+    startSession()
     setState({ status: "authenticated", user: result.user })
+  }, [])
+
+  const completeSignup = useCallback(async (email: string, code: string, password: string) => {
+    const { user, signedIn } = await authApi.signupComplete(email, code, password)
+    if (signedIn) {
+      startSession()
+      setState({ status: "authenticated", user })
+    }
+    return { signedIn }
   }, [])
 
   const signOut = useCallback(async () => {
@@ -68,5 +77,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     endSession()
   }, [])
 
-  return <AuthContext.Provider value={{ ...state, signIn, verifyMfa, signOut }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ ...state, signIn, verifyMfa, completeSignup, signOut }}>{children}</AuthContext.Provider>
 }

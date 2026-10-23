@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { Loader2 } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
-import { authApi } from "@/auth/auth.api"
-import { authErrorMessage, errorCode } from "@/auth/auth.messages"
+import { authErrorMessage } from "@/auth/auth.messages"
 import { useAuth } from "@/auth/useAuth"
 import { AuthCard } from "@/components/common/AuthCard"
 import { FormAlert, FormField } from "@/components/common/FormField"
@@ -22,7 +21,7 @@ function validate(email: string, password: string): FieldErrors {
   return errors
 }
 
-// Set by the set-password page so the user lands here ready to sign in
+// Lets another page send the user here with the email filled in and a notice
 type SignInState = { email?: string; notice?: string } | null
 
 export function SignInPage() {
@@ -33,10 +32,8 @@ export function SignInPage() {
   const [password, setPassword] = useState("")
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [formError, setFormError] = useState("")
-  const [errorKind, setErrorKind] = useState<string>()
   const [notice, setNotice] = useState(initial?.notice ?? "")
   const [submitting, setSubmitting] = useState(false)
-  const [resending, setResending] = useState(false)
   const [mfaEmail, setMfaEmail] = useState<string | null>(null)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -53,23 +50,8 @@ export function SignInPage() {
       if (mfaRequired) setMfaEmail(email.trim())
     } catch (error) {
       setFormError(authErrorMessage(error))
-      setErrorKind(errorCode(error))
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  async function resendSetPassword() {
-    setResending(true)
-    try {
-      await authApi.resendSetPassword(email.trim())
-      setFormError("")
-      setNotice(`We've sent a new set-password link to ${email.trim()}.`)
-    } catch (error) {
-      setFormError(authErrorMessage(error))
-      setErrorKind(errorCode(error))
-    } finally {
-      setResending(false)
     }
   }
 
@@ -85,14 +67,7 @@ export function SignInPage() {
     <AuthCard title="Sign in" description="Use your work email to access your SDK downloads." footer={<>New to EMASS? <Link to="/sign-up" className="font-medium text-primary hover:underline">Request access</Link></>}>
       <form noValidate onSubmit={handleSubmit} className="space-y-4">
         {notice && <FormAlert tone="success">{notice}</FormAlert>}
-        {formError && (
-          <FormAlert>
-            {formError}
-            {errorKind === "ACCOUNT_NOT_ACTIVE" && (
-              <button type="button" className="mt-1 block font-medium underline underline-offset-2 disabled:opacity-60" disabled={resending} onClick={resendSetPassword}>{resending ? "Sending…" : "Email me a new link"}</button>
-            )}
-          </FormAlert>
-        )}
+        {formError && <FormAlert>{formError}</FormAlert>}
         <FormField id="email" label="Work email" error={fieldErrors.email}>
           <Input {...fieldA11y("email", fieldErrors.email)} type="email" autoComplete="email" placeholder="you@company.com" className="h-10" value={email} onChange={(event) => setEmail(event.target.value)} />
         </FormField>

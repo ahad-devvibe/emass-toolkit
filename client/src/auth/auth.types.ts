@@ -22,9 +22,9 @@ export type AuthStatus = "loading" | "authenticated" | "anonymous"
 
 export type SignInResult = { mfaRequired: boolean }
 
-export type SignupInput = { email: string; firstName: string; middleName?: string; lastName: string; country: string; companyName: string; jobTitle: string; captcha: string }
+export type CompleteSignupResult = { signedIn: boolean }
 
-export type SetPasswordInvite = { email: string; firstName: string; expiresAt: string }
+export type SignupInput = { email: string; firstName: string; middleName?: string; lastName: string; country: string; companyName: string; jobTitle: string; captcha: string }
 
 export const roleLabels: Record<UserRole, string> = { CUSTOMER: "Customer", DEV: "Developer", ADMIN: "Admin" }
 

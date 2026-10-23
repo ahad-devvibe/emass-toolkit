@@ -5,7 +5,7 @@ import { ThemeToggle } from "./ThemeToggle"
 import { useThemeToggle } from "./useThemeToggle"
 
 // Assets exported from the Figma "SIGNIN" frame (public/auth/)
-const LOGO_SRC = "/auth/emass-logo.svg"
+const LOGO_SRC = "/brand/emass-logo-white.svg"
 const CHIP_SRC = "/auth/chip-background.jpg"
 const PATTERN_SRC = "/auth/pattern-lines.png"
 
@@ -88,7 +88,7 @@ export function AuthLayout() {
           <div className="ml-auto"><ThemeToggle isDark={isDark} onToggle={toggleTheme} /></div>
         </div>
         {/* If a form is taller than the screen, this panel scrolls inside itself, never the page */}
-        <div className="auth-scroll relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6 sm:px-10">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6 sm:px-10">
           <Outlet />
         </div>
       </section>

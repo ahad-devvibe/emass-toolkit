@@ -1,17 +1,27 @@
-import { useEffect, useState, type FormEvent } from "react"
-import { Loader2, MailCheck, RefreshCw, ShieldCheck } from "lucide-react"
+import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from "react"
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react"
 import { Link } from "react-router-dom"
 import { authApi } from "@/auth/auth.api"
-import { authErrorMessage } from "@/auth/auth.messages"
-import type { SignupInput, UserStatus } from "@/auth/auth.types"
+import { authErrorMessage, errorCode } from "@/auth/auth.messages"
+import type { SignupInput } from "@/auth/auth.types"
+import { useAuth } from "@/auth/useAuth"
 import { AuthCard } from "@/components/common/AuthCard"
 import { FormAlert, FormField } from "@/components/common/FormField"
 import { EMAIL_PATTERN, fieldA11y } from "@/components/common/form.utils"
+import { NewPasswordForm } from "@/components/common/NewPasswordForm"
+import { OtpCodeForm } from "@/components/common/OtpCodeForm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ApiRequestError } from "@/lib/api/http"
 import { cn } from "@/lib/utils"
 import { CountryCombobox } from "./components/CountryCombobox"
+
+// form → code (emailed) → password → signed in, or "request received" for personal addresses
+type Step =
+  | { kind: "form" }
+  | { kind: "code"; email: string; error?: string }
+  | { kind: "password"; email: string; code: string }
+  | { kind: "pending"; email: string }
 
 type Form = Required<SignupInput>
 type Field = keyof Form
@@ -44,13 +54,24 @@ function serverFieldErrors(error: ApiRequestError): Errors {
 }
 
 export function SignUpPage() {
+  const [step, setStep] = useState<Step>({ kind: "form" })
+  // Kept here so "Use a different email" returns to a filled-in form
   const [form, setForm] = useState<Form>(emptyForm)
+
+  if (step.kind === "code") return <CodeStep email={step.email} initialError={step.error} onVerified={(code) => setStep({ kind: "password", email: step.email, code })} onBack={() => setStep({ kind: "form" })} />
+  if (step.kind === "password") return <PasswordStep email={step.email} code={step.code} onPending={() => setStep({ kind: "pending", email: step.email })} onCodeRejected={(error) => setStep({ kind: "code", email: step.email, error })} />
+  if (step.kind === "pending") return <RequestReceived email={step.email} />
+  return <SignupForm form={form} setForm={setForm} onCodeSent={(email) => setStep({ kind: "code", email })} />
+}
+
+type SignupFormProps = { form: Form; setForm: Dispatch<SetStateAction<Form>>; onCodeSent: (email: string) => void }
+
+function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
   const [errors, setErrors] = useState<Errors>({})
   const [formError, setFormError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [captchaImage, setCaptchaImage] = useState<string | null>(null)
   const [captchaError, setCaptchaError] = useState(false)
-  const [created, setCreated] = useState<{ email: string; status: UserStatus } | null>(null)
   // Bumping the key fetches a new captcha (and a new captcha cookie)
   const [captchaKey, setCaptchaKey] = useState(0)
 
@@ -83,8 +104,10 @@ export function SignUpPage() {
     try {
       const { middleName, ...rest } = form
       const trimmed = Object.fromEntries(Object.entries(rest).map(([key, value]) => [key, value.trim()])) as Omit<Form, "middleName">
-      const user = await authApi.signup({ ...trimmed, ...(middleName.trim() ? { middleName: middleName.trim() } : {}) })
-      setCreated({ email: user.email, status: user.status })
+      const { email } = await authApi.signup({ ...trimmed, ...(middleName.trim() ? { middleName: middleName.trim() } : {}) })
+      // The captcha is used up; a return to the form needs a fresh one
+      setForm((current) => ({ ...current, captcha: "" }))
+      onCodeSent(email)
     } catch (error) {
       if (error instanceof ApiRequestError) {
         if (error.code === "EMAIL_TAKEN") setErrors({ email: authErrorMessage(error) })
@@ -100,27 +123,12 @@ export function SignUpPage() {
     }
   }
 
-  if (created) {
-    const pending = created.status === "PENDING_APPROVAL"
-    const Icon = pending ? ShieldCheck : MailCheck
-    return (
-      <AuthCard title={pending ? "Request received" : "Check your email"} footer={<Link to="/sign-in" className="font-medium text-primary hover:underline">Back to sign in</Link>}>
-        <div className="space-y-3 text-center">
-          <span className="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary"><Icon className="size-6" /></span>
-          {pending
-            ? <p className="text-sm text-muted-foreground">Our team reviews sign-ups from personal email addresses. We'll email <span className="font-medium text-foreground">{created.email}</span> once your access is approved, usually within one business day.</p>
-            : <p className="text-sm text-muted-foreground">We sent a link to <span className="font-medium text-foreground">{created.email}</span>. Open it to set your password and finish creating your account. The link expires in 48 hours.</p>}
-        </div>
-      </AuthCard>
-    )
-  }
-
   return (
     <AuthCard wide title="Request access" description="Create an account to download EMASS SDKs and documentation." footer={<>Already have an account? <Link to="/sign-in" className="font-medium text-primary hover:underline">Sign in</Link></>}>
       {/* Container queries size the rows by the card's own width, so the form works from small laptops to desktop */}
       <form noValidate onSubmit={handleSubmit} className="@container space-y-5 short:space-y-4 compact:space-y-3 tiny:space-y-2.5">
         {formError && <FormAlert>{formError}</FormAlert>}
-        <FormField id="email" label="Work email" required error={errors.email} hint="Company addresses get access right away. Personal addresses are reviewed first.">
+        <FormField id="email" label="Work email" required error={errors.email} hint="We'll send a code to verify it. Personal addresses are reviewed before access.">
           <Input {...fieldA11y("email", errors.email)} type="email" autoComplete="email" placeholder="you@company.com" value={form.email} onChange={(event) => update("email")(event.target.value)} />
         </FormField>
         <div className="grid items-start gap-3 @[22rem]:grid-cols-3">
@@ -158,8 +166,62 @@ export function SignUpPage() {
           </div>
         </FormField>
 
-        <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Creating account…" : "Create account"}</Button>
+        <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Sending code…" : "Continue"}</Button>
       </form>
+    </AuthCard>
+  )
+}
+
+const emailLine = (email: string) => <>We sent a 6-digit code to <span className="font-medium text-foreground">{email}</span>.</>
+
+function CodeStep({ email, initialError, onVerified, onBack }: { email: string; initialError?: string; onVerified: (code: string) => void; onBack: () => void }) {
+  return (
+    <AuthCard title="Check your email" description={emailLine(email)}>
+      <OtpCodeForm
+        submitLabel="Verify email"
+        submittingLabel="Verifying…"
+        initialError={initialError}
+        onVerify={async (code) => {
+          await authApi.signupVerify(email, code)
+          onVerified(code)
+        }}
+        onResend={() => authApi.resendSignupCode(email)}
+        onCancel={onBack}
+        cancelLabel="Use a different email"
+      />
+    </AuthCard>
+  )
+}
+
+function PasswordStep({ email, code, onPending, onCodeRejected }: { email: string; code: string; onPending: () => void; onCodeRejected: (message: string) => void }) {
+  const { completeSignup } = useAuth()
+
+  async function submit(password: string) {
+    try {
+      // Signed in: GuestOnly redirects to the user's home
+      const { signedIn } = await completeSignup(email, code, password)
+      if (!signedIn) onPending()
+    } catch (error) {
+      // The code expired or ran out while choosing a password: get a new one
+      if (errorCode(error)?.startsWith("OTP_")) onCodeRejected(authErrorMessage(error))
+      else throw error
+    }
+  }
+
+  return (
+    <AuthCard title="Choose a password" description={<>Your email is verified. Set a password for <span className="font-medium text-foreground">{email}</span>.</>}>
+      <NewPasswordForm email={email} submitLabel="Create account" submittingLabel="Creating account…" onSubmit={submit} />
+    </AuthCard>
+  )
+}
+
+function RequestReceived({ email }: { email: string }) {
+  return (
+    <AuthCard title="Request received" footer={<Link to="/sign-in" className="font-medium text-primary hover:underline">Back to sign in</Link>}>
+      <div className="space-y-3 text-center">
+        <span className="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary"><ShieldCheck className="size-6" /></span>
+        <p className="text-sm text-muted-foreground">Our team reviews sign-ups from personal email addresses. We'll email <span className="font-medium text-foreground">{email}</span> once your access is approved, usually within one business day. Then sign in with the password you just set.</p>
+      </div>
     </AuthCard>
   )
 }
