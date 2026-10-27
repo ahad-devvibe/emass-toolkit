@@ -71,7 +71,7 @@ Left as notes in the docs, not fixed now:
 
 ### Client: quick minor fixes in the same pass
 - **`usePublishJob.ts` polling:** stop polling after repeated errors, and treat a lost job as published only when `status === "published"`.
-- **Approve-dialog copy in `SignupsPage.tsx` (2 places):** it still says "a link to set their password". It becomes "We'll email them that they can sign in now."
+- **Approve-dialog copy in `SignupsPage.tsx`:** done (2026-10-23). The subtitle and dialog now say approval lets them sign in and we email them.
 - **`OtpCodeForm`:** the resend cooldown starts at 0 when it opens with an `initialError` (an expired or used-up code).
 - **Search boxes** (`ReleaseTable.tsx`, `SignupsPage.tsx`): sync the local search from the URL, so a stale debounce doesn't write an old `q` back.
 
@@ -94,7 +94,8 @@ Left as notes in the docs, not fixed now:
 1. **Customer catalog + downloads** (the core feature):
    - **Server:** catalog API (products → published release → files with SHA-256, plus resources); `POST /downloads/:fileId` (checks access, writes a `Download` row, returns a ~60 s read-only object PAR on the release bucket).
    - **Schema:** uncomment `Download` in the schema (migration).
-   - **Client:** `catalog.data.ts` mock replaced by the real API; checksum shown next to the download; "recent downloads" from the log; staff download on the release page.
+   - **Done (2026-10-23):** the catalog API (`/api/catalog/products`, shipped versions only) and the customer pages on real data; `catalog.data.ts` is gone. See `server/docs/catalog/catalog-api.md`.
+   - **Still to do, client:** checksum next to the download; "recent downloads" from the log; staff download on the release page.
 2. **Rollback emails** to everyone who downloaded the bad build (needs 1), plus the HubSpot download properties.
 3. **Forgot / reset password pages:** the server endpoints already exist.
 4. **Admin CRUD:** products and resources (`ProductResource` has no service yet), email domain lists.

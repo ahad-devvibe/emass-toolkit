@@ -49,6 +49,25 @@ describe("GET /api/auth/admin/signups/pending", () => {
     expect(res.body.data.signups[0]).not.toHaveProperty("password");
   });
 
+  it("includes what the person said they'll use EMASS for", async () => {
+    const headers = await adminAuthHeader();
+    const email = uniqueEmail("pend-usecase");
+    const user = await pendingSignup(email);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { useCase: "Prototyping a smart doorbell" },
+    });
+
+    const res = await request(app)
+      .get("/api/auth/admin/signups/pending")
+      .query({ q: email })
+      .set(headers);
+
+    expect(res.body.data.signups[0].useCase).toBe(
+      "Prototyping a smart doorbell",
+    );
+  });
+
   it("forbids customers and requires auth", async () => {
     const customer = await createUser(uniqueEmail("cust"));
     const forbidden = await request(app)
@@ -264,6 +283,8 @@ describe("POST /api/auth/admin/signups/:id/reject", () => {
 
     const row = await prisma.user.findUnique({ where: { id: user.id } });
     expect(row?.status).toBe(UserStatus.BLOCKED);
+    expect(row?.blockReason).toBe("SIGNUP_REJECTED");
+    expect(res.body.data).not.toHaveProperty("blockReason");
     expect(row?.rejectionReason).toBeNull();
 
     const login = await request(app)

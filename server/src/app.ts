@@ -2,12 +2,15 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { pinoHttp } from "pino-http";
+import { env } from "./configs/env.js";
 import { logger } from "./configs/logger.js";
 import routes from "./routes/index.js";
 import { ApiError } from "./utils/api-error.utils.js";
 import { errorHandler } from "./utils/error-handler.utils.js";
 
 export const app = express();
+
+if (env.TRUST_PROXY > 0) app.set("trust proxy", env.TRUST_PROXY);
 
 app.use(pinoHttp({ logger }));
 

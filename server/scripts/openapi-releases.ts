@@ -6,7 +6,6 @@ import {
   createReleaseSchema,
   publishedNotesSchema,
   requestChangesSchema,
-  rollbackSchema,
   updateReleaseSchema,
 } from "../src/schemas/releases.schema.js";
 import { errorResponse, jsonBody, successResponse } from "./openapi-helpers.js";
@@ -60,6 +59,33 @@ const versionRef = {
   nullable: true,
   properties: { id: { type: "string" }, version: { type: "string" } },
 };
+/** One reason or warning about a file; the extra fields depend on the code. */
+const fileCheckItem = (codes: string[]) => ({
+  type: "object",
+  required: ["code", "message"],
+  properties: {
+    code: { type: "string", enum: codes },
+    message: { type: "string" },
+    version: { type: "string" },
+    fields: { type: "array", items: { type: "string" } },
+    expected: { type: "string" },
+    releaseId: { type: "string" },
+    status,
+    match: {
+      type: "object",
+      description: "SAME_CONTENT only",
+      properties: {
+        fileId: { type: "string" },
+        fileName: { type: "string" },
+        releaseId: { type: "string" },
+        version: { type: "string" },
+        status,
+        sameRelease: { type: "boolean" },
+      },
+    },
+  },
+});
+
 const file = {
   type: "object",
   description: "A release file. Storage keys are never exposed.",
@@ -81,6 +107,35 @@ const file = {
     sizeBytes: { type: "integer" },
     sha256: { type: "string", description: "Computed by the server on upload" },
     createdAt: { type: "string", format: "date-time" },
+    format: {
+      type: "string",
+      enum: ["PE", "DEB", "PKG", "PDF", "OTHER"],
+      nullable: true,
+      description:
+        "Detected from the first bytes at upload; null for files uploaded before inspection existed (inspected on the next read)",
+    },
+    detectedVersions: {
+      type: "array",
+      items: { type: "string" },
+      description: "Versions found in the name and inside the file at upload",
+    },
+    blockedBy: {
+      type: "array",
+      description:
+        "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+      items: fileCheckItem([
+        "SAME_CONTENT",
+        "VERSION_MISMATCH",
+        "VERSION_EXISTS",
+        "DAMAGED",
+      ]),
+    },
+    warnings: {
+      type: "array",
+      description:
+        "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+      items: fileCheckItem(["NO_VERSION", "DOC_VERSION_MISMATCH"]),
+    },
   },
 };
 const summary = {
@@ -128,6 +183,7 @@ const detail = {
                   "ROLLED_BACK",
                   "RESTORED",
                   "NOTES_EDITED",
+                  "CUSTOMERS_NOTIFIED",
                 ],
               },
               actor,
@@ -179,6 +235,11 @@ const releaseResponse = (description: string) =>
 /** Staff (DEV, ADMIN) read; only the creating DEV changes a draft; ADMIN reviews. */
 export const releaseTags = [
   {
+    name: "Catalog",
+    description:
+      "What customers see: active products and their shipped (published or archived) versions. Read-only, any signed-in user",
+  },
+  {
     name: "Products",
     description: "Active products (seeded; admin CRUD comes later)",
   },
@@ -215,6 +276,249 @@ export const releasePaths = {
           },
         }),
         401: unauthorized,
+      },
+    },
+  },
+  "/catalog/products": {
+    get: {
+      operationId: "listCatalogProducts",
+      tags: ["Catalog"],
+      summary:
+        "Active products with their current (PUBLISHED) release, for the customer catalog",
+      security: cookie,
+      responses: {
+        200: successResponse("Catalog products", {
+          type: "object",
+          properties: {
+            products: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  name: { type: "string" },
+                  description: { type: "string", nullable: true },
+                  imageUrl: { type: "string", nullable: true },
+                  latest: {
+                    type: "object",
+                    nullable: true,
+                    properties: {
+                      version: { type: "string" },
+                      publishedAt: { type: "string", format: "date-time" },
+                      platforms: {
+                        type: "array",
+                        items: {
+                          type: "string",
+                          enum: ["WINDOWS", "MACOS", "UBUNTU"],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        401: unauthorized,
+      },
+    },
+  },
+  "/catalog/products/{id}": {
+    get: {
+      operationId: "getCatalogProduct",
+      tags: ["Catalog"],
+      summary:
+        "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts, reviews and rolled-back releases never appear; storage keys are never sent",
+      security: cookie,
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: successResponse("Catalog product", {
+          type: "object",
+          properties: {
+            product: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                name: { type: "string" },
+                description: { type: "string", nullable: true },
+                detail: { type: "string", nullable: true },
+                imageUrl: { type: "string", nullable: true },
+              },
+            },
+            versions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  version: { type: "string" },
+                  status: { type: "string", enum: ["PUBLISHED", "ARCHIVED"] },
+                  publishedAt: {
+                    type: "string",
+                    format: "date-time",
+                    nullable: true,
+                  },
+                  releaseNotes: { type: "string" },
+                  files: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        kind: { type: "string", enum: ["SDK", "DOC"] },
+                        platform: {
+                          type: "string",
+                          nullable: true,
+                          enum: ["WINDOWS", "MACOS", "UBUNTU"],
+                        },
+                        name: { type: "string" },
+                        sizeBytes: { type: "integer" },
+                        sha256: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            resources: {
+              type: "array",
+              description:
+                "Always empty until product resources can be uploaded",
+              items: { type: "object" },
+            },
+          },
+        }),
+        401: unauthorized,
+        404: notFound(["PRODUCT_NOT_FOUND"]),
+      },
+    },
+  },
+  "/catalog/files/{fileId}/download": {
+    post: {
+      operationId: "downloadCatalogFile",
+      tags: ["Catalog"],
+      summary:
+        "Record a download and return a read-only link to a shipped file (an OCI object PAR, valid DOWNLOAD_URL_TTL_SECONDS, default 1 hour). Each call mints a new link.",
+      security: [{ cookieAuth: [] }],
+      parameters: [
+        {
+          name: "fileId",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+        },
+      ],
+      responses: {
+        200: successResponse("Download ready", {
+          type: "object",
+          properties: {
+            url: { type: "string" },
+            expiresAt: { type: "string", format: "date-time" },
+            fileName: { type: "string" },
+          },
+          required: ["url", "expiresAt", "fileName"],
+        }),
+        401: unauthorized,
+        404: notFound(["FILE_NOT_FOUND"]),
+        409: errorResponse(
+          "A customer must accept the licence first (POST /catalog/license/accept)",
+          ["LICENSE_REQUIRED"],
+          409,
+        ),
+        502: errorResponse(
+          "Storage couldn't create the link",
+          ["DOWNLOAD_URL_FAILED"],
+          502,
+        ),
+      },
+    },
+  },
+  "/catalog/license": {
+    get: {
+      operationId: "getDownloadLicense",
+      tags: ["Catalog"],
+      summary:
+        "The download licence and whether this account has accepted it (customers accept once; staff always come back accepted)",
+      security: [{ cookieAuth: [] }],
+      responses: {
+        200: successResponse("Licence", {
+          type: "object",
+          properties: {
+            version: { type: "string" },
+            title: { type: "string" },
+            sections: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  heading: { type: "string" },
+                  body: { type: "string" },
+                },
+              },
+            },
+            accepted: { type: "boolean" },
+            acceptedAt: { type: "string", format: "date-time", nullable: true },
+          },
+        }),
+        401: unauthorized,
+      },
+    },
+  },
+  "/catalog/license/accept": {
+    post: {
+      operationId: "acceptDownloadLicense",
+      tags: ["Catalog"],
+      summary:
+        "Record that this account accepted the licence. Idempotent: the first acceptance time and wording version are kept.",
+      security: [{ cookieAuth: [] }],
+      responses: {
+        200: successResponse("Licence accepted", {
+          type: "object",
+          properties: {
+            acceptedAt: { type: "string", format: "date-time" },
+            version: { type: "string" },
+          },
+        }),
+        401: unauthorized,
+      },
+    },
+  },
+  "/releases/{id}/files/{fileId}/download": {
+    post: {
+      operationId: "downloadReleaseFile",
+      tags: ["Releases"],
+      summary:
+        "Staff (DEV/ADMIN), any release state: a read-only link to the file. Staged files get a short link to the staging bucket (STAGED_DOWNLOAD_URL_TTL_SECONDS, default 5 min); shipped ones the normal link. Logged to ActivityLog, never Download.",
+      security: [{ cookieAuth: [] }],
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+        {
+          name: "fileId",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+        },
+      ],
+      responses: {
+        200: successResponse("Download ready", {
+          type: "object",
+          properties: {
+            url: { type: "string" },
+            expiresAt: { type: "string", format: "date-time" },
+            fileName: { type: "string" },
+          },
+          required: ["url", "expiresAt", "fileName"],
+        }),
+        401: unauthorized,
+        403: errorResponse("Staff only", ["FORBIDDEN"], 403),
+        404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
+        502: errorResponse(
+          "Storage couldn't create the link",
+          ["DOWNLOAD_URL_FAILED"],
+          502,
+        ),
       },
     },
   },
@@ -263,6 +567,11 @@ export const releasePaths = {
               description:
                 "Every status with its count; ignores the status filter",
               additionalProperties: { type: "integer" },
+            },
+            needsYou: {
+              type: "integer",
+              description:
+                "What waits for the caller, ignoring every filter: an admin's releases in review, or a dev's own releases with changes requested. Drives the sidebar badge.",
             },
           },
         }),
@@ -423,8 +732,21 @@ export const releasePaths = {
       operationId: "submitRelease",
       tags: ["Releases"],
       summary: "Send for review (creating DEV)",
+      description:
+        "Every file is judged again first. A blocked file refuses the submit (FILE_BLOCKED, details.files). Warnings need confirmWarnings: true (else FILE_WARNINGS_UNCONFIRMED, details.files); the SUBMITTED event then lists them.",
       security: cookie,
       parameters: [idParam],
+      requestBody: {
+        required: false,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: { confirmWarnings: { type: "boolean" } },
+            },
+          },
+        },
+      },
       responses: {
         200: releaseResponse("In review"),
         400: errorResponse(
@@ -437,7 +759,12 @@ export const releasePaths = {
         404: notFound(),
         409: errorResponse(
           "Conflict",
-          ["RELEASE_LOCKED", "VERSION_NOT_NEWER"],
+          [
+            "RELEASE_LOCKED",
+            "VERSION_NOT_NEWER",
+            "FILE_BLOCKED",
+            "FILE_WARNINGS_UNCONFIRMED",
+          ],
           409,
         ),
       },
@@ -482,10 +809,30 @@ export const releasePaths = {
       operationId: "rollbackRelease",
       tags: ["Releases"],
       summary:
-        "Roll back a PUBLISHED release; the newest lower-version ARCHIVED release is published again (ADMIN)",
+        "Roll back a customer-facing release (ADMIN). PUBLISHED: the newest lower-version ARCHIVED release is published again if there is one, otherwise the product has no published release. ARCHIVED: withdrawn only. Customers who downloaded it are emailed afterwards (CUSTOMERS_NOTIFIED event).",
       security: cookie,
       parameters: [idParam],
-      requestBody: jsonBody(rollbackSchema, "Reason, 1–2000 chars"),
+      requestBody: jsonBody(
+        {
+          type: "object",
+          required: ["reason"],
+          properties: {
+            reason: {
+              type: "string",
+              minLength: 1,
+              maxLength: 2000,
+              description: "Internal; kept in the release history",
+            },
+            customerMessage: {
+              type: "string",
+              maxLength: 1000,
+              description:
+                "Optional; added to the email to customers who downloaded the release. Empty sends the standard notice.",
+            },
+          },
+        },
+        "Internal reason and optional message to customers",
+      ),
       responses: {
         200: releaseResponse("Rolled back"),
         400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
@@ -493,8 +840,8 @@ export const releasePaths = {
         403: forbidden(),
         404: notFound(),
         409: errorResponse(
-          "Conflict",
-          ["RELEASE_LOCKED", "NO_RESTORE_TARGET"],
+          "Not published or archived",
+          ["RELEASE_LOCKED"],
           409,
         ),
       },
@@ -552,6 +899,115 @@ export const releasePaths = {
       },
     },
   },
+  "/releases/{id}/files/check": {
+    post: {
+      operationId: "checkReleaseFile",
+      tags: ["Releases"],
+      summary:
+        "Rule on a file before it uploads (creating DEV; DRAFT or CHANGES_REQUESTED)",
+      description:
+        "Stateless byte-range loop. Send name and size; answer NEED_BYTES by resending with the requested ranges (base64, 64 KiB-aligned, at most 7 MiB in total) until the server rules. Without sha256 only the version rules run (NEED_HASH); with it, the content rules too (ALLOWED). Installers (PE, DEB, PKG): identical bytes anywhere or another version block. Docs and other files: only identical bytes in this release block; another version is a warning. Damaged files always block.",
+      security: cookie,
+      parameters: [idParam],
+      requestBody: jsonBody(
+        {
+          type: "object",
+          required: ["name", "size"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            size: { type: "integer", minimum: 1 },
+            sha256: { type: "string", pattern: "^[0-9a-fA-F]{64}$" },
+            replace: {
+              type: "string",
+              format: "uuid",
+              description: "The file this one would replace",
+            },
+            ranges: {
+              type: "array",
+              maxItems: 256,
+              items: {
+                type: "object",
+                required: ["offset", "data"],
+                properties: {
+                  offset: { type: "integer", minimum: 0 },
+                  data: { type: "string", format: "byte" },
+                },
+              },
+            },
+          },
+        },
+        "The file, by name and size, plus the byte ranges asked for so far",
+      ),
+      responses: {
+        200: successResponse("A verdict, or the ranges still needed", {
+          type: "object",
+          properties: {
+            status: {
+              type: "string",
+              enum: ["NEED_BYTES", "NEED_HASH", "ALLOWED"],
+            },
+            ranges: {
+              type: "array",
+              description: "NEED_BYTES only",
+              items: {
+                type: "object",
+                properties: {
+                  offset: { type: "integer" },
+                  length: { type: "integer" },
+                },
+              },
+            },
+            format: {
+              type: "string",
+              enum: ["PE", "DEB", "PKG", "PDF", "OTHER"],
+            },
+            versions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  source: {
+                    type: "string",
+                    enum: ["name", "pe", "deb", "pkg", "pdf"],
+                  },
+                  field: { type: "string" },
+                  raw: { type: "string" },
+                  version: { type: "string" },
+                },
+              },
+            },
+            warnings: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  code: {
+                    type: "string",
+                    enum: ["NO_VERSION", "DOC_VERSION_MISMATCH"],
+                  },
+                  message: { type: "string" },
+                },
+              },
+            },
+          },
+        }),
+        400: errorResponse(
+          "Invalid request",
+          ["VALIDATION_ERROR", "RANGE_INVALID", "RANGES_TOO_LARGE"],
+          400,
+        ),
+        401: unauthorized,
+        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
+        409: errorResponse(
+          "Blocked (details.reasons: SAME_CONTENT, VERSION_MISMATCH, VERSION_EXISTS, DAMAGED) or wrong status",
+          ["FILE_BLOCKED", "RELEASE_LOCKED"],
+          409,
+        ),
+        413: errorResponse("Over MAX_UPLOAD_BYTES", ["FILE_TOO_LARGE"], 413),
+      },
+    },
+  },
   "/releases/{id}/files": {
     post: {
       operationId: "uploadReleaseFile",
@@ -559,7 +1015,7 @@ export const releasePaths = {
       summary:
         "Stream one file into the draft (creating DEV; DRAFT or CHANGES_REQUESTED)",
       description:
-        "multipart/form-data, streamed to storage with SHA-256 computed on the fly (max MAX_UPLOAD_BYTES, 1 GiB). Fields must come before the file part. Without kind the file is stored unmapped and typed later with Save draft.",
+        "multipart/form-data, streamed to storage with SHA-256 computed on the fly (max MAX_UPLOAD_BYTES, 1 GiB). Fields must come before the file part. Without kind the file is stored unmapped and typed later with Save draft. The stored object is then inspected (ranged reads) and judged by the same rules as /files/check; a blocked file is deleted and refused with 409 FILE_BLOCKED.",
       security: cookie,
       parameters: [idParam],
       requestBody: {
@@ -581,9 +1037,15 @@ export const releasePaths = {
                   description:
                     "Replace this file (the one holding the platform) once the upload succeeds",
                 },
+                sha256: {
+                  type: "string",
+                  pattern: "^[0-9a-fA-F]{64}$",
+                  description:
+                    "Required: what the browser hashed. A different hash on arrival is 422 CHECKSUM_MISMATCH.",
+                },
                 file: { type: "string", format: "binary" },
               },
-              required: ["file"],
+              required: ["sha256", "file"],
             },
             encoding: { file: { contentType: "application/octet-stream" } },
           },
@@ -612,16 +1074,25 @@ export const releasePaths = {
         404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
         409: errorResponse(
           "Conflict",
-          ["RELEASE_LOCKED", "PLATFORM_TAKEN"],
+          ["RELEASE_LOCKED", "PLATFORM_TAKEN", "FILE_BLOCKED"],
           409,
         ),
         413: errorResponse("Over MAX_UPLOAD_BYTES", ["FILE_TOO_LARGE"], 413),
+        422: errorResponse(
+          "The bytes that arrived don't match the declared sha256",
+          ["CHECKSUM_MISMATCH"],
+          422,
+        ),
         415: errorResponse(
           "Not multipart/form-data",
           ["UNSUPPORTED_MEDIA_TYPE"],
           415,
         ),
-        502: errorResponse("Storage error", ["UPLOAD_FAILED"], 502),
+        502: errorResponse(
+          "Storage error",
+          ["UPLOAD_FAILED", "READ_FAILED"],
+          502,
+        ),
       },
     },
   },

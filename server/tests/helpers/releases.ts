@@ -1,7 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import type {
+  ReleaseFileFormat,
   ReleaseFileKind,
   ReleaseStatus,
   SdkPlatform,
@@ -63,6 +64,15 @@ export interface TestFile {
   platform?: SdkPlatform | null;
   name?: string;
   sizeBytes?: bigint;
+  /** Defaults to a random checksum, so files never match by accident. */
+  sha256?: string;
+  /**
+   * What inspection found at upload. Defaults to an OTHER file claiming the
+   * release's version, so files carry no warnings unless a test asks; null
+   * makes a file uploaded before inspection existed.
+   */
+  format?: ReleaseFileFormat | null;
+  detectedVersions?: string[];
 }
 
 export interface CreateReleaseOptions {
@@ -130,9 +140,16 @@ export async function createRelease(options: CreateReleaseOptions) {
               : null,
         originalName: name,
         contentType: "application/zip",
-        sizeBytes: file.sizeBytes ?? 1024n,
-        sha256: "0".repeat(64),
+        // A written object's real size, so ranged reads of it stay in bounds
+        sizeBytes:
+          file.sizeBytes ??
+          (options.withObjects ? BigInt(`contents of ${name}`.length) : 1024n),
+        sha256: file.sha256 ?? randomBytes(32).toString("hex"),
         objectKey,
+        format: file.format === undefined ? "OTHER" : file.format,
+        // Files uploaded before inspection existed have nothing recorded
+        detectedVersions:
+          file.detectedVersions ?? (file.format === null ? [] : [version]),
       },
     });
   }

@@ -8,18 +8,21 @@ import { Button } from "@/components/ui/button"
 import { ApiRequestError } from "@/lib/api/http"
 import { releaseActions, type ReleaseAction } from "@/pages/Releases/release-permissions"
 import { releasesApi } from "@/pages/Releases/releases.api"
-import { highestShipped } from "@/pages/Releases/releases.errors"
-import type { PublishJob, ReleaseDetail } from "@/pages/Releases/releases.model"
+import { SubmitWarningsDialog } from "@/pages/Releases/components/SubmitWarningsDialog"
+import { reportBlockedSubmit } from "@/pages/Releases/submit-errors"
+import { highestShipped, unconfirmedWarnings } from "@/pages/Releases/releases.errors"
+import type { FileIssues, PublishJob, ReleaseDetail } from "@/pages/Releases/releases.model"
 import type { ReleaseStatus } from "@/pages/Releases/releases.types"
 import { notifyReleasesChanged } from "@/pages/Releases/useReleaseQueries"
 import { isPublishRunning, publishLabel } from "../publish-progress"
 import { usePublishJob } from "../usePublishJob"
 import { EditNotesDialog } from "./EditNotesDialog"
+import { RollbackDialog } from "./RollbackDialog"
 import { PublishDialog, PublishProgressBar } from "./PublishDialog"
 
 const idleHint: Partial<Record<ReleaseStatus, string>> = {
   published: "Live for customers. Only an admin can roll it back.",
-  archived: "Superseded by a newer version. Customers can still find it under previous versions.",
+  archived: "Superseded by a newer version. Customers can still find it under previous versions; an admin can roll it back.",
   rolled_back: "Withdrawn from customers. Ship a fix as a new version.",
   in_review: "Waiting for an admin to publish it or request changes.",
 }
@@ -39,11 +42,18 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
   const navigate = useNavigate()
   const [busy, setBusy] = useState<ReleaseAction | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
+  // Files whose warnings the server wants confirmed before this goes to review
+  const [warnedFiles, setWarnedFiles] = useState<FileIssues[] | null>(null)
 
   const actions = releaseActions(viewer, release)
   const noFiles = release.fileCount === 0
   const isCreator = viewer.id === release.createdBy.id
   const restoreTarget = release.review.restoreTarget
+  const [rollbackKey, setRollbackKey] = useState(0)
+  function openRollback() {
+    setRollbackKey((key) => key + 1)
+    setDialog("rollback")
+  }
 
   const publishing = usePublishJob(release.id, {
     enabled: viewer.role === "ADMIN" && release.status === "in_review",
@@ -59,6 +69,15 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
   function reportError(error: unknown) {
     if (!(error instanceof ApiRequestError)) {
       toast.error("Something went wrong. Try again.")
+      return
+    }
+    const warned = unconfirmedWarnings(error)
+    if (warned) {
+      setWarnedFiles(warned)
+      return
+    }
+    if (reportBlockedSubmit(error)) {
+      onStale()
       return
     }
     const shipped = highestShipped(error)
@@ -131,7 +150,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
             <Button variant="outline" onClick={() => setDialog("notes")} disabled={busy !== null}><FilePenLine />Edit release notes</Button>
           )}
           {actions.includes("rollback") && (
-            <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setDialog("rollback")} disabled={busy !== null || !restoreTarget}><RotateCcw />Roll back</Button>
+            <Button variant="outline" className="text-destructive hover:text-destructive" onClick={openRollback} disabled={busy !== null}><RotateCcw />Roll back</Button>
           )}
           {actions.includes("submit") && (
             <Button onClick={() => void run("submit", () => releasesApi.submit(release.id), `v${release.version} sent for review`)} disabled={noFiles || busy !== null}>
@@ -152,7 +171,6 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
               <p className="text-xs text-muted-foreground">{publishLabel(publishing.job!)}</p>
             </div>
           )}
-          {actions.includes("rollback") && !restoreTarget && <p className="text-xs text-muted-foreground">No earlier archived version to restore, so this release can't be rolled back.</p>}
           {actions.includes("submit") && noFiles && <p className="text-xs text-muted-foreground">Add at least one file first.</p>}
           {release.status === "in_review" && isCreator && <p className="text-xs text-muted-foreground">{idleHint.in_review} Withdraw it if you need to make changes.</p>}
         </div>
@@ -177,21 +195,13 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
         field={{ label: "Feedback", placeholder: "What needs to change before this can be published?", required: true, maxLength: 2000 }}
         onConfirm={(note) => confirm(() => releasesApi.requestChanges(release.id, note), `Sent back to ${release.createdBy.name}`)}
       />
-      <ReasonDialog
+      {/* Keyed per open so both fields start empty */}
+      <RollbackDialog
+        key={rollbackKey}
         open={dialog === "rollback"}
         onOpenChange={(open) => setDialog(open ? "rollback" : null)}
-        tone="destructive"
-        icon={RotateCcw}
-        title={`Roll back v${release.version}?`}
-        description={
-          <div className="space-y-2">
-            <p>Customers lose access to <span className="font-mono">v{release.version}</span>{restoreTarget && <> and <span className="font-mono">v{restoreTarget.version}</span> becomes the published version again</>}.</p>
-            <p className="text-xs">Emailing customers who downloaded it isn't available yet.</p>
-          </div>
-        }
-        confirmLabel="Roll back"
-        field={{ label: "Reason", placeholder: "What's wrong with this build? It's kept in the release history.", required: true, maxLength: 2000 }}
-        onConfirm={(reason) => confirm(() => releasesApi.rollback(release.id, reason), restoreTarget ? `Rolled back to v${restoreTarget.version}` : "Release rolled back")}
+        release={release}
+        onConfirm={(input) => confirm(() => releasesApi.rollback(release.id, input), restoreTarget ? `Rolled back to v${restoreTarget.version}` : `v${release.version} rolled back`)}
       />
       {dialog === "notes" && (
         <EditNotesDialog
@@ -202,6 +212,11 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
           onSave={(notes) => confirm(() => releasesApi.updateNotes(release.id, notes), "Release notes updated")}
         />
       )}
+      <SubmitWarningsDialog
+        files={warnedFiles}
+        onClose={() => setWarnedFiles(null)}
+        onConfirm={() => confirm(() => releasesApi.submit(release.id, { confirmWarnings: true }), `v${release.version} sent for review`)}
+      />
       <DeleteDialog
         open={dialog === "delete"}
         onOpenChange={(open) => setDialog(open ? "delete" : null)}

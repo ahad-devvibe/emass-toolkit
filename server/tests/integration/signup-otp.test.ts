@@ -98,7 +98,10 @@ describe("POST /api/auth/signup", () => {
     await postSignup(email);
     const first = mail.lastCode(email);
 
-    const res = await postSignup(email, { jobTitle: "CTO" });
+    const res = await postSignup(email, {
+      jobTitle: "CTO",
+      useCase: "Now prototyping a wearable",
+    });
 
     expect(res.status).toBe(201);
     const second = mail.lastCode(email);
@@ -106,6 +109,7 @@ describe("POST /api/auth/signup", () => {
     const rows = await prisma.user.findMany({ where: { email } });
     expect(rows).toHaveLength(1);
     expect(rows[0].jobTitle).toBe("CTO");
+    expect(rows[0].useCase).toBe("Now prototyping a wearable");
     if (first !== second) {
       expect((await verify(email, first)).body.code).toBe("OTP_INVALID");
     }

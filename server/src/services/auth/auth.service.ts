@@ -1,4 +1,4 @@
-import { OtpPurpose, UserStatus } from "@prisma/client";
+import { AuthEventType, OtpPurpose, UserStatus } from "@prisma/client";
 import { prisma } from "../../configs/prisma.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { emailService, type EmailSender } from "../email/email.service.js";
@@ -8,6 +8,11 @@ import {
   verifyPassword,
 } from "./auth.utils.js";
 import { presentUser } from "./auth.errors.js";
+import {
+  recordAuthEvent,
+  recordSignInFailure,
+  type RequestMeta,
+} from "./auth-events.service.js";
 import { issueOtp, verifyOtp } from "./otp.service.js";
 import {
   issueTokenPair,
@@ -59,7 +64,34 @@ function assertMfaEligible(user: { role: string; status: UserStatus }): void {
   }
 }
 
-export async function loginEmail(input: { email: string; password: string }) {
+/**
+ * Password step. A customer is signed in here; staff get an MFA code and are
+ * signed in by verifyLoginOtp. Successes and refusals go to the audit trail.
+ */
+export async function loginEmail(
+  input: { email: string; password: string },
+  meta: RequestMeta = {},
+) {
+  try {
+    const result = await checkPassword(input);
+    if (!result.mfaRequired) {
+      await recordAuthEvent(
+        {
+          type: AuthEventType.SIGN_IN_SUCCEEDED,
+          email: result.user.email,
+          userId: result.user.id,
+        },
+        meta,
+      );
+    }
+    return result;
+  } catch (err) {
+    await recordSignInFailure(input.email, err, meta);
+    throw err;
+  }
+}
+
+async function checkPassword(input: { email: string; password: string }) {
   const user = await prisma.user.findUnique({
     where: { email: normalizeEmail(input.email) },
   });
@@ -98,7 +130,29 @@ export async function loginEmail(input: { email: string; password: string }) {
   return { mfaRequired: false as const, ...tokens, user: presentUser(user) };
 }
 
-export async function verifyLoginOtp(emailInput: string, code: string) {
+export async function verifyLoginOtp(
+  emailInput: string,
+  code: string,
+  meta: RequestMeta = {},
+) {
+  try {
+    const result = await checkLoginOtp(emailInput, code);
+    await recordAuthEvent(
+      {
+        type: AuthEventType.SIGN_IN_SUCCEEDED,
+        email: result.user.email,
+        userId: result.user.id,
+      },
+      meta,
+    );
+    return result;
+  } catch (err) {
+    await recordSignInFailure(emailInput, err, meta);
+    throw err;
+  }
+}
+
+async function checkLoginOtp(emailInput: string, code: string) {
   const user = await prisma.user.findUnique({
     where: { email: normalizeEmail(emailInput) },
   });

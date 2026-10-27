@@ -1,5 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Layers, Menu, Plus, UserCheck } from "lucide-react";
+import {
+  AtSign,
+  LayoutDashboard,
+  Layers,
+  Menu,
+  Plus,
+  Settings,
+  UserCheck,
+} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { roleLabels, type SessionUser } from "@/auth/auth.types";
 import { Button } from "@/components/ui/button";
@@ -18,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AppHeader, Breadcrumb } from "./AppHeader";
 import { BrandLogo } from "./BrandLogo";
+import { openSettings } from "./settings/settings-dialog.store";
 import { UserAvatar } from "./UserAvatar";
 
 // Navy sidebar items (Figma reference): bold white labels, active pill in #0D72B9 with a white bar
@@ -32,14 +41,17 @@ type NavEntry = {
   label: string;
   Icon: typeof Layers;
   active: boolean;
+  /** Work waiting here: a badge capped at 99+, the exact number in the link's label and title */
   count?: number;
+  countNoun?: string;
 };
 
 function useNavEntries(user: SessionUser): NavEntry[] {
   const { pathname } = useLocation();
   const isAdmin = user.role === "ADMIN";
-  // Server counts, refetched on every route change; only admins need them
-  const pending = useReleaseCounts(isAdmin)?.in_review ?? 0;
+  // What waits for this person (admins: reviews; devs: their releases sent back),
+  // refetched on every route change
+  const waiting = useReleaseCounts(true)?.needsYou ?? 0;
   const { badgeTotal } = usePendingSignups();
 
   // Load the sign-up queue once per admin session so the badge is accurate on any page
@@ -48,22 +60,41 @@ function useNavEntries(user: SessionUser): NavEntry[] {
   }, [isAdmin, badgeTotal]);
 
   return [
+    ...(isAdmin
+      ? [
+          {
+            to: "/admin/dashboard",
+            label: "Dashboard",
+            Icon: LayoutDashboard,
+            active: pathname.startsWith("/admin/dashboard"),
+          },
+        ]
+      : []),
     {
       to: "/releases",
       label: "Releases",
       Icon: Layers,
       active: pathname.startsWith("/releases"),
-      // Admins review submissions, so the badge counts what waits for them
-      count: isAdmin ? pending : undefined,
+      // Admins review submissions; devs act on changes requested on their own releases
+      count: waiting,
+      countNoun: isAdmin ? "in review" : "need changes",
     },
     ...(isAdmin
       ? [
           {
             to: "/admin/signups",
-            label: "Sign-up requests",
+            // Short enough to fit beside a 99+ badge; the page itself is "Sign-up requests"
+            label: "Signups",
             Icon: UserCheck,
             active: pathname.startsWith("/admin/signups"),
             count: badgeTotal ?? 0,
+            countNoun: "waiting",
+          },
+          {
+            to: "/admin/domains",
+            label: "Domains",
+            Icon: AtSign,
+            active: pathname.startsWith("/admin/domains"),
           },
         ]
       : []),
@@ -79,23 +110,32 @@ function NavLinks({
 }) {
   return (
     <nav aria-label="Main navigation" className="space-y-2 px-4 py-6">
-      {entries.map(({ to, label, Icon, active, count }) => (
-        <Link
-          key={to}
-          to={to}
-          onClick={onNavigate}
-          aria-current={active ? "page" : undefined}
-          className={cn(navItem, active ? navActive : navIdle)}
-        >
-          <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
-          <span className="min-w-0 truncate">{label}</span>
-          {count ? (
-            <span className="ml-auto min-w-6 shrink-0 rounded-full bg-white px-2 py-0.5 text-center text-[11px] font-bold tabular-nums text-[#0f3678]">
-              {count}
-            </span>
-          ) : null}
-        </Link>
-      ))}
+      {entries.map(({ to, label, Icon, active, count, countNoun }) => {
+        // Capped so a long queue never crowds the label; hover and screen readers get the exact count
+        const waiting = count ? `${count} ${countNoun ?? "waiting"}` : undefined;
+        return (
+          <Link
+            key={to}
+            to={to}
+            onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
+            aria-label={waiting ? `${label}, ${waiting}` : undefined}
+            title={waiting}
+            className={cn(navItem, active ? navActive : navIdle)}
+          >
+            <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
+            <span className="min-w-0 truncate">{label}</span>
+            {count ? (
+              <span
+                aria-hidden
+                className="ml-auto min-w-6 shrink-0 rounded-full bg-white px-2 py-0.5 text-center text-[11px] font-bold tabular-nums text-[#0f3678]"
+              >
+                {count > 99 ? "99+" : count}
+              </span>
+            ) : null}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -113,6 +153,18 @@ function UserFooter({ user }: { user: SessionUser }) {
             {roleLabels[user.role]} · {user.companyName}
           </p>
         </div>
+        {/* UX only: the settings endpoints are admin-only on the server */}
+        {user.role === "ADMIN" && (
+          <button
+            type="button"
+            aria-label="Settings"
+            title="Settings"
+            onClick={openSettings}
+            className="ml-auto grid size-9 shrink-0 place-items-center rounded-lg text-sidebar-foreground/70 outline-none transition-colors hover:bg-white/10 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <Settings className="size-[18px]" />
+          </button>
+        )}
       </div>
     </div>
   );

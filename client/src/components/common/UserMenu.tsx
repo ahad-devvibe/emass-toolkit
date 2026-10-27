@@ -1,11 +1,12 @@
-import { LogOut } from "lucide-react"
+import { LogOut, Settings } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { roleLabels, type SessionUser } from "@/auth/auth.types"
 import { useAuth } from "@/auth/useAuth"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { UserAvatar } from "./UserAvatar"
 
-export function UserMenu({ user }: { user: SessionUser }) {
+/** `onOpenSettings` adds the Settings item (admins only; the header decides). */
+export function UserMenu({ user, onOpenSettings }: { user: SessionUser; onOpenSettings?: () => void }) {
   const { signOut } = useAuth()
   const navigate = useNavigate()
 
@@ -26,6 +27,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        {onOpenSettings && <DropdownMenuItem onClick={onOpenSettings}><Settings />Settings</DropdownMenuItem>}
         <DropdownMenuItem onClick={handleSignOut}><LogOut />Sign out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

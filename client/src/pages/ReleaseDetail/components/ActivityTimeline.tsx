@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
-import { Archive, CheckCircle2, FilePlus2, MessageSquareWarning, Pencil, RotateCcw, Send, Undo2, Upload, type LucideIcon } from "lucide-react"
+import { Archive, CheckCircle2, FilePlus2, Mail, MessageSquareWarning, Pencil, RotateCcw, Send, Undo2, Upload, type LucideIcon } from "lucide-react"
 import type { ReleaseEventItem, ReleaseEventKind } from "@/pages/Releases/releases.model"
 import { relativeTime } from "@/pages/Releases/releases.utils"
 import { cn } from "@/lib/utils"
@@ -14,6 +14,7 @@ const eventMeta: Record<ReleaseEventKind, { verb: string; Icon: LucideIcon; tone
   rolled_back: { verb: "rolled it back", Icon: RotateCcw, tone: "text-destructive" },
   restored: { verb: "restored it to published", Icon: Upload, tone: "text-success" },
   notes_edited: { verb: "edited the release notes", Icon: Pencil },
+  customers_notified: { verb: "emailed customers who downloaded it", Icon: Mail },
 }
 
 /** Calls `check` whenever the element or one of its children resizes (the card shrinks, a note expands). */

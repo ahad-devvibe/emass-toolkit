@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom"
 import { authErrorMessage } from "@/auth/auth.messages"
 import { useAuth } from "@/auth/useAuth"
 import { AuthCard } from "@/components/common/AuthCard"
+import { LegalNotice } from "@/components/common/LegalNotice"
 import { FormAlert, FormField } from "@/components/common/FormField"
 import { EMAIL_PATTERN, fieldA11y } from "@/components/common/form.utils"
 import { PasswordInput } from "@/components/common/PasswordInput"
@@ -64,17 +65,33 @@ export function SignInPage() {
   }
 
   return (
-    <AuthCard title="Sign in" description="Use your work email to access your SDK downloads." footer={<>New to EMASS? <Link to="/sign-up" className="font-medium text-primary hover:underline">Request access</Link></>}>
-      <form noValidate onSubmit={handleSubmit} className="space-y-4">
+    <AuthCard
+      eyebrow="SIGN IN TO"
+      title="Your EMASS Account"
+      description="Welcome back. Your EMASS workspace and release resources are ready when you are."
+      descriptionClassName="text-sm text-muted-foreground sm:text-base dark:text-muted-foreground"
+      largeBrand
+      introLeft
+      roomy
+      footer={
+        <span className="flex items-center gap-3">
+          <span aria-hidden className="h-px flex-1 bg-[#0d72b9]/25 dark:bg-[#7cc6f8]/25" />
+          <span className="shrink-0">New to EMASS? <Link to="/sign-up" className="font-medium text-primary hover:underline">Request access</Link></span>
+          <span aria-hidden className="h-px flex-1 bg-[#0d72b9]/25 dark:bg-[#7cc6f8]/25" />
+        </span>
+      }
+    >
+      <form noValidate onSubmit={handleSubmit} className="space-y-6 short:space-y-5">
         {notice && <FormAlert tone="success">{notice}</FormAlert>}
         {formError && <FormAlert>{formError}</FormAlert>}
-        <FormField id="email" label="Work email" error={fieldErrors.email}>
-          <Input {...fieldA11y("email", fieldErrors.email)} type="email" autoComplete="email" placeholder="you@company.com" className="h-10" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <FormField id="email" label="Email" error={fieldErrors.email}>
+          <Input {...fieldA11y("email", fieldErrors.email)} type="email" autoComplete="email" placeholder="you@example.com" className="h-10" value={email} onChange={(event) => setEmail(event.target.value)} />
         </FormField>
         <FormField id="password" label="Password" error={fieldErrors.password} labelAside={<Link to="/forgot-password" state={{ email: email.trim() }} className="text-sm font-medium text-primary hover:underline">Forgot password?</Link>}>
-          <PasswordInput {...fieldA11y("password", fieldErrors.password)} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <PasswordInput {...fieldA11y("password", fieldErrors.password)} autoComplete="current-password" placeholder="Enter Your Password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </FormField>
         <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Signing in…" : "Sign in"}</Button>
+        <LegalNotice action="signing in" />
       </form>
     </AuthCard>
   )

@@ -1,14 +1,20 @@
 import "dotenv/config";
 import { getHubspotConfig } from "../src/configs/hubspot.js";
-import { ensurePortalStatusProperty } from "../src/services/hubspot/hubspot-setup.service.js";
-import { HUBSPOT_PORTAL_STATUS_PROPERTY } from "../src/services/hubspot/hubspot.utils.js";
+import {
+  ensureSimpleProperty,
+  ensureUseCaseProperty,
+} from "../src/services/hubspot/hubspot-setup.service.js";
+import {
+  DOWNLOAD_PROPERTIES,
+  HUBSPOT_USE_CASE_PROPERTY,
+} from "../src/services/hubspot/hubspot.utils.js";
 
-// One-off, idempotent setup of the HubSpot contact property the portal writes.
+// One-off, idempotent setup of the HubSpot contact properties the portal
+// writes (use case, download totals). Safe to re-run after an upgrade.
 // Run once per HubSpot portal before HUBSPOT_ENABLED=true:
 //   npm run hubspot:setup [-- --dry-run]
 // The private-app token needs crm.schemas.contacts.write for this run.
 
-// TODO: Not needed to write portal status custom property
 const messages = {
   created: "created",
   updated: "updated",
@@ -27,11 +33,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const result = await ensurePortalStatusProperty({ apiKey, dryRun });
-  const changes = "changes" in result ? ` (${result.changes.join("; ")})` : "";
-  console.log(
-    `hubspot-setup: ${HUBSPOT_PORTAL_STATUS_PROPERTY}: ${messages[result.action]}${changes}`,
-  );
+  const steps: [string, typeof ensureUseCaseProperty][] = [
+    [HUBSPOT_USE_CASE_PROPERTY, ensureUseCaseProperty],
+    ...DOWNLOAD_PROPERTIES.map(
+      (definition): [string, typeof ensureUseCaseProperty] => [
+        definition.name,
+        (options) => ensureSimpleProperty(definition, options),
+      ],
+    ),
+  ];
+  for (const [name, ensure] of steps) {
+    const result = await ensure({ apiKey, dryRun });
+    const changes =
+      "changes" in result ? ` (${result.changes.join("; ")})` : "";
+    console.log(`hubspot-setup: ${name}: ${messages[result.action]}${changes}`);
+  }
 }
 
 main()

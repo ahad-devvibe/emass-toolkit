@@ -7,6 +7,7 @@ import { renderPendingApprovalEmail } from "../../src/services/email/templates/p
 import { renderMfaLoginEmail } from "../../src/services/email/templates/mfa-login.template.js";
 import { renderWelcomeEmail } from "../../src/services/email/templates/welcome.template.js";
 import { renderSignupRejectedEmail } from "../../src/services/email/templates/signup-rejected.template.js";
+import { renderReleaseWithdrawnEmail } from "../../src/services/email/templates/release-withdrawn.template.js";
 import { EMAIL_TAGLINE } from "../../src/services/email/templates/layout.template.js";
 
 describe("renderOtpVerificationEmail", () => {
@@ -204,6 +205,53 @@ describe("renderSignupRejectedEmail", () => {
     expect(email.html).toContain("Use your &lt;work&gt; email<br>thanks");
     expect(email.html).toContain("Hi &lt;b&gt;,");
     expect(email.text).toContain("Use your <work> email");
+  });
+});
+
+describe("renderReleaseWithdrawnEmail", () => {
+  const base = {
+    firstName: "Ada",
+    productName: "EMASS Core SDK",
+    withdrawnVersion: "1.1.0",
+    replacementVersion: "1.0.0",
+    url: "https://portal.example/catalog/p-1",
+  };
+
+  it("names the withdrawn and replacement versions with a link", () => {
+    const email = renderReleaseWithdrawnEmail(base);
+
+    expect(email.subject).toBe("EMASS Core SDK v1.1.0 has been withdrawn");
+    expect(email.html).toContain("Hi Ada,");
+    expect(email.html).toContain("<strong>v1.0.0</strong> instead");
+    expect(email.html).toContain("Get v1.0.0");
+    expect(email.html).toContain("https://portal.example/catalog/p-1");
+    expect(email.text).toContain("Please download v1.0.0 instead.");
+    expect(email.html).not.toContain("A note from the EMASS team");
+  });
+
+  it("works when nothing replaces it", () => {
+    const email = renderReleaseWithdrawnEmail({
+      ...base,
+      replacementVersion: null,
+    });
+
+    expect(email.html).toContain("Open the EMASS portal");
+    expect(email.text).toContain(
+      "We'll let you know when a new version is available.",
+    );
+  });
+
+  it("adds the customer message, escaped", () => {
+    const email = renderReleaseWithdrawnEmail({
+      ...base,
+      customerMessage: "Use <b>v1.0.0</b> & reflash",
+    });
+
+    expect(email.html).toContain("A note from the EMASS team");
+    expect(email.html).toContain("Use &lt;b&gt;v1.0.0&lt;/b&gt; &amp; reflash");
+    expect(email.text).toContain(
+      "A note from the EMASS team: Use <b>v1.0.0</b> & reflash",
+    );
   });
 });
 

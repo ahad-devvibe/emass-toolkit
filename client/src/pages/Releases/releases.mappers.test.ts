@@ -92,4 +92,19 @@ describe("request mapping", () => {
   it("reads an unmapped file", () => {
     expect(toReleaseFile({ ...sdk, kind: null, platform: null })).toMatchObject({ kind: null, os: null })
   })
+
+  it("reads the file rules' verdicts, defaulting to none", () => {
+    expect(toReleaseFile(sdk)).toMatchObject({ format: null, detectedVersions: [], blockedBy: [], warnings: [] })
+    const blocked = { code: "VERSION_MISMATCH", message: "This installer says version 2.4.0; this release is 2.5.0.", version: "2.4.0", fields: [], expected: "2.5.0" }
+    const read = toReleaseFile({
+      ...sdk,
+      format: "PE",
+      detectedVersions: ["2.4.0"],
+      blockedBy: [blocked],
+      warnings: [{ code: "NO_VERSION", message: "No version found in this file's name or contents." }],
+    })
+    expect(read).toMatchObject({ format: "PE", detectedVersions: ["2.4.0"], blockedBy: [blocked] })
+    expect(read.warnings).toEqual([{ code: "NO_VERSION", message: "No version found in this file's name or contents." }])
+  })
+
 })

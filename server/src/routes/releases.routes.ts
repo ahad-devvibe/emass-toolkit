@@ -15,6 +15,8 @@ import {
   withdraw,
 } from "../controllers/releases.controller.js";
 import {
+  check as checkFile,
+  download as downloadFile,
   remove as removeFile,
   upload as uploadFile,
 } from "../controllers/release-files.controller.js";
@@ -43,7 +45,10 @@ router.post("/:id/rollback", admin, rollback);
 router.post("/:id/publish", admin, publish);
 router.get("/:id/publish-status", admin, publishStatus);
 router.delete("/:id", dev, remove);
+router.post("/:id/files/check", dev, checkFile);
 router.post("/:id/files", dev, uploadFile);
 router.delete("/:id/files/:fileId", dev, removeFile);
+// Any staff member who can view the release can download its files
+router.post("/:id/files/:fileId/download", staff, downloadFile);
 
 export default router;

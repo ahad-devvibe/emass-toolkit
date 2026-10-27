@@ -2,6 +2,8 @@ import type { ReactNode } from "react"
 import { homePath, type SessionUser } from "@/auth/auth.types"
 import { cn } from "@/lib/utils"
 import { BrandLogo } from "./BrandLogo"
+import { SettingsDialog } from "./settings/SettingsDialog"
+import { openSettings, setSettingsOpen, useSettingsOpen } from "./settings/settings-dialog.store"
 import { ThemeToggle } from "./ThemeToggle"
 import { UserMenu } from "./UserMenu"
 
@@ -26,6 +28,10 @@ type AppHeaderProps = {
  * bar with the colour EMASS logo, breadcrumb or nav, and actions on the right).
  */
 export function AppHeader({ user, isDark, onToggleTheme, leading, children, actions, contained, logoClassName }: AppHeaderProps) {
+  const settingsOpen = useSettingsOpen()
+  // UX only: the settings endpoints are admin-only on the server
+  const isAdmin = user.role === "ADMIN"
+
   return (
     <header className="sticky top-0 z-40 border-b border-[#0976bc]/10 bg-[#c6e3f5]/90 backdrop-blur-md dark:border-white/5 dark:bg-[#0b2147]/80">
       <div className={cn("flex h-16 items-center gap-3 sm:gap-5 lg:h-[72px]", contained ? "mx-auto w-full max-w-5xl px-6 sm:px-10 lg:px-12" : "px-4 sm:px-6 lg:px-10")}>
@@ -35,9 +41,10 @@ export function AppHeader({ user, isDark, onToggleTheme, leading, children, acti
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {actions}
           <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
-          <UserMenu user={user} />
+          <UserMenu user={user} onOpenSettings={isAdmin ? openSettings : undefined} />
         </div>
       </div>
+      {isAdmin && <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />}
     </header>
   )
 }

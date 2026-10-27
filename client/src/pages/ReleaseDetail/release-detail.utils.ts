@@ -25,8 +25,8 @@ export function filesUpdatedAfterFeedback(release: Pick<ReleaseDetail, "events" 
  * a platform): those are listed separately.
  */
 export function toCatalogFile(file: ReleaseFileItem): ReleaseFile | null {
-  const base = { name: file.name, size: formatBytes(file.sizeBytes), checksum: file.sha256 }
-  if (file.kind === "sdk") return file.os ? { ...base, kind: "sdk", os: file.os, arch: "" } : null
+  const base = { id: file.id, name: file.name, sizeBytes: file.sizeBytes, size: formatBytes(file.sizeBytes), checksum: file.sha256 }
+  if (file.kind === "sdk") return file.os ? { ...base, kind: "sdk", os: file.os } : null
   if (file.kind === "documentation") return { ...base, kind: "documentation", title: file.name, format: formatFromName(file.name) }
   return null
 }

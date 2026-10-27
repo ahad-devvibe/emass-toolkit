@@ -9,15 +9,20 @@ import {
 } from "@prisma/client";
 import { prisma } from "../../configs/prisma.js";
 import { getStorageBuckets } from "../../configs/storage.js";
+import type { SubmitReleaseInput } from "../../schemas/releases.schema.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { decodeCursor, encodeCursor } from "../../utils/cursor.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
+import { emailService, type EmailSender } from "../email/email.service.js";
+import { releaseFileVerdicts } from "./file-checks.service.js";
+import { startRollbackNotifications } from "./rollback-notify.service.js";
 import {
   duplicatePlatform,
   fileNotFound,
-  noRestoreTarget,
+  fileWarningsUnconfirmed,
   notReleaseOwner,
   productNotFound,
+  releaseFilesBlocked,
   releaseLocked,
   releaseNotFound,
   translateVersionConflict,
@@ -50,6 +55,7 @@ type Db = Prisma.TransactionClient;
 
 // Deleting a release removes its staged objects while holding the row lock
 const DELETE_TRANSACTION_TIMEOUT_MS = 60_000;
+const SUBMIT_TRANSACTION_TIMEOUT_MS = 30_000;
 
 function requireVersion(version: string): Semver {
   const parsed = parseVersion(version);
@@ -175,15 +181,14 @@ export interface ListReleasesInput {
 /**
  * Newest first, keyset-paginated on (createdAt, id). `counts` has every
  * status (zeros included) for the product and search filters, ignoring the
- * status filter, so the tabs can show their totals.
+ * status filter, so the tabs can show their totals. `needsYou` ignores every
+ * filter: what waits for the caller (an admin's reviews, a dev's own releases
+ * sent back with changes requested), for the sidebar badge.
  */
-export async function listReleases({
-  status,
-  productId,
-  q,
-  cursor,
-  limit,
-}: ListReleasesInput) {
+export async function listReleases(
+  { status, productId, q, cursor, limit }: ListReleasesInput,
+  user: { userId: string; role: UserRole },
+) {
   const scope: Prisma.ReleaseWhereInput = {
     ...(productId && { productId }),
     ...releaseSearchWhere(q),
@@ -195,7 +200,15 @@ export async function listReleases({
     ? { AND: [filter, afterCursor(decodeCursor(cursor))] }
     : filter;
 
-  const [rows, grouped] = await Promise.all([
+  const waiting: Prisma.ReleaseWhereInput =
+    user.role === UserRole.ADMIN
+      ? { status: ReleaseStatus.IN_REVIEW }
+      : {
+          status: ReleaseStatus.CHANGES_REQUESTED,
+          createdById: user.userId,
+        };
+
+  const [rows, grouped, needsYou] = await Promise.all([
     prisma.release.findMany({
       where: page,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -210,6 +223,7 @@ export async function listReleases({
       where: scope,
       _count: { _all: true },
     }),
+    prisma.release.count({ where: waiting }),
   ]);
 
   const hasMore = rows.length > limit;
@@ -245,6 +259,7 @@ export async function listReleases({
     ),
     nextCursor: hasMore && last ? encodeCursor(last) : null,
     counts,
+    needsYou,
   };
 }
 
@@ -279,7 +294,12 @@ async function reviewContext(
     "status" | "productId" | "versionMajor" | "versionMinor" | "versionPatch"
   >,
 ): Promise<ReviewContext> {
-  if (release.status === ReleaseStatus.IN_REVIEW) {
+  // In review: what publishing would archive. Archived: what customers are
+  // pointed to if this version is rolled back.
+  if (
+    release.status === ReleaseStatus.IN_REVIEW ||
+    release.status === ReleaseStatus.ARCHIVED
+  ) {
     const currentPublished = await prisma.release.findFirst({
       where: { productId: release.productId, status: ReleaseStatus.PUBLISHED },
       select: versionRef,
@@ -301,7 +321,12 @@ export async function getRelease(id: string) {
     include: releaseDetailInclude,
   });
   if (!release) throw releaseNotFound();
-  return presentRelease(release, await reviewContext(release));
+  const { files, verdicts } = await releaseFileVerdicts(release, release.files);
+  return presentRelease(
+    { ...release, files },
+    await reviewContext(release),
+    verdicts,
+  );
 }
 
 /**
@@ -491,18 +516,76 @@ export async function assertReadyForReview(
   });
 }
 
-export async function submitRelease(devId: string, id: string) {
-  await prisma.$transaction(async (tx) => {
-    const release = await lockOwnedRelease(tx, id, devId, EDITABLE_STATUSES);
-    await assertReadyForReview(tx, release);
-    await tx.release.update({
-      where: { id },
-      data: { status: ReleaseStatus.IN_REVIEW },
-    });
-    await tx.releaseEvent.create({
-      data: { releaseId: id, type: ReleaseEventType.SUBMITTED, actorId: devId },
-    });
-  });
+/**
+ * Sends a draft for review. Every file is judged again first (the version
+ * may have changed since upload): a blocked file refuses the submit, and
+ * warnings need `confirmWarnings`, which the SUBMITTED event records.
+ */
+export async function submitRelease(
+  devId: string,
+  id: string,
+  input: SubmitReleaseInput = {},
+) {
+  await prisma.$transaction(
+    async (tx) => {
+      const release = await lockOwnedRelease(tx, id, devId, EDITABLE_STATUSES);
+      await assertReadyForReview(tx, release);
+      const files = await tx.releaseFile.findMany({
+        where: { releaseId: id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+      const { verdicts } = await releaseFileVerdicts(release, files);
+      const judged = files.map((file) => ({
+        fileId: file.id,
+        name: file.originalName,
+        ...(verdicts.get(file.id) ?? { reasons: [], warnings: [] }),
+      }));
+
+      const blocked = judged.filter((file) => file.reasons.length > 0);
+      if (blocked.length > 0) {
+        throw releaseFilesBlocked(
+          blocked.map(({ fileId, name, reasons }) => ({
+            fileId,
+            name,
+            reasons,
+          })),
+        );
+      }
+      const warned = judged.filter((file) => file.warnings.length > 0);
+      if (warned.length > 0 && !input.confirmWarnings) {
+        throw fileWarningsUnconfirmed(
+          warned.map(({ fileId, name, warnings }) => ({
+            fileId,
+            name,
+            warnings,
+          })),
+        );
+      }
+
+      await tx.release.update({
+        where: { id },
+        data: { status: ReleaseStatus.IN_REVIEW },
+      });
+      await tx.releaseEvent.create({
+        data: {
+          releaseId: id,
+          type: ReleaseEventType.SUBMITTED,
+          actorId: devId,
+          note:
+            warned.length > 0
+              ? `Submitted with warnings: ${warned
+                  .map(
+                    (file) =>
+                      `${file.name}: ${file.warnings.map((w) => w.message).join(" ")}`,
+                  )
+                  .join("; ")}`
+              : null,
+        },
+      });
+    },
+    // Files uploaded before inspection existed are read from storage once
+    { timeout: SUBMIT_TRANSACTION_TIMEOUT_MS },
+  );
   return getRelease(id);
 }
 
@@ -581,7 +664,8 @@ export async function requestChanges(
 export async function rollbackRelease(
   adminId: string,
   id: string,
-  reason: string,
+  { reason, customerMessage }: { reason: string; customerMessage?: string },
+  sender: EmailSender = emailService,
 ) {
   const found = await prisma.release.findUnique({
     where: { id },
@@ -589,11 +673,13 @@ export async function rollbackRelease(
   });
   if (!found) throw releaseNotFound();
 
-  await prisma.$transaction(async (tx) => {
+  // Customer-facing versions only: the published one, or an older archived one
+  const outcome = await prisma.$transaction(async (tx) => {
     await lockProductReleases(tx, found.productId);
-    const release = await lockRelease(tx, id, [ReleaseStatus.PUBLISHED]);
-    const target = await findRestoreTarget(tx, release);
-    if (!target) throw noRestoreTarget();
+    const release = await lockRelease(tx, id, [
+      ReleaseStatus.PUBLISHED,
+      ReleaseStatus.ARCHIVED,
+    ]);
 
     await tx.release.update({
       where: { id },
@@ -607,20 +693,49 @@ export async function rollbackRelease(
         note: reason,
       },
     });
-    // The restored release keeps its original publishedAt; the event dates the restore
-    await tx.release.update({
-      where: { id: target.id },
-      data: { status: ReleaseStatus.PUBLISHED },
-    });
-    await tx.releaseEvent.create({
-      data: {
-        releaseId: target.id,
-        type: ReleaseEventType.RESTORED,
-        actorId: adminId,
-        note: `Restored after v${release.version} was rolled back`,
-      },
-    });
+
+    if (release.status === ReleaseStatus.ARCHIVED) {
+      // Withdrawn only; the published release is untouched
+      const current = await tx.release.findFirst({
+        where: { productId: found.productId, status: ReleaseStatus.PUBLISHED },
+        select: versionRef,
+      });
+      return { version: release.version, replacement: current };
+    }
+
+    // Published: promote the newest older archived version, if there is one;
+    // otherwise the product simply has no published release
+    const target = await findRestoreTarget(tx, release);
+    if (target) {
+      // The restored release keeps its original publishedAt; the event dates the restore
+      await tx.release.update({
+        where: { id: target.id },
+        data: { status: ReleaseStatus.PUBLISHED },
+      });
+      await tx.releaseEvent.create({
+        data: {
+          releaseId: target.id,
+          type: ReleaseEventType.RESTORED,
+          actorId: adminId,
+          note: `Restored after v${release.version} was rolled back`,
+        },
+      });
+    }
+    return { version: release.version, replacement: target };
   });
+
+  // Emails go out after the commit, without holding up the admin
+  startRollbackNotifications(
+    {
+      releaseId: id,
+      productId: found.productId,
+      withdrawnVersion: outcome.version,
+      replacementVersion: outcome.replacement?.version ?? null,
+      customerMessage,
+      actorId: adminId,
+    },
+    sender,
+  );
   return getRelease(id);
 }
 

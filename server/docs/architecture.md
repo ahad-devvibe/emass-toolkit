@@ -52,12 +52,18 @@ src/
 │   ├── health.routes.ts
 │   ├── docs.routes.ts
 │   ├── auth.routes.ts / admin.routes.ts
+│   ├── admin-dashboard.routes.ts   # GET /admin/dashboard (docs/admin/dashboard.md)
+│   ├── admin-domains.routes.ts     # free-mail / competitor domain list (GET, POST, DELETE /admin/domains)
+│   ├── admin-integrations.routes.ts   # GET /admin/integrations/hubspot (Settings dialog connection check)
+│   ├── catalog.routes.ts       # customer catalog: shipped versions only, and POST /files/:id/download (docs/downloads/downloads.md)
+│   ├── local-files.routes.ts   # GET /files/local/:token, signed download links (STORAGE_DRIVER=local only)
 │   ├── products.routes.ts
 │   └── releases.routes.ts      # releases, files, review, publish
-├── controllers/   # flat handler files (health, docs, auth, products, releases, release-files)
+├── controllers/   # flat handler files (health, docs, auth, admin-signups, admin-dashboard, admin-domains, admin-integrations, catalog, products, releases, release-files)
 ├── middleware/    # auth (requireAuth), role (requireRole), admin, upload (multer, images), error-handler
 ├── services/      # per-module folders (the only folders allowed)
-│   ├── auth/      # auth.service, token.service, otp.service, auth.utils, auth.errors
+│   ├── admin/     # dashboard.service (counts, alert queues, sign-in activity), dashboard.utils
+│   ├── auth/      # auth.service, token.service, otp.service, auth-events.service (sign-in audit), auth.utils, auth.errors
 │   ├── email/     # email.service, email.utils, templates/
 │   ├── products/  # products.service (active products)
 │   ├── releases/  # releases.service (drafts, state machine, locks), release-files.service
@@ -72,9 +78,10 @@ scripts/
 ├── openapi-releases.ts   # product + release paths, merged into the spec
 ├── openapi-helpers.ts    # { success, statusCode, message, data? } envelope helpers
 ├── seed-products.ts      # npm run seed:products (fixed product ids)
+├── benchmark/seed-signups.ts   # npm run bench:signups: seed or delete emass-bench-* free-mail signups (approval queue testing)
 └── storage-smoke.ts / storage-copy-smoke.ts   # real-bucket checks (upload/abort; copy timing)
 
-prisma/schema.prisma   # auth (User, tokens, OTP, reset links, domain policy) + catalog (Product, Release, ReleaseFile, ReleaseEvent, ProductResource, DownloadToken, Download)
+prisma/schema.prisma   # auth (User, tokens, OTP, reset links, domain policy, AuthEvent) + catalog (Product, Release, ReleaseFile, ReleaseEvent, ProductResource, Download)
 prisma.config.ts       # datasource.url = env("DATABASE_URL"), migrations path
 eslint.config.js       # flat: js.recommended + typescript-eslint + prettier
 vitest.config.ts       # setupFiles + fileParallelism: false
@@ -166,7 +173,8 @@ known (e.g. "email already exists"); the middleware is the fallback.
 - Schema: `User` (email unique, password, emailVerified, role
   `CUSTOMER/DEV/ADMIN`), `RefreshToken`, `Otp`
   (`MFA_LOGIN`/`SIGNUP_VERIFY` in use; `PASSWORD_RESET` left unused),
-  `PasswordResetToken` (forgot-password links) + enums — see
+  `PasswordResetToken` (forgot-password links), `AuthEvent` (sign-in audit),
+  `User.blockReason` (competitor vs rejected), `User.useCase` (sign-up free text), `Download` (customer download clicks), `ActivityLog` (staff actions: file downloads), `User.licenseAcceptedAt`/`licenseVersion` (download licence, once), `User.downloadCount`/`first…`/`lastDownload…` plus `hubspotSyncedDownloads`/`hubspotNoteSentAt` (download totals and HubSpot sync progress) + enums — see
   `prisma/schema.prisma`
 - Migrations: **never run without explicit approval**; apply to test DB via
   `npm run test:migrate`

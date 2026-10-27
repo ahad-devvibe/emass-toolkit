@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { ArrowLeft, CircleAlert, FileQuestion, Info, MessageSquareWarning, RefreshCw, RotateCcw } from "lucide-react"
+import { ArrowLeft, Ban, CircleAlert, FileQuestion, Info, MessageSquareWarning, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/useAuth"
@@ -14,6 +14,9 @@ import { ReleaseStatusBadge } from "@/pages/Releases/components/ReleaseStatusBad
 import { ProductIcon } from "@/pages/Releases/product-meta"
 import { relativeTime } from "@/pages/Releases/releases.utils"
 import { useRelease } from "@/pages/Releases/useReleaseQueries"
+import { releasesApi } from "@/pages/Releases/releases.api"
+import type { ReleaseFile as CatalogReleaseFile } from "@/pages/Catalog/catalog.types"
+import { downloadFromServer } from "@/lib/download"
 import { cn } from "@/lib/utils"
 import { ActivityTimeline } from "./components/ActivityTimeline"
 import { ReleaseActions } from "./components/ReleaseActions"
@@ -49,6 +52,7 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
   const { user } = useAuth()
   const { data: release, error, loading, notFound, reload, setData } = useRelease(releaseId)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   if (notFound) return <Centered breadcrumb="Not found" title="Release not found" body="It may have been deleted." action={<Button render={<Link to="/releases" />}>Back to releases</Button>} />
   if (error) return <Centered breadcrumb="Error" title="Couldn't load this release" body={error.message} action={<Button variant="outline" onClick={reload}><RefreshCw />Try again</Button>} />
@@ -61,10 +65,18 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
   const rolledBack = latestEvent(release, "rolled_back")
   const updated = release.status === "in_review" ? filesUpdatedAfterFeedback(release) : []
   const platforms = supportedOs(files)
+  // The server judges files only before publishing, so shipped releases have none
+  const blocked = release.files.filter((file) => file.blockedBy.length > 0)
+  const warned = release.files.filter((file) => file.warnings.length > 0)
 
   async function copy(value: string, label: string) { try { await navigator.clipboard.writeText(value); toast.success(`${label} copied to clipboard`) } catch { toast.error("Clipboard access is unavailable in this browser") } }
-  // Download tracking and short-lived links come with the downloads task
-  function download() { toast("Downloads aren't available yet", { description: "Staff downloads arrive with the download links update." }) }
+  // Works in every state; unpublished files get a short link, and staff downloads go to the activity log
+  async function download(file: CatalogReleaseFile) {
+    if (downloadingId || !release) return
+    setDownloadingId(file.id)
+    await downloadFromServer(() => releasesApi.downloadFile(release.id, file.id))
+    setDownloadingId(null)
+  }
 
   return (
     <AppShell breadcrumb={["Releases", `${release.product.name} v${release.version}`]}>
@@ -91,11 +103,25 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
             {updated.map((file) => file.name).join(", ")}
           </Callout>
         )}
+        {blocked.length > 0 && (
+          <Callout tone="danger" icon={<Ban />} title={`${blocked.length} ${blocked.length === 1 ? "file can't" : "files can't"} be submitted`}>
+            <ul className="space-y-0.5">
+              {blocked.flatMap((file) => file.blockedBy.map((reason, index) => <li key={`${file.id}-${index}`}><span className="font-medium">{file.name}</span>: {reason.message}</li>))}
+            </ul>
+          </Callout>
+        )}
+        {warned.length > 0 && (
+          <Callout tone="amber" icon={<TriangleAlert />} title={`${warned.length} ${warned.length === 1 ? "file has" : "files have"} warnings`}>
+            <ul className="space-y-0.5">
+              {warned.flatMap((file) => file.warnings.map((warning, index) => <li key={`${file.id}-${index}`}><span className="font-medium">{file.name}</span>: {warning.message}</li>))}
+            </ul>
+          </Callout>
+        )}
         {release.status === "rolled_back" && rolledBack && <Callout tone="danger" icon={<RotateCcw />} title={`Rolled back by ${rolledBack.actor.name}`}>{rolledBack.note}</Callout>}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <div className="space-y-4">
-            {files.length > 0 && <ReleaseFiles files={files} version={{ version: release.version, released: release.publishedAt ?? undefined }} recommendedOs={null} onDownload={download} onCopy={copy} />}
+            {files.length > 0 && <ReleaseFiles files={files} version={{ version: release.version, released: release.publishedAt ?? undefined }} recommendedOs={null} downloadingId={downloadingId} onDownload={download} onCopy={copy} />}
             {unmapped.length > 0 && (
               <section className="rounded-xl border border-dashed bg-card px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-semibold"><FileQuestion className="size-4 text-amber-600 dark:text-amber-400" />Needs a type or platform <span className="rounded-full bg-muted px-2 text-xs font-normal tabular-nums text-muted-foreground">{unmapped.length}</span></h2>

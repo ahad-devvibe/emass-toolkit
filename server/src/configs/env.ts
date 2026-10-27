@@ -127,6 +127,22 @@ export const envSchema = z
       .int({ error: "PUBLISH_JOB_TTL_MS must be a positive integer" })
       .positive({ error: "PUBLISH_JOB_TTL_MS must be a positive integer" })
       .default(10 * 60 * 1000),
+    // How long a download link (OCI object PAR) works after the click
+    DOWNLOAD_URL_TTL_SECONDS: z.coerce
+      .number({ error: "DOWNLOAD_URL_TTL_SECONDS must be 60 to 86400" })
+      .int({ error: "DOWNLOAD_URL_TTL_SECONDS must be 60 to 86400" })
+      .min(60, { error: "DOWNLOAD_URL_TTL_SECONDS must be 60 to 86400" })
+      .max(86_400, { error: "DOWNLOAD_URL_TTL_SECONDS must be 60 to 86400" })
+      .default(3600),
+    // Staff links to staged (unpublished) files stay short
+    STAGED_DOWNLOAD_URL_TTL_SECONDS: z.coerce
+      .number({ error: "STAGED_DOWNLOAD_URL_TTL_SECONDS must be 60 to 3600" })
+      .int({ error: "STAGED_DOWNLOAD_URL_TTL_SECONDS must be 60 to 3600" })
+      .min(60, { error: "STAGED_DOWNLOAD_URL_TTL_SECONDS must be 60 to 3600" })
+      .max(3600, {
+        error: "STAGED_DOWNLOAD_URL_TTL_SECONDS must be 60 to 3600",
+      })
+      .default(300),
     // OCI multipart parts must be at least 10 MiB (except the last one)
     UPLOAD_PART_BYTES: z.coerce
       .number({ error: "UPLOAD_PART_BYTES must be an integer >= 10485760" })
@@ -135,6 +151,14 @@ export const envSchema = z
         error: "UPLOAD_PART_BYTES must be an integer >= 10485760",
       })
       .default(10 * 1024 ** 2),
+
+    // Reverse proxies in front of the app (nginx = 1), so req.ip is the
+    // client's address in sign-in logs; 0 trusts none
+    TRUST_PROXY: z.coerce
+      .number({ error: "TRUST_PROXY must be an integer >= 0" })
+      .int({ error: "TRUST_PROXY must be an integer >= 0" })
+      .min(0, { error: "TRUST_PROXY must be an integer >= 0" })
+      .default(0),
 
     // hubspot (one-way customer contact sync)
     HUBSPOT_ENABLED: z

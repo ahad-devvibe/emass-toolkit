@@ -1,17 +1,20 @@
 import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from "react"
-import { Loader2, RefreshCw, ShieldCheck } from "lucide-react"
+import { CircleHelp, Loader2, RefreshCw, ShieldCheck } from "lucide-react"
 import { Link } from "react-router-dom"
 import { authApi } from "@/auth/auth.api"
 import { authErrorMessage, errorCode } from "@/auth/auth.messages"
 import type { SignupInput } from "@/auth/auth.types"
 import { useAuth } from "@/auth/useAuth"
 import { AuthCard } from "@/components/common/AuthCard"
+import { LegalNotice } from "@/components/common/LegalNotice"
 import { FormAlert, FormField } from "@/components/common/FormField"
 import { EMAIL_PATTERN, fieldA11y } from "@/components/common/form.utils"
 import { NewPasswordForm } from "@/components/common/NewPasswordForm"
 import { OtpCodeForm } from "@/components/common/OtpCodeForm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ApiRequestError } from "@/lib/api/http"
 import { cn } from "@/lib/utils"
 import { CountryCombobox } from "./components/CountryCombobox"
@@ -23,19 +26,25 @@ type Step =
   | { kind: "password"; email: string; code: string }
   | { kind: "pending"; email: string }
 
-type Form = Required<SignupInput>
+// Middle name is optional on the API; the form doesn't ask for it
+type Form = Required<Omit<SignupInput, "middleName">>
 type Field = keyof Form
 type Errors = Partial<Record<Field, string>>
 
-const emptyForm: Form = { email: "", firstName: "", middleName: "", lastName: "", country: "", companyName: "", jobTitle: "", captcha: "" }
+const emptyForm: Form = { email: "", firstName: "", lastName: "", country: "", companyName: "", jobTitle: "", useCase: "", captcha: "" }
 
-const required: Record<Exclude<Field, "middleName">, string> = {
-  email: "Work email is required",
+// Same limits as the server's signupSchema
+const USE_CASE_MIN = 10
+const USE_CASE_MAX = 200
+
+const required: Record<Field, string> = {
+  email: "Email is required",
   firstName: "First name is required",
   lastName: "Last name is required",
   country: "Choose your country",
   companyName: "Company is required",
   jobTitle: "Job title is required",
+  useCase: "Tell us what you'll use EMASS for",
   captcha: "Enter the characters shown",
 }
 
@@ -45,6 +54,8 @@ function validate(form: Form): Errors {
     if (!form[field].trim()) errors[field] = message
   }
   if (form.email.trim() && !EMAIL_PATTERN.test(form.email.trim())) errors.email = "Enter a valid email address"
+  const useCase = form.useCase.trim()
+  if (useCase && useCase.length < USE_CASE_MIN) errors.useCase = `Tell us a bit more (at least ${USE_CASE_MIN} characters)`
   return errors
 }
 
@@ -102,9 +113,8 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
     if (Object.keys(nextErrors).length > 0) return
     setSubmitting(true)
     try {
-      const { middleName, ...rest } = form
-      const trimmed = Object.fromEntries(Object.entries(rest).map(([key, value]) => [key, value.trim()])) as Omit<Form, "middleName">
-      const { email } = await authApi.signup({ ...trimmed, ...(middleName.trim() ? { middleName: middleName.trim() } : {}) })
+      const trimmed = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim()])) as Form
+      const { email } = await authApi.signup(trimmed)
       // The captcha is used up; a return to the form needs a fresh one
       setForm((current) => ({ ...current, captcha: "" }))
       onCodeSent(email)
@@ -124,36 +134,69 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
   }
 
   return (
-    <AuthCard wide title="Request access" description="Create an account to download EMASS SDKs and documentation." footer={<>Already have an account? <Link to="/sign-in" className="font-medium text-primary hover:underline">Sign in</Link></>}>
+    <AuthCard
+      wide
+      title="Request Access"
+      description="Fill in the form to verify your email and request access."
+      dividerFooter
+      footer={
+        <span className="flex items-center gap-3">
+          <span aria-hidden className="h-px flex-1 bg-[#0d72b9]/25 dark:bg-[#7cc6f8]/25" />
+          <span className="shrink-0">Already have an account? <Link to="/sign-in" className="font-medium text-primary hover:underline">Sign in</Link></span>
+          <span aria-hidden className="h-px flex-1 bg-[#0d72b9]/25 dark:bg-[#7cc6f8]/25" />
+        </span>
+      }
+    >
       {/* Container queries size the rows by the card's own width, so the form works from small laptops to desktop */}
-      <form noValidate onSubmit={handleSubmit} className="@container space-y-5 short:space-y-4 compact:space-y-3 tiny:space-y-2.5">
+      <form noValidate onSubmit={handleSubmit} className="@container space-y-3 short:space-y-2.5 compact:space-y-2 tiny:space-y-1.5">
         {formError && <FormAlert>{formError}</FormAlert>}
-        <FormField id="email" label="Work email" required error={errors.email} hint="We'll send a code to verify it. Personal addresses are reviewed before access.">
-          <Input {...fieldA11y("email", errors.email)} type="email" autoComplete="email" placeholder="you@company.com" value={form.email} onChange={(event) => update("email")(event.target.value)} />
-        </FormField>
-        <div className="grid items-start gap-3 @[22rem]:grid-cols-3">
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-3">
           <FormField id="firstName" label="First name" required error={errors.firstName}>
-            <Input {...fieldA11y("firstName", errors.firstName)} autoComplete="given-name" maxLength={80} value={form.firstName} onChange={(event) => update("firstName")(event.target.value)} />
-          </FormField>
-          <FormField id="middleName" label="Middle name" optional error={errors.middleName}>
-            <Input {...fieldA11y("middleName", errors.middleName)} autoComplete="additional-name" maxLength={80} value={form.middleName} onChange={(event) => update("middleName")(event.target.value)} />
+            <Input {...fieldA11y("firstName", errors.firstName)} autoComplete="given-name" maxLength={80} placeholder="Jane" value={form.firstName} onChange={(event) => update("firstName")(event.target.value)} />
           </FormField>
           <FormField id="lastName" label="Last name" required error={errors.lastName}>
-            <Input {...fieldA11y("lastName", errors.lastName)} autoComplete="family-name" maxLength={80} value={form.lastName} onChange={(event) => update("lastName")(event.target.value)} />
+            <Input {...fieldA11y("lastName", errors.lastName)} autoComplete="family-name" maxLength={80} placeholder="Doe" value={form.lastName} onChange={(event) => update("lastName")(event.target.value)} />
+          </FormField>
+          <FormField
+            id="email"
+            label="Email"
+            required
+            error={errors.email}
+            labelAside={
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger render={<Button type="button" variant="ghost" size="icon-xs" aria-label="Email domain access policy" />}>
+                    <CircleHelp />
+                  </TooltipTrigger>
+                  <TooltipContent>Custom email domains get instant access. Free email addresses are added to the approval list.</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            }
+          >
+            <Input {...fieldA11y("email", errors.email)} type="email" autoComplete="email" placeholder="johndoe@example.com" value={form.email} onChange={(event) => update("email")(event.target.value)} />
           </FormField>
         </div>
-        {/* Country gets its own full row; only on very short screens with a wide card does it join this row */}
-        <div className="grid items-start gap-3 @[20rem]:grid-cols-2 compact:@[30rem]:grid-cols-3">
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-3">
           <FormField id="companyName" label="Company" required error={errors.companyName}>
-            <Input {...fieldA11y("companyName", errors.companyName)} autoComplete="organization" maxLength={120} value={form.companyName} onChange={(event) => update("companyName")(event.target.value)} />
+            <Input {...fieldA11y("companyName", errors.companyName)} autoComplete="organization" maxLength={120} placeholder="Acme Inc." value={form.companyName} onChange={(event) => update("companyName")(event.target.value)} />
           </FormField>
           <FormField id="jobTitle" label="Job title" required error={errors.jobTitle}>
-            <Input {...fieldA11y("jobTitle", errors.jobTitle)} autoComplete="organization-title" maxLength={120} value={form.jobTitle} onChange={(event) => update("jobTitle")(event.target.value)} />
+            <Input {...fieldA11y("jobTitle", errors.jobTitle)} autoComplete="organization-title" maxLength={120} placeholder="Software Engineer" value={form.jobTitle} onChange={(event) => update("jobTitle")(event.target.value)} />
           </FormField>
-          <FormField id="country" label="Country" required error={errors.country} className="@[20rem]:col-span-2 compact:@[30rem]:col-span-1">
+          <FormField id="country" label="Country" required error={errors.country}>
             <CountryCombobox id="country" value={form.country} onChange={update("country")} invalid={Boolean(errors.country)} describedBy={errors.country ? "country-error" : undefined} />
           </FormField>
         </div>
+
+        <FormField
+          id="useCase"
+          label="What will you use EMASS for?"
+          required
+          error={errors.useCase}
+          labelAside={<span className={cn("text-xs tabular-nums text-muted-foreground", form.useCase.length >= USE_CASE_MAX && "text-destructive")}>{form.useCase.length}/{USE_CASE_MAX}</span>}
+        >
+          <Textarea {...fieldA11y("useCase", errors.useCase)} rows={2} maxLength={USE_CASE_MAX} placeholder="e.g. Evaluating EMASS for a battery-powered vision sensor" className="max-h-40 min-h-16 short:min-h-14 compact:min-h-12" value={form.useCase} onChange={(event) => update("useCase")(event.target.value)} />
+        </FormField>
 
         <FormField id="captcha" label="Type the characters you see" required error={errors.captcha}>
           <div className="flex items-center gap-3">
@@ -167,6 +210,7 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
         </FormField>
 
         <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Sending code…" : "Continue"}</Button>
+        <LegalNotice action="requesting access" />
       </form>
     </AuthCard>
   )

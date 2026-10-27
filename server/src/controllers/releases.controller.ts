@@ -8,6 +8,7 @@ import {
   releaseIdSchema,
   requestChangesSchema,
   rollbackSchema,
+  submitReleaseSchema,
   updateReleaseSchema,
 } from "../schemas/releases.schema.js";
 import { releaseNotFound } from "../services/releases/releases.errors.js";
@@ -41,7 +42,8 @@ const userId = (req: Request) => req.user!.userId;
 
 export const list = async (req: Request, res: Response) => {
   const query = listReleasesQuerySchema.parse(req.query);
-  res.json(ApiResponse.success(await listReleases(query)));
+  // requireRole runs first, so req.user is set
+  res.json(ApiResponse.success(await listReleases(query, req.user!)));
 };
 
 export const suggestVersion = async (req: Request, res: Response) => {
@@ -66,7 +68,8 @@ export const update = async (req: Request, res: Response) => {
 };
 
 export const submit = async (req: Request, res: Response) => {
-  const release = await submitRelease(userId(req), releaseId(req));
+  const input = submitReleaseSchema.parse(req.body ?? {});
+  const release = await submitRelease(userId(req), releaseId(req), input);
   res.json(ApiResponse.success(release, "Release sent for review"));
 };
 
@@ -91,8 +94,8 @@ export const requestChanges = async (req: Request, res: Response) => {
 };
 
 export const rollback = async (req: Request, res: Response) => {
-  const { reason } = rollbackSchema.parse(req.body ?? {});
-  const release = await rollbackRelease(userId(req), releaseId(req), reason);
+  const input = rollbackSchema.parse(req.body ?? {});
+  const release = await rollbackRelease(userId(req), releaseId(req), input);
   res.json(ApiResponse.success(release, "Release rolled back"));
 };
 

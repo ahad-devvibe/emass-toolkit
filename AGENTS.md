@@ -32,10 +32,13 @@ download versioned files. This is an MVP: keep it simple.
 - Files: private OCI bucket, never public. A release file is never overwritten;
   every version is a new object.
 - Downloads: on click the client calls our API (cookie auth); we check access,
-  log the download, and return an object-level, read-only OCI PAR (~60
-  seconds) for the published object. No PAR outlives a click, and none is
-  ever created for staged objects. OCI access uses an instance principal, no
-  keys on disk.
+  log the download, and return an object-level, read-only OCI PAR (1 hour,
+  `DOWNLOAD_URL_TTL_SECONDS`) for the shipped object. Every click mints a new
+  PAR. Customers never get a PAR for a staged object; staff (DEV/ADMIN) may,
+  short-lived (~5 min, `STAGED_DOWNLOAD_URL_TTL_SECONDS`), to test a build
+  before it ships. Customer downloads are logged to `Download`, staff ones to
+  `ActivityLog`. Customers accept the download licence once, before their
+  first download (server-enforced; time and wording version stored on User). OCI access uses an instance principal, no keys on disk.
 - Buckets: always private. Dev uses one bucket with `staged/` and `releases/`
   prefixes; prod uses separate staging and release buckets
   (`OCI_STAGING_BUCKET` / `OCI_RELEASE_BUCKET`, both defaulting to
@@ -44,14 +47,16 @@ download versioned files. This is an MVP: keep it simple.
 - Checksums: we compute SHA-256 on upload, store it per file, show it next to
   the download.
 - Release states: staged -> published -> archived. Publishing archives the
-  previous version. Rollback restores it and emails everyone who downloaded the
-  bad build.
+  previous version. Rollback (published or archived) withdraws the release;
+  rolling back the published one restores the previous archived version if
+  there is one. Everyone who downloaded the withdrawn build is emailed.
 - Catalog: products live in Postgres (`Product`, addressed by UUID, seeded
   by `npm run seed:products`; admin CRUD comes later). Versions, files and
   product-level resources live in Postgres too.
 - HubSpot: used only to create/update customer contacts, one-way from our
   portal. Never read business logic from it. Download and activity logs live in
-  our database.
+  our database; customer download totals and a first-download note are pushed
+  to the contact (best effort, never blocking a download).
 
 ## Conventions
 
@@ -96,8 +101,12 @@ download versioned files. This is an MVP: keep it simple.
   - Nothing flat at `tests/` root
 - Every DB-touching test file must start with `beforeAll(resetDb)` — never rely on
   test ordering or manual cleanup; non-DB test files stay DB-free
-- Integration files run serially (`fileParallelism: false` in vitest.config.ts) so
-  concurrent truncation can't wipe another file's data mid-run
+- Integration files run serially (`fileParallelism: false` plus `maxWorkers: 1`
+  in vitest.config.ts; Vitest 4 ignores the first alone) so concurrent
+  truncation can't wipe another file's data mid-run
+- Background work started by a request (e.g. rollback emails) must be
+  awaitable from tests (`rollbackNotificationsSettled`), so its writes never
+  land in the next test or file
 
 ## Testing DB
 

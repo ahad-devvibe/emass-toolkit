@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ReleaseEventType" ADD VALUE 'CUSTOMERS_NOTIFIED';

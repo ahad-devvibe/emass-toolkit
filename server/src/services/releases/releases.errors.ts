@@ -1,5 +1,6 @@
 import { Prisma, type ReleaseStatus, type SdkPlatform } from "@prisma/client";
 import { ApiError } from "../../utils/api-error.utils.js";
+import type { FileBlockReason, FileCheckWarning } from "./file-checks.utils.js";
 import type { PlatformDuplicate } from "./releases.utils.js";
 
 export const releaseNotFound = () =>
@@ -15,7 +16,7 @@ export const notReleaseOwner = () =>
     "NOT_RELEASE_OWNER",
   );
 
-const statusLabels: Record<ReleaseStatus, string> = {
+export const statusLabels: Record<ReleaseStatus, string> = {
   DRAFT: "a draft",
   IN_REVIEW: "in review",
   CHANGES_REQUESTED: "waiting for changes",
@@ -36,12 +37,6 @@ export const versionNotNewer = (highestShipped: string) =>
     `Version must be newer than ${highestShipped}, the highest version already shipped`,
     "VERSION_NOT_NEWER",
     { highestShipped },
-  );
-
-export const noRestoreTarget = () =>
-  ApiError.conflict(
-    "There's no earlier archived version to restore, so this release can't be rolled back",
-    "NO_RESTORE_TARGET",
   );
 
 /** The release's files changed while publish was copying them. */
@@ -98,3 +93,54 @@ export function translateVersionConflict(err: unknown): void {
     );
   }
 }
+
+/** The file breaks a release-file rule; `reasons` says which (no override). */
+export const fileBlocked = (
+  reasons: FileBlockReason[],
+  details: Record<string, unknown> = {},
+) =>
+  ApiError.conflict(
+    reasons.length === 1
+      ? reasons[0].message
+      : `This file can't be added: ${reasons.map((r) => r.message).join(" ")}`,
+    "FILE_BLOCKED",
+    { reasons, ...details },
+  );
+
+/** The bytes that arrived aren't the bytes the browser hashed. */
+export const checksumMismatch = () =>
+  new ApiError(
+    422,
+    "The file changed or was corrupted on the way. Upload it again.",
+    "CHECKSUM_MISMATCH",
+  );
+
+export interface FileWarningsByFile {
+  fileId: string;
+  name: string;
+  warnings: FileCheckWarning[];
+}
+
+/** Submit needs `confirmWarnings: true` while any file has a warning. */
+export const fileWarningsUnconfirmed = (files: FileWarningsByFile[]) =>
+  ApiError.conflict(
+    `${files.length === 1 ? "A file has" : `${files.length} files have`} warnings. Check them, then submit at your own risk.`,
+    "FILE_WARNINGS_UNCONFIRMED",
+    { files },
+  );
+
+export interface FileReasonsByFile {
+  fileId: string;
+  name: string;
+  reasons: FileBlockReason[];
+}
+
+/** Submit refused: these files break a rule (e.g. after a version change). */
+export const releaseFilesBlocked = (files: FileReasonsByFile[]) =>
+  ApiError.conflict(
+    `${files.length === 1 ? `"${files[0].name}" can't` : `${files.length} files can't`} be submitted: ${files
+      .flatMap((file) => file.reasons.map((reason) => reason.message))
+      .join(" ")}`,
+    "FILE_BLOCKED",
+    { files },
+  );

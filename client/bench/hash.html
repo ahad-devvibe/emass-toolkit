@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hash bench (dev only)</title>
+  </head>
+  <body>
+    <!-- Dev-only: not part of the build (vite builds index.html only).
+         Hashes each picked file with the editor's real hashFile (Web Worker,
+         8 MiB chunks) and reports time, throughput, heap and long tasks. -->
+    <input id="files" type="file" multiple />
+    <pre id="out"></pre>
+    <script type="module" src="./hash-bench.ts"></script>
+  </body>
+</html>

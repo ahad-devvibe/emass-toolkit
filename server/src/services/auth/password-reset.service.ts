@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { UserStatus, type User } from "@prisma/client";
+import { AuthEventType, UserStatus, type User } from "@prisma/client";
 import { env } from "../../configs/env.js";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
@@ -14,6 +14,7 @@ import {
   verifyPassword,
 } from "./auth.utils.js";
 import { revokeAllUserTokens } from "./token.service.js";
+import { recordAuthEvent, type RequestMeta } from "./auth-events.service.js";
 
 // Forgot password by emailed link:
 //   1. POST /auth/forgot-password       (email; same answer whether or not it exists)
@@ -119,6 +120,7 @@ export async function checkPasswordResetToken(
 export async function resetPasswordWithToken(
   token: string,
   newPassword: string,
+  meta: RequestMeta = {},
 ): Promise<void> {
   const row = await findUsableToken(token);
   if (await verifyPassword(newPassword, row.user.password!)) {
@@ -147,4 +149,12 @@ export async function resetPasswordWithToken(
   });
 
   await revokeAllUserTokens(row.userId);
+  await recordAuthEvent(
+    {
+      type: AuthEventType.PASSWORD_RESET,
+      email: row.user.email,
+      userId: row.userId,
+    },
+    meta,
+  );
 }

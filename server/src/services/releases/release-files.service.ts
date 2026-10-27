@@ -20,6 +20,15 @@ import { ApiError } from "../../utils/api-error.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
 import { stagedKey } from "../storage/storage.utils.js";
 import {
+  fileFacts,
+  storageReader,
+  storedInspection,
+} from "./file-checks.service.js";
+import { evaluateFile, type FileVerdict } from "./file-checks.utils.js";
+import { inspectFile } from "./file-inspect/inspect.js";
+import {
+  checksumMismatch,
+  fileBlocked,
   fileNotFound,
   fileTooLarge,
   notReleaseOwner,
@@ -186,24 +195,54 @@ async function* hashing(
   }
 }
 
-/** P2002 on (releaseId, platform): report which file holds the platform. */
-async function translatePlatformConflict(
+/**
+ * P2002 on insert: either the same bytes are already in this release
+ * (releaseId, sha256) or the platform is taken (releaseId, platform). The
+ * existing row says which.
+ */
+async function translateUploadConflict(
   err: unknown,
   releaseId: string,
+  sha256: string,
   platform: SdkPlatform | null | undefined,
 ): Promise<void> {
   if (
-    err instanceof Prisma.PrismaClientKnownRequestError &&
-    err.code === "P2002"
+    !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+    err.code !== "P2002"
   ) {
-    const holder = platform
-      ? await prisma.releaseFile.findFirst({
-          where: { releaseId, platform },
-          select: { id: true },
-        })
-      : null;
-    throw platformTaken(holder?.id);
+    return;
   }
+  const twin = await prisma.releaseFile.findFirst({
+    where: { releaseId, sha256 },
+    select: {
+      id: true,
+      originalName: true,
+      release: { select: { version: true, status: true } },
+    },
+  });
+  if (twin) {
+    throw fileBlocked([
+      {
+        code: "SAME_CONTENT",
+        message: `Already in this release as "${twin.originalName}".`,
+        match: {
+          fileId: twin.id,
+          fileName: twin.originalName,
+          releaseId,
+          version: twin.release.version,
+          status: twin.release.status,
+          sameRelease: true,
+        },
+      },
+    ]);
+  }
+  const holder = platform
+    ? await prisma.releaseFile.findFirst({
+        where: { releaseId, platform },
+        select: { id: true },
+      })
+    : null;
+  throw platformTaken(holder?.id);
 }
 
 async function deleteOrphan(key: string, releaseId: string): Promise<void> {
@@ -230,7 +269,7 @@ export async function uploadReleaseFile(
   const part = await openFilePart(req, env.MAX_UPLOAD_BYTES);
   let fields: ReturnType<typeof uploadFieldsSchema.parse>;
   let name: string;
-  let productId: string;
+  let target: { id: string; version: string; productId: string };
 
   try {
     fields = uploadFieldsSchema.parse(part.fields);
@@ -258,13 +297,13 @@ export async function uploadReleaseFile(
         )
       : undefined;
     if (holder) throw platformTaken(holder.id);
-    productId = release.productId;
+    target = release;
   } catch (err) {
     part.discard();
     throw err;
   }
 
-  const key = stagedKey(productId, releaseId, randomUUID(), name);
+  const key = stagedKey(target.productId, releaseId, randomUUID(), name);
   const contentType = CONTENT_TYPE.test(part.mimeType)
     ? part.mimeType.toLowerCase()
     : FALLBACK_CONTENT_TYPE;
@@ -277,6 +316,7 @@ export async function uploadReleaseFile(
       bucket: staging,
       key,
       contentType,
+      fileName: name,
       body: hashing(part.file, hash, counter),
     });
   } catch (err) {
@@ -286,11 +326,30 @@ export async function uploadReleaseFile(
 
   const sha256 = hash.digest("hex");
   let committed: { created: ReleaseFile; replaced: ReleaseFile | null };
+  let verdict: FileVerdict;
   try {
     await part.finished;
     if (counter.bytes === 0) {
       throw ApiError.badRequest("The file is empty", "EMPTY_FILE");
     }
+    if (fields.sha256 !== sha256) throw checksumMismatch();
+
+    // The browser checked this file before sending it; a modified client
+    // could skip that, so the stored bytes are judged again here
+    const inspection = await inspectFile(
+      storageReader(staging, key, counter.bytes),
+      name,
+    );
+    verdict = evaluateFile(
+      await fileFacts(target, inspection, sha256, fields.replace),
+    );
+    if (verdict.reasons.length > 0) {
+      throw fileBlocked(verdict.reasons, {
+        format: inspection.format,
+        versions: inspection.versions,
+      });
+    }
+
     committed = await prisma.$transaction(async (tx) => {
       await lockOwnedRelease(tx, releaseId, devId, EDITABLE_STATUSES);
       let old: ReleaseFile | null = null;
@@ -315,13 +374,14 @@ export async function uploadReleaseFile(
           sizeBytes: BigInt(counter.bytes),
           sha256,
           objectKey: key,
+          ...storedInspection(inspection),
         },
       });
       return { created: row, replaced: old };
     });
   } catch (err) {
     await deleteOrphan(key, releaseId);
-    await translatePlatformConflict(err, releaseId, fields.platform);
+    await translateUploadConflict(err, releaseId, sha256, fields.platform);
     throw err;
   }
 
@@ -329,7 +389,7 @@ export async function uploadReleaseFile(
   if (committed.replaced) {
     await deleteOrphan(committed.replaced.objectKey, releaseId);
   }
-  return { file: presentFile(committed.created) };
+  return { file: presentFile(committed.created, verdict) };
 }
 
 /**

@@ -4,7 +4,7 @@ import { filesUpdatedAfterFeedback, latestEvent, toCatalogFile } from "./release
 
 const actor = { id: "u1", name: "Dana", role: "DEV" as const }
 const event = (type: ReleaseEventItem["type"], at: string, note: string | null = null): ReleaseEventItem => ({ id: `${type}-${at}`, type, actor, note, at })
-const file = (name: string, createdAt: string, extra: Partial<ReleaseFileItem> = {}): ReleaseFileItem => ({ id: name, name, kind: "sdk", os: "windows", contentType: "application/octet-stream", sizeBytes: 2048, sha256: "a".repeat(64), createdAt, ...extra })
+const file = (name: string, createdAt: string, extra: Partial<ReleaseFileItem> = {}): ReleaseFileItem => ({ id: name, name, kind: "sdk", os: "windows", contentType: "application/octet-stream", sizeBytes: 2048, sha256: "a".repeat(64), createdAt, format: null, detectedVersions: [], blockedBy: [], warnings: [], ...extra })
 
 describe("latestEvent", () => {
   it("finds the newest event of a type", () => {
@@ -30,7 +30,7 @@ describe("filesUpdatedAfterFeedback", () => {
 
 describe("toCatalogFile", () => {
   it("shows an SDK by platform with the server checksum", () => {
-    expect(toCatalogFile(file("emass.deb", "2026-10-02T00:00:00Z", { os: "linux" }))).toEqual({ kind: "sdk", os: "linux", arch: "", name: "emass.deb", size: "2.0 KB", checksum: "a".repeat(64) })
+    expect(toCatalogFile(file("emass.deb", "2026-10-02T00:00:00Z", { os: "linux" }))).toEqual({ id: "emass.deb", kind: "sdk", os: "linux", name: "emass.deb", sizeBytes: 2048, size: "2.0 KB", checksum: "a".repeat(64) })
   })
 
   it("leaves unmapped files out of the shared list", () => {

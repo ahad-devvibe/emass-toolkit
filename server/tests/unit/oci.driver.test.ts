@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOciDriver } from "../../src/services/storage/drivers/oci.driver.js";
 import { ApiError } from "../../src/utils/api-error.utils.js";
@@ -33,7 +34,10 @@ function mockClient() {
   };
 }
 
-function driverFor(client: ReturnType<typeof mockClient>, partSize = 4) {
+function driverFor(
+  client: Partial<ReturnType<typeof mockClient>> & { getObject?: unknown },
+  partSize = 4,
+) {
   return createOciDriver({
     getClient: async () => client as never,
     getConfig: () => config,
@@ -93,6 +97,24 @@ describe("oci driver putStream", () => {
       },
     });
     expect(client.abortMultipartUpload).not.toHaveBeenCalled();
+  });
+
+  it("stores an attachment Content-Disposition when given the file name", async () => {
+    const client = mockClient();
+
+    await driverFor(client).putStream({
+      bucket: "staging",
+      key: upload.objectName,
+      fileName: "EMASS SDK.zip",
+      body: body("abc"),
+    });
+
+    expect(
+      client.createMultipartUpload.mock.calls[0][0]
+        .createMultipartUploadDetails,
+    ).toMatchObject({
+      contentDisposition: `attachment; filename="EMASS SDK.zip"; filename*=UTF-8''EMASS%20SDK.zip`,
+    });
   });
 
   it("sends one empty part for an empty file", async () => {
@@ -372,5 +394,168 @@ describe("oci driver copyObject", () => {
     await expect(copyDriver(polling).copyObject(input)).rejects.toMatchObject({
       code: "COPY_FAILED",
     });
+  });
+});
+
+describe("oci driver createReadUrl", () => {
+  // Cross-origin links ignore <a download>, so the URL asks OCI for "attachment"
+  const saveAs = `?httpResponseContentDisposition=${encodeURIComponent(
+    `attachment; filename="sdk.zip"; filename*=UTF-8''sdk.zip`,
+  )}`;
+
+  const input = {
+    bucket: "releases-bucket",
+    key: "releases/p/1.0.0/u/sdk.zip",
+    fileName: "sdk.zip",
+    expiresInSeconds: 3600,
+  };
+  const now = () => Date.UTC(2026, 9, 26, 12);
+
+  it("mints a read-only object PAR that expires after the TTL", async () => {
+    const createPreauthenticatedRequest = vi.fn().mockResolvedValue({
+      preauthenticatedRequest: { accessUri: "/p/abc/n/ns/b/bk/o/sdk.zip" },
+    });
+    const driver = createOciDriver({
+      getClient: async () => ({ createPreauthenticatedRequest }) as never,
+      getConfig: () => config,
+      now,
+    });
+
+    const { url, expiresAt } = await driver.createReadUrl(input);
+
+    expect(url).toBe(
+      `https://objectstorage.us-phoenix-1.oraclecloud.com/p/abc/n/ns/b/bk/o/sdk.zip${saveAs}`,
+    );
+    expect(expiresAt.getTime()).toBe(now() + 3600 * 1000);
+    const request = createPreauthenticatedRequest.mock.calls[0][0];
+    expect(request).toMatchObject({
+      namespaceName: "test-namespace",
+      bucketName: "releases-bucket",
+      createPreauthenticatedRequestDetails: {
+        objectName: input.key,
+        accessType: "ObjectRead",
+        timeExpires: expiresAt,
+      },
+    });
+  });
+
+  it("prefers the full URL when OCI returns one", async () => {
+    const driver = createOciDriver({
+      getClient: async () =>
+        ({
+          createPreauthenticatedRequest: vi.fn().mockResolvedValue({
+            preauthenticatedRequest: {
+              accessUri: "/p/abc/o/sdk.zip",
+              fullPath: "https://ns.objectstorage.example/p/abc/o/sdk.zip",
+            },
+          }),
+        }) as never,
+      getConfig: () => config,
+    });
+
+    expect((await driver.createReadUrl(input)).url).toBe(
+      `https://ns.objectstorage.example/p/abc/o/sdk.zip${saveAs}`,
+    );
+  });
+
+  it("throws DOWNLOAD_URL_FAILED when OCI refuses", async () => {
+    const driver = createOciDriver({
+      getClient: async () =>
+        ({
+          createPreauthenticatedRequest: vi
+            .fn()
+            .mockRejectedValue(new Error("403 NotAuthorized")),
+        }) as never,
+      getConfig: () => config,
+    });
+
+    await expect(driver.createReadUrl(input)).rejects.toMatchObject({
+      statusCode: 502,
+      code: "DOWNLOAD_URL_FAILED",
+    });
+  });
+});
+
+describe("oci driver readRange", () => {
+  const object = { bucket: "staging", key: upload.objectName };
+
+  it("sends a byte range and returns exactly those bytes", async () => {
+    const getObject = vi.fn().mockResolvedValue({
+      value: Readable.from([Buffer.from("cdef")]),
+    });
+    const client = { ...mockClient(), getObject };
+
+    const bytes = await driverFor(client).readRange(
+      object.bucket,
+      object.key,
+      2,
+      4,
+    );
+
+    expect(Buffer.from(bytes).toString()).toBe("cdef");
+    expect(getObject).toHaveBeenCalledWith({
+      namespaceName: "test-namespace",
+      bucketName: "staging",
+      objectName: upload.objectName,
+      range: { startByte: 2, endByte: 5 },
+    });
+  });
+
+  it("reads a web ReadableStream body too", async () => {
+    const getObject = vi.fn().mockResolvedValue({
+      value: new Blob([Buffer.from("xyz")]).stream(),
+    });
+    const client = { ...mockClient(), getObject };
+    const bytes = await driverFor(client).readRange(
+      object.bucket,
+      object.key,
+      0,
+      3,
+    );
+    expect(Buffer.from(bytes).toString()).toBe("xyz");
+  });
+
+  it("throws SOURCE_NOT_FOUND for a missing object", async () => {
+    const getObject = vi.fn().mockRejectedValue({ statusCode: 404 });
+    const client = { ...mockClient(), getObject };
+    await expect(
+      driverFor(client).readRange(object.bucket, object.key, 0, 3),
+    ).rejects.toMatchObject({ statusCode: 404, code: "SOURCE_NOT_FOUND" });
+  });
+
+  it("throws READ_FAILED on a short read or other errors", async () => {
+    const short = vi
+      .fn()
+      .mockResolvedValue({ value: Readable.from([Buffer.from("ab")]) });
+    await expect(
+      driverFor({ ...mockClient(), getObject: short }).readRange(
+        object.bucket,
+        object.key,
+        0,
+        3,
+      ),
+    ).rejects.toMatchObject({ statusCode: 502, code: "READ_FAILED" });
+
+    const broken = vi.fn().mockRejectedValue(new Error("network"));
+    await expect(
+      driverFor({ ...mockClient(), getObject: broken }).readRange(
+        object.bucket,
+        object.key,
+        0,
+        3,
+      ),
+    ).rejects.toMatchObject({ code: "READ_FAILED" });
+  });
+
+  it("asks nothing for an empty range", async () => {
+    const getObject = vi.fn();
+    const bytes = await driverFor({ ...mockClient(), getObject }).readRange(
+      object.bucket,
+      object.key,
+      0,
+      0,
+    );
+    expect(bytes).toHaveLength(0);
+    expect(getObject).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,7 @@ export function signupInput(
     country: "GB",
     companyName: "Analytical Engines Ltd",
     jobTitle: "Engineer",
+    useCase: "Evaluating EMASS for a battery-powered vision sensor",
     captcha: TEST_CAPTCHA_CODE,
     ...overrides,
   };

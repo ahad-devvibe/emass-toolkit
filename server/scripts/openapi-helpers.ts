@@ -108,7 +108,7 @@ export function errorResponse(
 }
 
 export const jsonBody = (
-  schema: z.ZodType,
+  schema: z.ZodType | JsonSchemaObject,
   description: string,
 ): Record<string, unknown> => ({
   description,

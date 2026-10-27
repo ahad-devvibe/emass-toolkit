@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { copyFile, mkdir, rename, rm } from "node:fs/promises";
+import { copyFile, mkdir, open, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { env } from "../../../configs/env.js";
 import { logger } from "../../../configs/logger.js";
 import { ApiError } from "../../../utils/api-error.utils.js";
+import { signLocalLink } from "../storage.utils.js";
 import type { StorageDriver } from "./storage.driver.js";
 
 /**
@@ -79,5 +80,57 @@ export function createLocalDriver(
       }
       onProgress?.(100);
     },
+
+    async readRange(bucket, key, offset, length) {
+      const target = objectPath(bucket, key);
+      let handle;
+      try {
+        handle = await open(target, "r");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          throw ApiError.notFound(
+            "The file is missing from storage",
+            "SOURCE_NOT_FOUND",
+          );
+        }
+        logger.error({ bucket, key, err: error }, "Local readRange failed");
+        throw new ApiError(502, "Unable to read file", "READ_FAILED");
+      }
+      try {
+        const bytes = Buffer.alloc(length);
+        const { bytesRead } = await handle.read(bytes, 0, length, offset);
+        if (bytesRead !== length) {
+          throw new ApiError(502, "Unable to read file", "READ_FAILED");
+        }
+        return bytes;
+      } finally {
+        await handle.close();
+      }
+    },
+
+    // Stands in for an OCI PAR: a signed link served by /api/files/local
+    async createReadUrl({ bucket, key, fileName, expiresInSeconds }) {
+      objectPath(bucket, key);
+      const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+      const token = signLocalLink(
+        { bucket, key, name: fileName, exp: expiresAt.getTime() },
+        env.JWT_SECRET,
+      );
+      return { url: `/api/files/local/${token}`, expiresAt };
+    },
   };
+}
+
+/** Where the local driver keeps an object; throws on keys that escape the root. */
+export function localObjectPath(
+  bucket: string,
+  key: string,
+  root: string = path.resolve(env.STORAGE_LOCAL_DIR),
+): string {
+  const resolvedRoot = path.resolve(root);
+  const target = path.resolve(resolvedRoot, bucket, key);
+  if (!target.startsWith(resolvedRoot + path.sep)) {
+    throw new ApiError(400, "Invalid object key", "INVALID_OBJECT_KEY");
+  }
+  return target;
 }

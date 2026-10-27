@@ -80,13 +80,15 @@ type ReleaseTableProps = {
   canCreate: boolean
   /** The tab holding the viewer's to-do; its count shows as a notification badge */
   highlightStatus?: StatusFilter
+  /** The viewer's own to-do in that tab (a dev sees only their releases); defaults to the tab total */
+  highlightCount?: number | null
   onStatusChange: (status: StatusFilter) => void
   onProductChange: (productId: string) => void
   onQueryChange: (query: string) => void
 }
 
 /** Every release, newest created first; the server applies the tab, product and search filters. */
-export function ReleaseTable({ releases, counts, products, loading, error, onRetry, hasMore, loadingMore, onLoadMore, status, productId, query, canCreate, highlightStatus, onStatusChange, onProductChange, onQueryChange }: ReleaseTableProps) {
+export function ReleaseTable({ releases, counts, products, loading, error, onRetry, hasMore, loadingMore, onLoadMore, status, productId, query, canCreate, highlightStatus, highlightCount, onStatusChange, onProductChange, onQueryChange }: ReleaseTableProps) {
   // The input stays responsive; the URL (and the request) follow after a short pause
   const [search, setSearch] = useState(query)
   useEffect(() => {
@@ -112,11 +114,12 @@ export function ReleaseTable({ releases, counts, products, loading, error, onRet
           <TabsList variant="line" className="w-max">
             {statusFilters.map((filter) => {
               const count = counts ? tabCount(filter.value, counts) : null
+              const mine = filter.value === highlightStatus ? (highlightCount ?? count) : null
               return (
                 <TabsTrigger key={filter.value} value={filter.value} className="px-2.5">
                   {filter.label}
-                  {count === null ? null : filter.value === highlightStatus && count > 0 ? (
-                    <span aria-label={`${count} need${count === 1 ? "s" : ""} your action`} className="grid h-5 min-w-5 place-items-center rounded-full bg-[#0d72b9] px-1.5 text-[11px] font-bold tabular-nums text-white dark:bg-[#7cc6f8] dark:text-[#0b2147]">{count}</span>
+                  {count === null ? null : mine ? (
+                    <span aria-label={`${mine} need${mine === 1 ? "s" : ""} your action`} className="grid h-5 min-w-5 place-items-center rounded-full bg-[#0d72b9] px-1.5 text-[11px] font-bold tabular-nums text-white dark:bg-[#7cc6f8] dark:text-[#0b2147]">{mine}</span>
                   ) : (
                     <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
                   )}

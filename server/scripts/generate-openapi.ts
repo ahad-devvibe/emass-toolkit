@@ -370,6 +370,196 @@ const authPaths = {
       },
     },
   },
+  "/admin/domains": {
+    get: {
+      operationId: "listEmailDomains",
+      tags: ["Admin"],
+      summary:
+        "Every free-mail and competitor domain, alphabetical (ADMIN only)",
+      security: [{ cookieAuth: [] }],
+      responses: {
+        200: successResponse("Domain policy", {
+          type: "object",
+          properties: {
+            domains: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  domain: { type: "string" },
+                  kind: { type: "string", enum: ["FREE_MAIL", "COMPETITOR"] },
+                  createdAt: { type: "string", format: "date-time" },
+                },
+              },
+            },
+          },
+        }),
+        401: errorResponse(
+          "Missing or invalid token",
+          ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
+          401,
+        ),
+        403: errorResponse("Admin access required", ["FORBIDDEN"], 403),
+      },
+    },
+    post: {
+      operationId: "addEmailDomain",
+      tags: ["Admin"],
+      summary:
+        "Add a domain to the free-mail (needs approval) or competitor (refused) list. Applies to new sign-ups only (ADMIN only)",
+      security: [{ cookieAuth: [] }],
+      requestBody: jsonBody(
+        {
+          type: "object",
+          required: ["domain", "kind"],
+          properties: {
+            domain: {
+              type: "string",
+              description:
+                'Normalised: trimmed, lowercased; "@gmail.com" and "someone@gmail.com" both mean gmail.com',
+            },
+            kind: { type: "string", enum: ["FREE_MAIL", "COMPETITOR"] },
+          },
+        },
+        "Domain and list",
+      ),
+      responses: {
+        201: successResponse(
+          "Domain added",
+          {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              domain: { type: "string" },
+              kind: { type: "string" },
+              createdAt: { type: "string", format: "date-time" },
+            },
+          },
+          201,
+        ),
+        400: errorResponse("Invalid domain or list", ["VALIDATION_ERROR"], 400),
+        401: errorResponse(
+          "Missing or invalid token",
+          ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
+          401,
+        ),
+        403: errorResponse("Admin access required", ["FORBIDDEN"], 403),
+        409: errorResponse(
+          "Already on a list (details.kind says which)",
+          ["DOMAIN_EXISTS"],
+          409,
+        ),
+      },
+    },
+  },
+  "/admin/domains/{id}": {
+    delete: {
+      operationId: "removeEmailDomain",
+      tags: ["Admin"],
+      summary:
+        "Remove a domain from its list. A domain still in data/domain-policy.json returns on the next seed:domains (ADMIN only)",
+      security: [{ cookieAuth: [] }],
+      parameters: [
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+      responses: {
+        200: successResponse("Domain removed"),
+        400: errorResponse("Malformed id", ["VALIDATION_ERROR"], 400),
+        401: errorResponse(
+          "Missing or invalid token",
+          ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
+          401,
+        ),
+        403: errorResponse("Admin access required", ["FORBIDDEN"], 403),
+        404: errorResponse("Unknown domain", ["DOMAIN_NOT_FOUND"], 404),
+      },
+    },
+  },
+  "/admin/integrations/hubspot": {
+    get: {
+      operationId: "getHubspotStatus",
+      tags: ["Admin"],
+      summary:
+        "Live, read-only HubSpot connection check for the admin Settings dialog (ADMIN only). message is a plain sentence for admins; details are logged server-side.",
+      security: [{ cookieAuth: [] }],
+      responses: {
+        200: successResponse("Connection status", {
+          type: "object",
+          properties: {
+            state: { type: "string", enum: ["connected", "off", "problem"] },
+            message: { type: "string" },
+            checkedAt: { type: "string", format: "date-time" },
+          },
+          required: ["state", "message", "checkedAt"],
+        }),
+        401: errorResponse(
+          "Missing or invalid token",
+          ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
+          401,
+        ),
+        403: errorResponse("Admin access required", ["FORBIDDEN"], 403),
+      },
+    },
+  },
+  "/admin/dashboard": {
+    get: {
+      operationId: "getAdminDashboard",
+      tags: ["Admin"],
+      summary:
+        "Account counts and the oldest 5 releases in review and sign-ups waiting (ADMIN only). Sign-in logs are recorded but not exposed here.",
+      security: [{ cookieAuth: [] }],
+      responses: {
+        200: successResponse("Dashboard", {
+          type: "object",
+          properties: {
+            users: {
+              type: "object",
+              description:
+                "active splits into customers and staff; blocked users split by block reason",
+              properties: Object.fromEntries(
+                [
+                  "active",
+                  "activeCustomers",
+                  "activeStaff",
+                  "pendingApproval",
+                  "blockedCompetitor",
+                  "blockedRejected",
+                ].map((key) => [key, { type: "integer" }]),
+              ),
+            },
+            releases: {
+              type: "object",
+              properties: { inReview: { type: "integer" } },
+            },
+            releaseAlerts: {
+              type: "object",
+              description: "IN_REVIEW releases, oldest submission first",
+              properties: {
+                total: { type: "integer" },
+                items: { type: "array", items: { type: "object" } },
+              },
+            },
+            signupAlerts: {
+              type: "object",
+              description: "PENDING_APPROVAL users, oldest first",
+              properties: {
+                total: { type: "integer" },
+                items: { type: "array", items: { type: "object" } },
+              },
+            },
+            generatedAt: { type: "string", format: "date-time" },
+          },
+        }),
+        401: errorResponse(
+          "Missing or invalid token",
+          ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
+          401,
+        ),
+        403: errorResponse("Admin access required", ["FORBIDDEN"], 403),
+      },
+    },
+  },
   "/auth/admin/signups/{id}/approve": {
     post: {
       operationId: "approveSignup",

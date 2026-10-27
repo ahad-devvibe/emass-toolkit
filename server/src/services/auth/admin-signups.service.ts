@@ -1,4 +1,4 @@
-import { UserStatus } from "@prisma/client";
+import { BlockReason, UserStatus } from "@prisma/client";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
 import { ApiError } from "../../utils/api-error.utils.js";
@@ -88,7 +88,11 @@ export async function rejectSignup(
   const updated = await prisma.user.update({
     where: { id: user.id },
     // Kept for audit; the same text goes into the email below
-    data: { status: UserStatus.BLOCKED, rejectionReason: reason ?? null },
+    data: {
+      status: UserStatus.BLOCKED,
+      blockReason: BlockReason.SIGNUP_REJECTED,
+      rejectionReason: reason ?? null,
+    },
   });
   // Best-effort: the decision stands even if the notification can't be sent
   try {

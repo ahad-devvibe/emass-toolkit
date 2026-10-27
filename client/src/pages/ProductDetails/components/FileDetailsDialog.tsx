@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ArrowDownToLine, Copy } from "lucide-react"
+import { ArrowDownToLine, Copy, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { fileKindMeta, isSdkFile, osMeta } from "@/pages/Catalog/catalog.meta"
@@ -29,20 +29,20 @@ function CopyBlock({ label, value, onCopy }: { label: string; value: string; onC
 // Staff previews have no release date yet
 export type FileVersion = { version: string; released?: string }
 
-type FileDetailsDialogProps = { file: ReleaseFile | null; version: FileVersion; onOpenChange: (open: boolean) => void; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }
+type FileDetailsDialogProps = { file: ReleaseFile | null; version: FileVersion; downloading?: boolean; onOpenChange: (open: boolean) => void; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }
 
 /** Everything about one file, including the SHA-256 the main list leaves out. */
-export function FileDetailsDialog({ file, version, onOpenChange, onDownload, onCopy }: FileDetailsDialogProps) {
+export function FileDetailsDialog({ file, version, downloading, onOpenChange, onDownload, onCopy }: FileDetailsDialogProps) {
   return (
     <Dialog open={file !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        {file && <FileDetails file={file} version={version} onDownload={onDownload} onCopy={onCopy} />}
+        {file && <FileDetails file={file} version={version} downloading={downloading} onDownload={onDownload} onCopy={onCopy} />}
       </DialogContent>
     </Dialog>
   )
 }
 
-function FileDetails({ file, version, onDownload, onCopy }: { file: ReleaseFile; version: FileVersion; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }) {
+function FileDetails({ file, version, downloading, onDownload, onCopy }: { file: ReleaseFile; version: FileVersion; downloading?: boolean; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }) {
   const sdk = isSdkFile(file)
   const Icon = sdk ? osMeta[file.os].Icon : fileKindMeta[file.kind].Icon
   const title = sdk ? `${osMeta[file.os].label} SDK` : file.title
@@ -63,7 +63,7 @@ function FileDetails({ file, version, onDownload, onCopy }: { file: ReleaseFile;
 
       <dl className="divide-y text-sm">
         <Detail label="Type">{fileKindMeta[file.kind].label}</Detail>
-        {sdk ? <Detail label="Platform">{osMeta[file.os].label} · {file.arch}</Detail> : <Detail label="Format">{file.format}</Detail>}
+        {sdk ? <Detail label="Platform">{osMeta[file.os].label}</Detail> : <Detail label="Format">{file.format}</Detail>}
         <Detail label="Size">{file.size}</Detail>
         <Detail label="Version"><span className="font-mono">v{version.version}</span></Detail>
         {version.released && <Detail label="Released">{shortDate(version.released)}</Detail>}
@@ -86,7 +86,7 @@ function FileDetails({ file, version, onDownload, onCopy }: { file: ReleaseFile;
       </section>
 
       <DialogFooter showCloseButton>
-        <Button onClick={() => onDownload(file)}><ArrowDownToLine />Download</Button>
+        <Button disabled={downloading} onClick={() => onDownload(file)}>{downloading ? <Loader2 className="animate-spin" /> : <ArrowDownToLine />}Download</Button>
       </DialogFooter>
     </>
   )

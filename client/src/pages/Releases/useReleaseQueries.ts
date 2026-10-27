@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useState, useSyncExternalStore } from "react"
 import { useLocation } from "react-router-dom"
+import { subscribe as subscribeSession } from "@/auth/session"
 import { ApiRequestError } from "@/lib/api/http"
 import { productsApi, releasesApi } from "./releases.api"
 import type { ProductOption, ReleaseDetail, ReleaseFilters, ReleaseList, ReleaseSummary, VersionSuggestion } from "./releases.model"
@@ -26,7 +27,7 @@ const asApiError = (error: unknown) => (error instanceof ApiRequestError ? error
  * `keepPrevious`, the last data stays visible while the next key loads
  * (filters, badges) instead of blanking.
  */
-function useResource<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>, { keepPrevious = false } = {}): Resource<T> {
+export function useResource<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>, { keepPrevious = false } = {}): Resource<T> {
   const [loaded, setLoaded] = useState<Loaded<T> | null>(null)
   const [nonce, setNonce] = useState(0)
   const run = useEffectEvent((signal: AbortSignal) => load(signal))
@@ -108,7 +109,7 @@ export function useReleaseList(filters: ListFilters) {
     first.reload()
   }
 
-  return { releases, counts: first.data?.counts ?? null, nextCursor, loading: first.loading, error: first.error, reload, loadMore, loadingMore, moreError }
+  return { releases, counts: first.data?.counts ?? null, needsYou: first.data?.needsYou ?? null, nextCursor, loading: first.loading, error: first.error, reload, loadMore, loadingMore, moreError }
 }
 
 // Bumped after any action that changes a release's status, so badges and
@@ -131,10 +132,25 @@ function useReleasesVersion(): number {
   )
 }
 
-/** Per-status counts for nav badges; refetched on route change and after release actions. */
-export function useReleaseCounts(enabled: boolean): ReleaseList["counts"] | null {
+type ReleaseBadges = Pick<ReleaseList, "counts" | "needsYou">
+
+/** Per-status counts and the viewer's to-do count for nav badges; refetched on route change and after release actions. */
+// Every page mounts its own shell, so the sidebar's counts would start empty on each
+// navigation; keep the last answer here (dropped on sign-out) to bridge the refetch
+let lastCounts: ReleaseBadges | null = null
+subscribeSession((event) => {
+  if (event.type === "signed-out") lastCounts = null
+})
+
+export function useReleaseCounts(enabled: boolean): ReleaseBadges | null {
   const { pathname } = useLocation()
   const version = useReleasesVersion()
-  const { data } = useResource(enabled ? `counts:${pathname}:${version}` : null, async () => (await releasesApi.list({ limit: 1 })).counts, { keepPrevious: true })
-  return data
+  const { data } = useResource(enabled ? `counts:${pathname}:${version}` : null, async (): Promise<ReleaseBadges> => {
+    const { counts, needsYou } = await releasesApi.list({ limit: 1 })
+    return { counts, needsYou }
+  }, { keepPrevious: true })
+  useEffect(() => {
+    if (data) lastCounts = data
+  }, [data])
+  return enabled ? (data ?? lastCounts) : null
 }

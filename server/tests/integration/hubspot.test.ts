@@ -46,6 +46,7 @@ describe("HubSpot contact lifecycle", () => {
         country: "GB",
         companyName: "Analytical Engines Ltd",
         jobTitle: "Engineer",
+        useCase: "Evaluating EMASS for a battery-powered vision sensor",
       },
     ]);
   });

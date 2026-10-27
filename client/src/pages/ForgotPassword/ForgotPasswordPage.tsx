@@ -44,10 +44,10 @@ export function ForgotPasswordPage() {
   if (sentTo) return <CheckYourEmail email={sentTo} onChangeEmail={() => setSentTo(null)} />
 
   return (
-    <AuthCard title="Reset your password" description="Enter your work email and we'll send you a link to choose a new password." footer={backToSignIn}>
+    <AuthCard title="Reset your password" description="Enter your email and we'll send you a link to choose a new password." footer={backToSignIn}>
       <form noValidate onSubmit={handleSubmit} className="space-y-4">
         {formError && <FormAlert>{formError}</FormAlert>}
-        <FormField id="email" label="Work email" error={fieldError}>
+        <FormField id="email" label="Email" error={fieldError}>
           <Input {...fieldA11y("email", fieldError)} type="email" autoComplete="email" autoFocus placeholder="you@company.com" className="h-10" value={email} onChange={(event) => setEmail(event.target.value)} />
         </FormField>
         <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />}{submitting ? "Sending link…" : "Send reset link"}</Button>

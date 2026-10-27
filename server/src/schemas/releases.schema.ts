@@ -105,7 +105,17 @@ function reviewText(label: string) {
 
 export const requestChangesSchema = z.object({ note: reviewText("Feedback") });
 
-export const rollbackSchema = z.object({ reason: reviewText("A reason") });
+// reason: internal, kept in the release history. customerMessage: optional,
+// added to the email sent to everyone who downloaded the release.
+export const rollbackSchema = z.object({
+  reason: reviewText("A reason"),
+  customerMessage: z
+    .string({ error: "Message to customers must be text" })
+    .trim()
+    .max(1000, "Message to customers can be at most 1,000 characters")
+    .optional()
+    .transform((value) => value || undefined),
+});
 
 // Notes on a published release; empty clears them
 export const publishedNotesSchema = z.object({
@@ -120,3 +130,13 @@ export const publishedNotesSchema = z.object({
       error: "Release notes must be at most 50,000 characters",
     }),
 });
+
+// Submitting with file warnings (no version, a doc of another version) is
+// allowed only once the developer confirms them
+export const submitReleaseSchema = z.object({
+  confirmWarnings: z
+    .boolean({ error: "Confirm warnings must be true or false" })
+    .optional(),
+});
+
+export type SubmitReleaseInput = z.infer<typeof submitReleaseSchema>;

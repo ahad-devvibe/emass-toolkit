@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { models, type requests } from "oci-objectstorage";
 import { env } from "../../../configs/env.js";
 import { logger } from "../../../configs/logger.js";
 import {
@@ -7,7 +9,7 @@ import {
   type StorageConfig,
 } from "../../../configs/storage.js";
 import { ApiError } from "../../../utils/api-error.utils.js";
-import { chunkStream } from "../storage.utils.js";
+import { chunkStream, contentDispositionAttachment } from "../storage.utils.js";
 import type { StorageDriver } from "./storage.driver.js";
 
 export interface OciDriverOptions {
@@ -57,7 +59,7 @@ export function createOciDriver({
   now = Date.now,
 }: OciDriverOptions = {}): StorageDriver {
   return {
-    async putStream({ bucket, key, contentType, body }) {
+    async putStream({ bucket, key, contentType, fileName, body }) {
       const { namespace } = getConfig();
       const target = { namespaceName: namespace, bucketName: bucket };
 
@@ -75,7 +77,14 @@ export function createOciDriver({
       const { multipartUpload } = await provider(() =>
         client.createMultipartUpload({
           ...target,
-          createMultipartUploadDetails: { object: key, contentType },
+          createMultipartUploadDetails: {
+            object: key,
+            contentType,
+            // Stored on the object too, so even a bare link downloads
+            ...(fileName && {
+              contentDisposition: contentDispositionAttachment(fileName),
+            }),
+          },
         }),
       );
       const upload = {
@@ -224,5 +233,102 @@ export function createOciDriver({
         await sleep(pollMs);
       }
     },
+
+    async createReadUrl({ bucket, key, fileName, expiresInSeconds }) {
+      const { namespace, region } = getConfig();
+      const expiresAt = new Date(now() + expiresInSeconds * 1000);
+      try {
+        const client = await getClient();
+        const { preauthenticatedRequest: par } =
+          await client.createPreauthenticatedRequest({
+            namespaceName: namespace,
+            bucketName: bucket,
+            createPreauthenticatedRequestDetails: {
+              name: `download-${randomUUID()}`,
+              objectName: key,
+              accessType:
+                models.CreatePreauthenticatedRequestDetails.AccessType
+                  .ObjectRead,
+              timeExpires: expiresAt,
+            },
+          });
+        // accessUri is a path; newer SDKs also return the full URL
+        const base =
+          par.fullPath ??
+          `https://objectstorage.${region}.oraclecloud.com${par.accessUri}`;
+        // The browser ignores <a download> across origins, so OCI itself must
+        // say "attachment"; PAR GETs honour this response-header override
+        const disposition = encodeURIComponent(
+          contentDispositionAttachment(fileName),
+        );
+        const url = `${base}?httpResponseContentDisposition=${disposition}`;
+        return { url, expiresAt };
+      } catch (error) {
+        logger.error({ bucket, key, err: error }, "OCI read PAR failed");
+        throw new ApiError(
+          502,
+          "Couldn't prepare the download. Try again.",
+          "DOWNLOAD_URL_FAILED",
+        );
+      }
+    },
+
+    async readRange(bucket, key, offset, length) {
+      if (length === 0) return new Uint8Array(0);
+      const { namespace } = getConfig();
+      let bytes: Buffer;
+      try {
+        const client = await getClient();
+        const response = await client.getObject({
+          namespaceName: namespace,
+          bucketName: bucket,
+          objectName: key,
+          // The SDK reads only these two fields to build "bytes=a-b"
+          range: {
+            startByte: offset,
+            endByte: offset + length - 1,
+          } as unknown as requests.GetObjectRequest["range"],
+        });
+        bytes = await collect(response.value);
+      } catch (error) {
+        if (isNotFound(error)) {
+          throw ApiError.notFound(
+            "The file is missing from storage",
+            "SOURCE_NOT_FOUND",
+          );
+        }
+        logger.error(
+          { bucket, key, offset, length, err: error },
+          "OCI readRange failed",
+        );
+        throw new ApiError(502, "Unable to read file", "READ_FAILED");
+      }
+      if (bytes.length !== length) {
+        logger.error(
+          { bucket, key, offset, length, got: bytes.length },
+          "OCI readRange returned a short read",
+        );
+        throw new ApiError(502, "Unable to read file", "READ_FAILED");
+      }
+      return bytes;
+    },
   };
+}
+
+/** A GetObject body (a Node stream or a web ReadableStream) as one buffer. */
+async function collect(body: unknown): Promise<Buffer> {
+  const chunks: Uint8Array[] = [];
+  if (body && typeof (body as ReadableStream).getReader === "function") {
+    const reader = (body as ReadableStream<Uint8Array>).getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+  } else {
+    for await (const chunk of body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+  }
+  return Buffer.concat(chunks);
 }

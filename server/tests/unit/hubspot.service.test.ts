@@ -41,6 +41,20 @@ function fakeFetch(overrides: FakeResponseOptions = {}) {
 }
 
 describe("createApiHubspotClient", () => {
+  it("sends the use case as emass_use_case only when there is one", async () => {
+    const { calls, fetchImpl } = fakeFetch();
+    const client = createApiHubspotClient(() => config, fetchImpl);
+
+    await client.upsertContact({ ...input, useCase: "Smart doorbell" });
+    await client.upsertContact({ ...input, useCase: null });
+
+    const sent = calls.map(
+      (call) => JSON.parse(String(call.init.body)).inputs[0].properties,
+    );
+    expect(sent[0].emass_use_case).toBe("Smart doorbell");
+    expect(sent[1]).not.toHaveProperty("emass_use_case");
+  });
+
   it("POSTs an idempotent email-keyed upsert as a lead", async () => {
     const { calls, fetchImpl } = fakeFetch();
     const client = createApiHubspotClient(() => config, fetchImpl);
@@ -156,12 +170,65 @@ describe("createLogHubspotClient", () => {
   });
 });
 
+describe("createApiHubspotClient contact updates and notes", () => {
+  it("PATCHes contact properties by record id", async () => {
+    const { calls, fetchImpl } = fakeFetch();
+    const client = createApiHubspotClient(() => config, fetchImpl);
+
+    await client.updateContact("123", { emass_download_count: "2" });
+
+    expect(calls[0].url).toBe(
+      "https://api.hubapi.com/crm/v3/objects/contacts/123",
+    );
+    expect(calls[0].init.method).toBe("PATCH");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      properties: { emass_download_count: "2" },
+    });
+  });
+
+  it("creates a note associated with the contact", async () => {
+    const { calls, fetchImpl } = fakeFetch();
+    const client = createApiHubspotClient(() => config, fetchImpl);
+    const at = new Date("2026-10-26T10:00:00.000Z");
+
+    await client.createNote("123", "First download", at);
+
+    expect(calls[0].url).toBe("https://api.hubapi.com/crm/v3/objects/notes");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({
+      properties: {
+        hs_note_body: "First download",
+        hs_timestamp: at.toISOString(),
+      },
+      associations: [
+        {
+          to: { id: "123" },
+          types: [
+            { associationCategory: "HUBSPOT_DEFINED", associationTypeId: 202 },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("throws when HubSpot refuses, so the caller can log it", async () => {
+    const { fetchImpl } = fakeFetch({ ok: false, status: 403 });
+    const client = createApiHubspotClient(() => config, fetchImpl);
+
+    await expect(client.createNote("123", "x", new Date())).rejects.toThrow(
+      /403/,
+    );
+  });
+});
+
 describe("syncHubspotContact", () => {
   const user = { ...input, id: "user-1" };
+  // Only upsertContact matters here
+  const unused = { updateContact: async () => {}, createNote: async () => {} };
 
   it("upserts the user's contact details", async () => {
     const seen: HubspotContactInput[] = [];
     await syncHubspotContact(user, {
+      ...unused,
       // No id returned, so nothing is written back to the DB
       upsertContact: async (contact) => {
         seen.push(contact);
@@ -175,6 +242,7 @@ describe("syncHubspotContact", () => {
   it("swallows HubSpot failures (best-effort)", async () => {
     await expect(
       syncHubspotContact(user, {
+        ...unused,
         upsertContact: async () => {
           throw new Error("hubspot down");
         },

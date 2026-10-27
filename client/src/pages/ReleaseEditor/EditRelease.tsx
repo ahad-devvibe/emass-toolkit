@@ -14,7 +14,10 @@ import { latestEvent } from "@/pages/ReleaseDetail/release-detail.utils"
 import { canEditRelease } from "@/pages/Releases/release-permissions"
 import { releasesApi } from "@/pages/Releases/releases.api"
 import { duplicatePlatforms } from "@/pages/Releases/releases.errors"
-import type { ReleaseDetail } from "@/pages/Releases/releases.model"
+import { SubmitWarningsDialog } from "@/pages/Releases/components/SubmitWarningsDialog"
+import { reportBlockedSubmit } from "@/pages/Releases/submit-errors"
+import { unconfirmedWarnings } from "@/pages/Releases/releases.errors"
+import type { FileIssues, ReleaseDetail, ReleaseFileItem } from "@/pages/Releases/releases.model"
 import { useRelease, useVersionSuggestion } from "@/pages/Releases/useReleaseQueries"
 import { cn } from "@/lib/utils"
 import { changedFields, changedMappings, effectiveMapping, hasDuplicates, mappingProblems, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionProblem, type MappingOverrides } from "./editor.state"
@@ -74,7 +77,12 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
   // New drops are checked against the platforms as currently edited
   const savedHolder = useCallback((os: OperatingSystem) => savedHolderFor(release.files, overrides, os), [release.files, overrides])
   // Each finished upload reloads the release, so the file moves into the list
-  const { queue, state } = useUploadQueue(release.id, { onUploaded: onReload, savedHolder })
+  const onUploaded = useCallback((file: ReleaseFileItem) => {
+    const [first] = file.warnings
+    if (first) toast.warning(`Check ${file.name}`, { description: first.message })
+    onReload()
+  }, [onReload])
+  const { queue, state } = useUploadQueue(release.id, { onUploaded, savedHolder })
   const busy = isBusy(state)
 
   const formatError = versionProblem(version)
@@ -83,7 +91,11 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
   const fileChanges = changedMappings(release.files, overrides)
   const dirty = Object.keys(fieldChanges).length > 0 || fileChanges.length > 0
   const problems = mappingProblems(release.files, overrides)
-  const blocker = submitBlocker({ version, fileCount: release.fileCount, queue: state, problems })
+  // Judged against the saved version; an unsaved version edit may clear them on save
+  const blockedFiles = version.trim() === release.version ? release.files.filter((file) => file.blockedBy.length > 0) : []
+  const blocker = submitBlocker({ version, fileCount: release.fileCount, queue: state, problems, blockedFiles: blockedFiles.length })
+  // Files whose warnings the server wants confirmed before this goes to review
+  const [warnedFiles, setWarnedFiles] = useState<FileIssues[] | null>(null)
   const feedback = release.status === "changes_requested" ? latestEvent(release, "changes_requested") : undefined
 
   useEffect(() => {
@@ -177,14 +189,32 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
     setPending("submit")
     try {
       if (!(await save())) return
-      await releasesApi.submit(release.id)
-      toast.success(`v${version.trim()} sent for review`, { description: "An admin will publish it or send feedback." })
-      navigate(`/releases/${release.id}`)
+      await sendForReview()
     } catch (error) {
-      toast.error(error instanceof ApiRequestError ? error.message : "Couldn't submit. Try again.")
+      const warned = unconfirmedWarnings(error)
+      if (warned) setWarnedFiles(warned)
+      else if (!reportBlockedSubmit(error)) toast.error(error instanceof ApiRequestError ? error.message : "Couldn't submit. Try again.")
       onReload()
     } finally {
       setPending(null)
+    }
+  }
+
+  async function sendForReview(confirmWarnings = false) {
+    await releasesApi.submit(release.id, confirmWarnings ? { confirmWarnings } : {})
+    toast.success(`v${version.trim()} sent for review`, { description: "An admin will publish it or send feedback." })
+    navigate(`/releases/${release.id}`)
+  }
+
+  /** "Submit anyway" in the warnings dialog: true closes it. */
+  async function confirmSubmit(): Promise<boolean> {
+    try {
+      await sendForReview(true)
+      return true
+    } catch (error) {
+      if (!reportBlockedSubmit(error)) toast.error(error instanceof ApiRequestError ? error.message : "Couldn't submit. Try again.")
+      onReload()
+      return false
     }
   }
 
@@ -295,6 +325,7 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
                 <CheckItem state={versionState} label={formatError || serverError ? "Valid, unused version" : `Version v${version.trim()}`} />
                 <CheckItem state={fileState} label={fileLabel} />
                 <CheckItem state={mappingState} label={mappingLabel} />
+                {blockedFiles.length > 0 && <CheckItem state="error" label={`${blockedFiles.length === 1 ? "1 file can't" : `${blockedFiles.length} files can't`} be submitted`} />}
                 <CheckItem state={notes.trim() ? "ok" : "optional"} label={notes.trim() ? "Release notes added" : "Release notes (optional)"} />
               </ul>
               <div className="mt-4 border-t pt-4">
@@ -307,6 +338,7 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
           </aside>
         </div>
 
+        <SubmitWarningsDialog files={warnedFiles} onClose={() => setWarnedFiles(null)} onConfirm={confirmSubmit} />
         {dirty && <SaveBar summary={unsavedSummary(fieldChanges, fileChanges.length)} error={saveError} uploading={busy} saving={pending === "save"} onDiscard={discard} onSave={() => void saveDraft()} />}
       </main>
     </AppShell>

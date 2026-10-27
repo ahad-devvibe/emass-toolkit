@@ -4,6 +4,8 @@ import { AuthLayout } from "@/components/common/AuthLayout"
 import { RequireRole, RoleHome } from "@/auth/RequireRole"
 import type { UserRole } from "@/auth/auth.types"
 import { CatalogPage } from "@/pages/Catalog/CatalogPage"
+import { DashboardPage } from "@/pages/Dashboard/DashboardPage"
+import { DomainsPage } from "@/pages/Domains/DomainsPage"
 import { ForgotPasswordPage } from "@/pages/ForgotPassword/ForgotPasswordPage"
 import { ProductDetailsPage } from "@/pages/ProductDetails/ProductDetailsPage"
 import { ReleaseDetailPage } from "@/pages/ReleaseDetail/ReleaseDetailPage"
@@ -58,7 +60,9 @@ export default function App() {
           <Route path="/releases/new" element={<RequireAuth><RequireRole roles={["DEV"]}><ReleaseEditorPage key="new" /></RequireRole></RequireAuth>} />
           <Route path="/releases/:releaseId" element={staff(<ReleaseRoute />)} />
           <Route path="/releases/:releaseId/edit" element={staff(<ReleaseEditRoute />)} />
+          <Route path="/admin/dashboard" element={<RequireAuth><RequireRole roles={["ADMIN"]}><DashboardPage /></RequireRole></RequireAuth>} />
           <Route path="/admin/signups" element={<RequireAuth><RequireRole roles={["ADMIN"]}><SignupsPage /></RequireRole></RequireAuth>} />
+          <Route path="/admin/domains" element={<RequireAuth><RequireRole roles={["ADMIN"]}><DomainsPage /></RequireRole></RequireAuth>} />
           <Route path="*" element={<RequireAuth><RoleHome /></RequireAuth>} />
         </Routes>
       </BrowserRouter>

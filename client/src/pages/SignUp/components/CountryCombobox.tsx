@@ -56,8 +56,7 @@ export function CountryCombobox({ id, value, onChange, invalid, describedBy }: C
           : <span className="truncate text-muted-foreground">Select your country</span>}
         <ChevronsUpDown aria-hidden className="ml-auto size-4 shrink-0 text-muted-foreground" />
       </PopoverTrigger>
-      {/* At least 320px wide so long names ("United States Minor Outlying Islands") fit */}
-      <PopoverContent className="w-(--anchor-width) min-w-80 p-0">
+      <PopoverContent className="w-(--anchor-width) min-w-0 max-w-[calc(100vw-2rem)] p-0">
         <Command defaultValue={selected ? searchValue(selected) : undefined}>
           <CommandInput placeholder="Search country or code…" />
           <CommandList>

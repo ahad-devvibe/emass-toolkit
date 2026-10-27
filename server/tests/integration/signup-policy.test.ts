@@ -61,6 +61,7 @@ describe("signup step 1: the form", () => {
 
     const user = await prisma.user.findUnique({ where: { email } });
     expect(user?.status).toBe("BLOCKED");
+    expect(user?.blockReason).toBe("COMPETITOR_DOMAIN");
     expect(user?.password).toBeNull();
     expect(sender.sent).toHaveLength(0);
   });

@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { ApiError } from "../../utils/api-error.utils.js";
 
 const MAX_NAME_LENGTH = 100;
@@ -85,4 +86,73 @@ export function releasedKey(stagedObjectKey: string, version: string): string {
   }
   const [, productId, uuid, name] = match;
   return `releases/${productId}/${version}/${uuid}/${name}`;
+}
+
+// RFC 5987 value: encodeURIComponent leaves ' ( ) * which must be escaped too
+const encodeExtValue = (value: string) =>
+  encodeURIComponent(value).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+/**
+ * `Content-Disposition` that makes browsers save the file as `name` instead of
+ * opening it (a cross-origin link ignores <a download>). Old browsers get an
+ * ASCII fallback; everything else reads the UTF-8 `filename*`.
+ */
+export function contentDispositionAttachment(name: string): string {
+  const fallback = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeExtValue(name)}`;
+}
+
+// --- Signed links for the local driver (dev and tests stand-in for OCI PARs) ---
+
+export interface LocalLinkClaims {
+  bucket: string;
+  key: string;
+  /** File name the browser saves as. */
+  name: string;
+  /** Expiry, epoch milliseconds. */
+  exp: number;
+}
+
+const linkSignature = (payload: string, secret: string) =>
+  createHmac("sha256", secret).update(payload).digest("base64url");
+
+/** `<base64url claims>.<HMAC-SHA256>`, safe in a URL path segment. */
+export function signLocalLink(claims: LocalLinkClaims, secret: string): string {
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  return `${payload}.${linkSignature(payload, secret)}`;
+}
+
+/** The claims of an untampered, unexpired link; null otherwise. */
+export function verifyLocalLink(
+  token: string,
+  secret: string,
+  now = Date.now(),
+): LocalLinkClaims | null {
+  const [payload, signature, extra] = token.split(".");
+  if (!payload || !signature || extra !== undefined) return null;
+  const expected = Buffer.from(linkSignature(payload, secret));
+  const given = Buffer.from(signature);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
+    return null;
+  }
+  try {
+    const claims = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as Partial<LocalLinkClaims>;
+    if (
+      typeof claims.bucket !== "string" ||
+      typeof claims.key !== "string" ||
+      typeof claims.name !== "string" ||
+      typeof claims.exp !== "number" ||
+      claims.exp <= now
+    ) {
+      return null;
+    }
+    return claims as LocalLinkClaims;
+  } catch {
+    return null;
+  }
 }

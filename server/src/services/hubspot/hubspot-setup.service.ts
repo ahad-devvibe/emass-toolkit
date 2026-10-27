@@ -1,21 +1,19 @@
 import {
-  HUBSPOT_PORTAL_STATUS_PROPERTY,
-  PORTAL_STATUS_PROPERTY,
-  mergePropertyOptions,
-  type HubspotPropertyOption,
+  USE_CASE_PROPERTY,
+  type SimplePropertyDefinition,
 } from "./hubspot.utils.js";
 
 const PROPERTIES_URL = "https://api.hubapi.com/crm/v3/properties/contacts";
 
 // `changes` names what a PATCH touches, e.g. ["label", "options: active"]
-export type PortalStatusSetupResult =
+export type PropertySetupResult =
   | { action: "created" }
   | { action: "updated"; changes: string[] }
   | { action: "unchanged" }
   | { action: "would-create" }
   | { action: "would-update"; changes: string[] };
 
-export interface PortalStatusSetupOptions {
+export interface PropertySetupOptions {
   apiKey: string;
   dryRun?: boolean;
   fetchImpl?: typeof fetch;
@@ -35,30 +33,26 @@ async function failure(response: Response, doing: string): Promise<Error> {
 }
 
 /**
- * Idempotently creates the `emass_portal_status` contact property, or brings
- * an existing one in line with the shared definition: label, description and
- * any missing options, in a single PATCH. Never removes options or changes the
- * property type. Needs a private-app token with crm.schemas.contacts.write.
+ * Idempotently creates a contact property without options (text, number,
+ * date), or brings its label and description in line. Never changes the type.
  */
-export async function ensurePortalStatusProperty({
-  apiKey,
-  dryRun = false,
-  fetchImpl = fetch,
-}: PortalStatusSetupOptions): Promise<PortalStatusSetupResult> {
+export async function ensureSimpleProperty(
+  definition: SimplePropertyDefinition,
+  { apiKey, dryRun = false, fetchImpl = fetch }: PropertySetupOptions,
+): Promise<PropertySetupResult> {
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
-  const propertyUrl = `${PROPERTIES_URL}/${HUBSPOT_PORTAL_STATUS_PROPERTY}`;
+  const propertyUrl = `${PROPERTIES_URL}/${definition.name}`;
 
   const current = await fetchImpl(propertyUrl, { headers });
-
   if (current.status === 404) {
     if (dryRun) return { action: "would-create" };
     const created = await fetchImpl(PROPERTIES_URL, {
       method: "POST",
       headers,
-      body: JSON.stringify(PORTAL_STATUS_PROPERTY),
+      body: JSON.stringify(definition),
     });
     if (!created.ok) throw await failure(created, "property create");
     return { action: "created" };
@@ -68,30 +62,17 @@ export async function ensurePortalStatusProperty({
   const existing = (await current.json()) as {
     label?: string;
     description?: string;
-    options?: HubspotPropertyOption[];
   };
-
-  // Only send what differs, so a re-run with nothing to do never writes
-  const patch: {
-    label?: string;
-    description?: string;
-    options?: HubspotPropertyOption[];
-  } = {};
+  const patch: { label?: string; description?: string } = {};
   const changes: string[] = [];
-  if (existing.label !== PORTAL_STATUS_PROPERTY.label) {
-    patch.label = PORTAL_STATUS_PROPERTY.label;
+  if (existing.label !== definition.label) {
+    patch.label = definition.label;
     changes.push("label");
   }
-  if (existing.description !== PORTAL_STATUS_PROPERTY.description) {
-    patch.description = PORTAL_STATUS_PROPERTY.description;
+  if (existing.description !== definition.description) {
+    patch.description = definition.description;
     changes.push("description");
   }
-  const { options, added } = mergePropertyOptions(existing.options ?? []);
-  if (added.length > 0) {
-    patch.options = options;
-    changes.push(`options: ${added.join(", ")}`);
-  }
-
   if (changes.length === 0) return { action: "unchanged" };
   if (dryRun) return { action: "would-update", changes };
 
@@ -103,3 +84,7 @@ export async function ensurePortalStatusProperty({
   if (!updated.ok) throw await failure(updated, "property update");
   return { action: "updated", changes };
 }
+
+/** The free-text `emass_use_case` property (sign-up answer). */
+export const ensureUseCaseProperty = (options: PropertySetupOptions) =>
+  ensureSimpleProperty(USE_CASE_PROPERTY, options);

@@ -20,8 +20,11 @@ The original spec is `tasks/auth.md`.
   the set-password-link flow). It runs in three steps on `/sign-up`:
   1. **`POST /auth/signup`**
      - Takes the profile (work email, firstName, middleName?, lastName,
-       country as ISO alpha-2, companyName, jobTitle) plus the captcha, with
-       no password.
+       country as ISO alpha-2, companyName, jobTitle, useCase) plus the
+       captcha, with no password.
+     - `useCase` is required free text (10–1000 characters, trimmed): what
+       the person will use EMASS for. It's stored on `User.useCase` (null for
+       older accounts) and shown to admins on the Signups page.
      - Emails a code (`OtpPurpose.SIGNUP_VERIFY`, 10-minute TTL, 5 attempts)
        and answers `201 { email }`.
   2. **`POST /auth/signup/verify {email, code}`** checks the code without
@@ -45,6 +48,15 @@ The original spec is `tasks/auth.md`.
   - **No new user status and no background jobs.**
 - **Domain policy** (`EmailDomainPolicy` table, seeded with
   `npm run seed:domains`):
+  - **Managed by admins in the UI** (`/admin/domains`; `GET/POST
+    /api/admin/domains`, `DELETE /api/admin/domains/:id`). Input is normalised
+    (`@Gmail.com` or a pasted address becomes `gmail.com`). A domain is on one
+    list at most (`409 DOMAIN_EXISTS` names the list that has it).
+  - Changes apply to **new sign-ups only**: existing accounts keep their
+    status.
+  - The seed adds missing file domains and never deletes database-only rows,
+    so UI additions survive it. A domain removed in the UI but still in
+    `data/domain-policy.json` comes back on the next seed.
   - **COMPETITOR** (seed: `blocked-competitor.example`): `403 DOMAIN_BLOCKED`
     at step 1, before any code is sent.
     - A `BLOCKED` user row with no password is kept as an audit trail.
@@ -129,11 +141,57 @@ The original spec is `tasks/auth.md`.
   - Existing passwords are kept unless you pass `--reset-passwords`.
   - `--dry-run` prints the plan.
 - **HubSpot** is a one-way, email-keyed upsert. It is only logged unless
-  `HUBSPOT_ENABLED=true`.
+  `HUBSPOT_ENABLED=true`. Setup steps (private app, scopes, fields, contact
+  layout): `docs/operations/hubspot-setup.md`.
   - **A contact is created only once an account is `ACTIVE`,** sent as
-    `lifecyclestage: "lead"` with the name, country, company and job title.
-  - **The custom `emass_portal_status` property is no longer sent:** customer
-    accounts only ever reach HubSpot as active.
+    `lifecyclestage: "lead"` with the name, country, company and job title,
+    and the use case in the custom free-text property `emass_use_case`.
+    `npm run hubspot:setup` creates that property (once per HubSpot portal,
+    before enabling HubSpot; safe to re-run after upgrades).
+  - **Download tracking (customers only):**
+    - **Counters on `User`:** each customer download updates `downloadCount`,
+      `firstDownloadAt`/`Label` and `lastDownloadAt`/`Label`, in the same
+      transaction as the `Download` row. That's O(1) per click. A guarded
+      `updateMany` claims "first", so concurrent clicks have one first.
+    - **HubSpot sync:** `syncDownloadsToHubspot` reads that one row and
+      **sets** `emass_download_count`, `emass_first_download_at`,
+      `emass_last_download_at`, `emass_first_download` and
+      `emass_last_download`. It never increments in HubSpot, which has no
+      atomic increment, so a retry would miscount.
+    - **Progress:** `hubspotSyncedDownloads` records what HubSpot has.
+    - **First download:** a note goes on the contact ("First download from the
+      EMASS portal: … Accepted the EMASS Software Licence (version) on date").
+      It's sent once: claimed through `hubspotNoteSentAt`, released if creating
+      it fails, so it's retried.
+    - **Never blocking:** the sync runs fire-and-forget after the link is
+      returned; failures are only logged.
+    - **Recovery, no scheduler (v1 decision):** a failed sync is repaired by
+      the customer's next download, which resends the current stored totals
+      and retries the note.
+      - `npm run hubspot:resync` runs `syncPendingDownloads` on demand: every
+        customer where `downloadCount > hubspotSyncedDownloads` or the note is
+        missing, in random order so a few failing contacts can't starve the
+        rest. Use it after setup, an outage or a token change.
+      - **Accepted gap:** a customer whose last sync failed and who never
+        downloads again stays stale until someone runs the resync.
+      - **If that becomes a complaint,** a "Sync now" button in admin Settings
+        can call the same function. A background job was deliberately left
+        out.
+    - **Missed activation sync:** a contact with no `hubspotContactId` is
+      upserted first.
+    - **Token scopes:** the private app needs the notes write scope as well as
+      contacts write. Full setup: `docs/operations/hubspot-setup.md`.
+  - **Admins can check the connection** in Settings (sidebar gear or the
+    account menu). `GET /api/admin/integrations/hubspot` reads every property
+    the portal writes in one batch read, read-only, with a 5 s timeout. That
+    proves the token, its scopes and the setup in one call (a missing property
+    reads as "isn't fully set up"). It answers `connected`,
+    `off` or `problem` with a plain sentence. Details (HTTP status, network
+    error) are logged, never shown. The token stays in `.env`.
+  - **`emass_portal_status` is removed** (code and setup script). Customer
+    accounts only ever reach HubSpot as active, so it had nothing to say. A
+    HubSpot account set up earlier may still have the empty "EMASS Portal
+    Status" field; delete it by hand.
 
   | Event | DB status | HubSpot |
   |---|---|---|

@@ -340,6 +340,7 @@ describe("POST /api/auth/signup (captcha wiring)", () => {
         country: "US",
         companyName: "Co",
         jobTitle: "Dev",
+        useCase: "Evaluating EMASS for an edge AI camera",
         captcha: TEST_CAPTCHA_CODE,
       });
 
@@ -358,6 +359,7 @@ describe("POST /api/auth/signup (captcha wiring)", () => {
         country: "US",
         companyName: "Co",
         jobTitle: "Dev",
+        useCase: "Evaluating EMASS for an edge AI camera",
         captcha: "WRONG12",
       });
 
@@ -380,6 +382,7 @@ describe("POST /api/auth/signup (captcha wiring)", () => {
     expect(fe.country).toEqual(["Country is required"]);
     expect(fe.companyName).toEqual(["Company name is required"]);
     expect(fe.jobTitle).toEqual(["Job title is required"]);
+    expect(fe.useCase).toEqual(["Use case is required"]);
   });
 
   it("rejects a well-formed but unassigned country code", async () => {
@@ -393,6 +396,7 @@ describe("POST /api/auth/signup (captcha wiring)", () => {
         country: "ZZ",
         companyName: "Co",
         jobTitle: "Dev",
+        useCase: "Evaluating EMASS for an edge AI camera",
         captcha: TEST_CAPTCHA_CODE,
       });
 

@@ -12,6 +12,8 @@ export type SessionUser = {
   country: string
   companyName: string
   jobTitle: string
+  /** What they said at sign-up they'll use EMASS for; null for older accounts */
+  useCase: string | null
   emailVerified: boolean
   role: UserRole
   status: UserStatus
@@ -24,8 +26,8 @@ export type SignInResult = { mfaRequired: boolean }
 
 export type CompleteSignupResult = { signedIn: boolean }
 
-export type SignupInput = { email: string; firstName: string; middleName?: string; lastName: string; country: string; companyName: string; jobTitle: string; captcha: string }
+export type SignupInput = { email: string; firstName: string; middleName?: string; lastName: string; country: string; companyName: string; jobTitle: string; useCase: string; captcha: string }
 
 export const roleLabels: Record<UserRole, string> = { CUSTOMER: "Customer", DEV: "Developer", ADMIN: "Admin" }
 
-export const homePath = (role: UserRole) => (role === "CUSTOMER" ? "/catalog" : "/releases")
+export const homePath = (role: UserRole) => (role === "CUSTOMER" ? "/catalog" : role === "ADMIN" ? "/admin/dashboard" : "/releases")

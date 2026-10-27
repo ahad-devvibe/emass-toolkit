@@ -6,13 +6,38 @@ import type { ReleaseStatus } from "./releases.types"
 // (status, kind, os); releases.mappers.ts is the only place that knows the
 // server's uppercase enums.
 
-export type ReleaseEventKind = "created" | "submitted" | "withdrawn" | "changes_requested" | "published" | "archived" | "rolled_back" | "restored" | "notes_edited"
+export type ReleaseEventKind = "created" | "submitted" | "withdrawn" | "changes_requested" | "published" | "archived" | "rolled_back" | "restored" | "notes_edited" | "customers_notified"
 
 export type ReleaseActor = { id: string; name: string; role: UserRole }
 
 // kind is null until someone picks the type (undetected uploads); os is null
 // for docs and for SDKs still waiting for a platform. "linux" = the Ubuntu build
-export type ReleaseFileItem = { id: string; name: string; kind: FileKind | null; os: OperatingSystem | null; contentType: string; sizeBytes: number; sha256: string; createdAt: string }
+/**
+ * Something the server's file rules say about a file, with the message to show
+ * (the server owns the wording). Blocks stop submit; warnings need confirming.
+ */
+export type FileIssue = { code: string; message: string; version?: string; fields?: string[]; expected?: string }
+
+/** What the server found inside the file: PE/DEB/PKG are installers, PDF/OTHER docs. */
+export type FileFormat = "PE" | "DEB" | "PKG" | "PDF" | "OTHER"
+
+export type ReleaseFileItem = {
+  id: string
+  name: string
+  kind: FileKind | null
+  os: OperatingSystem | null
+  contentType: string
+  sizeBytes: number
+  sha256: string
+  createdAt: string
+  format: FileFormat | null
+  detectedVersions: string[]
+  blockedBy: FileIssue[]
+  warnings: FileIssue[]
+}
+
+/** One file's issues, as submit reports them in FILE_BLOCKED / FILE_WARNINGS_UNCONFIRMED. */
+export type FileIssues = { fileId: string; name: string; issues: FileIssue[] }
 
 export type ReleaseEventItem = { id: string; type: ReleaseEventKind; actor: ReleaseActor; note: string | null; at: string }
 
@@ -61,7 +86,8 @@ export type PublishJob = {
 export type PublishStatus = { job: PublishJob | null; status: ReleaseStatus }
 
 // counts has every status (zeros included), for the tab badges
-export type ReleaseList = { releases: ReleaseSummary[]; nextCursor: string | null; counts: Record<ReleaseStatus, number> }
+/** needsYou: what waits for the viewer (an admin's reviews, a dev's own releases sent back), ignoring filters */
+export type ReleaseList = { releases: ReleaseSummary[]; nextCursor: string | null; counts: Record<ReleaseStatus, number>; needsYou: number }
 
 export type VersionSuggestion = { highestShipped: string | null; suggestions: { patch: string; minor: string; major: string } }
 

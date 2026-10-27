@@ -11,6 +11,8 @@ export function releaseActions(viewer: Viewer, release: Pick<ReleaseSummary, "st
   if (viewer.role === "ADMIN") {
     if (release.status === "in_review") return ["publish", "reject"]
     if (release.status === "published") return ["editNotes", "rollback"]
+    // Older versions customers can still download can be withdrawn too
+    if (release.status === "archived") return ["rollback"]
     return []
   }
   if (viewer.role !== "DEV" || viewer.id !== release.createdBy.id) return []

@@ -1,9 +1,12 @@
 import type { ReleaseStatus } from "@prisma/client";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { resetDb } from "../helpers/resetDb.js";
+import { emailService } from "../../src/services/email/email.service.js";
+import { rollbackNotificationsSettled } from "../../src/services/releases/rollback-notify.service.js";
+import { createUser, uniqueEmail } from "../helpers/auth.js";
 import {
   createAdmin,
   createCustomer,
@@ -23,6 +26,10 @@ beforeAll(async () => {
   admin = await createAdmin();
   customer = await createCustomer();
 });
+
+// Rollback emails run after the response; finish them before the next test
+// (and the next file's resetDb) so their writes never land elsewhere
+afterEach(rollbackNotificationsSettled);
 
 /** A product with releases at the given versions and statuses. */
 async function productWith(...releases: [string, ReleaseStatus][]) {
@@ -190,11 +197,14 @@ describe("POST /api/releases/:id/rollback", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe("ROLLED_BACK");
     expect(await statusOf(previous.id)).toBe("PUBLISHED");
-    expect((await eventsOf(current.id)).at(-1)).toEqual({
+    await rollbackNotificationsSettled();
+    const events = await eventsOf(current.id);
+    expect(events.at(-2)).toEqual({
       type: "ROLLED_BACK",
       actorId: admin.id,
       note: "Crashes on startup",
     });
+    expect(events.at(-1)?.type).toBe("CUSTOMERS_NOTIFIED");
     expect((await eventsOf(previous.id)).at(-1)).toEqual({
       type: "RESTORED",
       actorId: admin.id,
@@ -240,29 +250,72 @@ describe("POST /api/releases/:id/rollback", () => {
     expect(await statusOf(higher.id)).toBe("ARCHIVED");
   });
 
-  it("refuses when there is nothing to restore and changes nothing", async () => {
+  it("rolls back the only published release, leaving none published", async () => {
     const {
+      product,
       releases: [only],
     } = await productWith(["1.0.0", "PUBLISHED"]);
 
     const res = await rollback(only.id, { reason: "x" });
 
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe("NO_RESTORE_TARGET");
-    expect(await statusOf(only.id)).toBe("PUBLISHED");
-    expect(await eventsOf(only.id)).toHaveLength(1);
+    expect(res.status).toBe(200);
+    expect(await statusOf(only.id)).toBe("ROLLED_BACK");
+    expect(
+      await prisma.release.count({
+        where: { productId: product.id, status: "PUBLISHED" },
+      }),
+    ).toBe(0);
   });
 
-  it("can't roll back a restored release with nothing older", async () => {
+  it("rolls back a restored release with nothing older too", async () => {
     const {
       releases: [first, second],
     } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
     await rollback(second.id, { reason: "x" }).expect(200);
 
-    const res = await rollback(first.id, { reason: "y" });
+    await rollback(first.id, { reason: "y" }).expect(200);
 
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe("NO_RESTORE_TARGET");
+    expect(await statusOf(first.id)).toBe("ROLLED_BACK");
+  });
+
+  it("withdraws an archived version without touching the published one", async () => {
+    const {
+      releases: [older, archived, published],
+    } = await productWith(
+      ["1.0.0", "ARCHIVED"],
+      ["1.1.0", "ARCHIVED"],
+      ["1.2.0", "PUBLISHED"],
+    );
+
+    const res = await rollback(archived.id, { reason: "Bad driver" });
+
+    expect(res.status).toBe(200);
+    expect(await statusOf(archived.id)).toBe("ROLLED_BACK");
+    expect(await statusOf(published.id)).toBe("PUBLISHED");
+    expect(await statusOf(older.id)).toBe("ARCHIVED");
+    expect((await eventsOf(older.id)).map((e) => e.type)).not.toContain(
+      "RESTORED",
+    );
+  });
+
+  it("accepts an optional message to customers, up to 1,000 characters", async () => {
+    const {
+      releases: [, current],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
+
+    const long = await rollback(current.id, {
+      reason: "x",
+      customerMessage: "y".repeat(1001),
+    });
+    expect(long.status).toBe(400);
+    expect(long.body.details.fieldErrors.customerMessage).toEqual([
+      "Message to customers can be at most 1,000 characters",
+    ]);
+
+    await rollback(current.id, {
+      reason: "x",
+      customerMessage: "Please update before Friday.",
+    }).expect(200);
   });
 
   it("requires a reason", async () => {
@@ -279,20 +332,22 @@ describe("POST /api/releases/:id/rollback", () => {
     expect(await statusOf(current.id)).toBe("PUBLISHED");
   });
 
-  it.each(["DRAFT", "IN_REVIEW", "ARCHIVED", "ROLLED_BACK"] as ReleaseStatus[])(
-    "is refused for %s",
-    async (status) => {
-      const { releases } = await productWith(
-        ["0.9.0", "ARCHIVED"],
-        ["1.0.0", status],
-      );
+  it.each([
+    "DRAFT",
+    "IN_REVIEW",
+    "CHANGES_REQUESTED",
+    "ROLLED_BACK",
+  ] as ReleaseStatus[])("is refused for %s", async (status) => {
+    const { releases } = await productWith(
+      ["0.9.0", "ARCHIVED"],
+      ["1.0.0", status],
+    );
 
-      const res = await rollback(releases[1].id, { reason: "x" });
+    const res = await rollback(releases[1].id, { reason: "x" });
 
-      expect(res.status).toBe(409);
-      expect(res.body.code).toBe("RELEASE_LOCKED");
-    },
-  );
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("RELEASE_LOCKED");
+  });
 
   it("is for admins only", async () => {
     const {
@@ -360,6 +415,17 @@ describe("GET /api/releases/:id review context", () => {
     expect(await reviewOf(published.id)).toEqual({
       currentPublished: null,
       restoreTarget: { id: archived.id, version: "1.0.0" },
+    });
+  });
+
+  it("names the current published release for an archived one", async () => {
+    const {
+      releases: [archived, published],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
+
+    expect(await reviewOf(archived.id)).toEqual({
+      currentPublished: { id: published.id, version: "1.1.0" },
+      restoreTarget: null,
     });
   });
 
@@ -451,5 +517,152 @@ describe("PATCH /api/releases/:id/notes (published releases)", () => {
       admin,
     );
     expect(tooLong.status).toBe(400);
+  });
+});
+
+describe("rollback emails to customers who downloaded the release", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function downloader(releaseId: string, times = 1, status = "ACTIVE") {
+    const user = await createUser(uniqueEmail("dl"), {
+      status: status as "ACTIVE",
+    });
+    for (let i = 0; i < times; i++) {
+      await prisma.download.create({ data: { userId: user.id, releaseId } });
+    }
+    return user;
+  }
+
+  it("emails each active downloader once, pointing at the restored version", async () => {
+    const sendSpy = vi
+      .spyOn(emailService, "sendReleaseWithdrawnEmail")
+      .mockResolvedValue();
+    const {
+      product,
+      releases: [, current],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
+    const twice = await downloader(current.id, 2);
+    const once = await downloader(current.id);
+    await downloader(current.id, 1, "BLOCKED");
+
+    await rollback(current.id, {
+      reason: "Internal: corrupts flash on rev B boards",
+    }).expect(200);
+    await vi.waitFor(async () =>
+      expect((await eventsOf(current.id)).at(-1)?.type).toBe(
+        "CUSTOMERS_NOTIFIED",
+      ),
+    );
+
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy.mock.calls.map(([email]) => email).sort()).toEqual(
+      [twice.email, once.email].sort(),
+    );
+    expect(sendSpy.mock.calls[0][2]).toEqual({
+      productName: product.name,
+      withdrawnVersion: "1.1.0",
+      replacementVersion: "1.0.0",
+      url: expect.stringMatching(new RegExp(`/catalog/${product.id}$`)),
+      customerMessage: undefined,
+    });
+    expect((await eventsOf(current.id)).at(-1)).toMatchObject({
+      type: "CUSTOMERS_NOTIFIED",
+      actorId: admin.id,
+      note: "Emailed 2 customers who downloaded v1.1.0.",
+    });
+  });
+
+  it("sends the customer message, never the internal reason", async () => {
+    const sendSpy = vi
+      .spyOn(emailService, "sendReleaseWithdrawnEmail")
+      .mockResolvedValue();
+    const {
+      releases: [, current],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
+    await downloader(current.id);
+
+    await rollback(current.id, {
+      reason: "Internal only",
+      customerMessage: "Please reinstall v1.0.0.",
+    }).expect(200);
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
+
+    const sent = sendSpy.mock.calls[0][2];
+    expect(sent.customerMessage).toBe("Please reinstall v1.0.0.");
+    expect(JSON.stringify(sent)).not.toContain("Internal only");
+  });
+
+  it("points archived-version downloaders at the current published release", async () => {
+    const sendSpy = vi
+      .spyOn(emailService, "sendReleaseWithdrawnEmail")
+      .mockResolvedValue();
+    const {
+      releases: [archived],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.2.0", "PUBLISHED"]);
+    await downloader(archived.id);
+
+    await rollback(archived.id, { reason: "x" }).expect(200);
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
+
+    expect(sendSpy.mock.calls[0][2]).toMatchObject({
+      withdrawnVersion: "1.0.0",
+      replacementVersion: "1.2.0",
+    });
+  });
+
+  it("has no replacement when nothing is left published", async () => {
+    const sendSpy = vi
+      .spyOn(emailService, "sendReleaseWithdrawnEmail")
+      .mockResolvedValue();
+    const {
+      releases: [only],
+    } = await productWith(["1.0.0", "PUBLISHED"]);
+    await downloader(only.id);
+
+    await rollback(only.id, { reason: "x" }).expect(200);
+    await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
+
+    expect(sendSpy.mock.calls[0][2]).toMatchObject({
+      replacementVersion: null,
+      url: expect.stringMatching(/\/catalog$/),
+    });
+  });
+
+  it("keeps going past a failed send and records it", async () => {
+    let calls = 0;
+    vi.spyOn(emailService, "sendReleaseWithdrawnEmail").mockImplementation(
+      async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("mailbox full");
+      },
+    );
+    const {
+      releases: [, current],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
+    await downloader(current.id);
+    await downloader(current.id);
+
+    await rollback(current.id, { reason: "x" }).expect(200);
+    await vi.waitFor(async () =>
+      expect((await eventsOf(current.id)).at(-1)?.note).toBe(
+        "Emailed 1 customer who downloaded v1.1.0 (1 failed).",
+      ),
+    );
+  });
+
+  it("records that nobody had downloaded it", async () => {
+    const {
+      releases: [, current],
+    } = await productWith(["1.0.0", "ARCHIVED"], ["1.1.0", "PUBLISHED"]);
+
+    await rollback(current.id, { reason: "x" }).expect(200);
+
+    await vi.waitFor(async () =>
+      expect((await eventsOf(current.id)).at(-1)?.note).toBe(
+        "No customers had downloaded v1.1.0.",
+      ),
+    );
   });
 });

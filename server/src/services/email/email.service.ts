@@ -25,6 +25,16 @@ import { renderPendingApprovalEmail } from "./templates/pending-approval.templat
 import { renderMfaLoginEmail } from "./templates/mfa-login.template.js";
 import { renderWelcomeEmail } from "./templates/welcome.template.js";
 import { renderSignupRejectedEmail } from "./templates/signup-rejected.template.js";
+import {
+  renderReleaseWithdrawnEmail,
+  type ReleaseWithdrawnEmailTemplateInput,
+} from "./templates/release-withdrawn.template.js";
+
+/** Everything about the rollback except who it's addressed to. */
+export type ReleaseWithdrawnEmail = Omit<
+  ReleaseWithdrawnEmailTemplateInput,
+  "firstName"
+>;
 
 export interface EmailSender {
   assertReady(): Promise<void>;
@@ -60,6 +70,11 @@ export interface EmailSender {
     email: string,
     firstName: string,
     reason?: string,
+  ): Promise<void>;
+  sendReleaseWithdrawnEmail(
+    email: string,
+    firstName: string,
+    release: ReleaseWithdrawnEmail,
   ): Promise<void>;
 }
 
@@ -224,6 +239,11 @@ export function createOciEmailSender(
       const template = renderSignupRejectedEmail({ firstName, reason });
       await submit(email, template, "Unable to send signup rejected email");
     },
+
+    async sendReleaseWithdrawnEmail(email, firstName, release): Promise<void> {
+      const template = renderReleaseWithdrawnEmail({ firstName, ...release });
+      await submit(email, template, "Unable to send release withdrawn email");
+    },
   };
 }
 
@@ -302,6 +322,13 @@ export function createConsoleEmailSender(): EmailSender {
       logger.info(
         { email, firstName, reason },
         "console email sender: signup rejected email",
+      );
+    },
+
+    async sendReleaseWithdrawnEmail(email, firstName, release): Promise<void> {
+      logger.info(
+        { email, firstName, ...release },
+        "console email sender: release withdrawn email",
       );
     },
   };

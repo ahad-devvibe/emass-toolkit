@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyEmailDomain,
   extractEmailDomain,
+  normalizeDomainInput,
 } from "../../src/services/auth/domains.utils.js";
 
 const competitors = new Set(["rival.example", "rival-tools.example"]);
@@ -50,5 +51,30 @@ describe("classifyEmailDomain", () => {
         new Set(["rival.example"]),
       ),
     ).toBe("COMPETITOR");
+  });
+});
+
+describe("normalizeDomainInput", () => {
+  it.each([
+    ["gmail.com", "gmail.com"],
+    ["  Gmail.COM ", "gmail.com"],
+    ["@gmail.com", "gmail.com"],
+    ["someone@Mail.Example.co.uk", "mail.example.co.uk"],
+    ["sub-domain.example", "sub-domain.example"],
+  ])("%j -> %s", (raw, domain) => {
+    expect(normalizeDomainInput(raw)).toBe(domain);
+  });
+
+  it.each([
+    "",
+    "localhost",
+    "not a domain",
+    "-bad.example",
+    "bad-.example",
+    "example.c0m",
+    "a@",
+    `${"a".repeat(250)}.com`,
+  ])("rejects %j", (raw) => {
+    expect(normalizeDomainInput(raw)).toBeNull();
   });
 });

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   chunkStream,
+  contentDispositionAttachment,
   safeName,
   releasedKey,
+  signLocalLink,
   stagedKey,
+  verifyLocalLink,
 } from "../../src/services/storage/storage.utils.js";
 
 async function collect(source: AsyncIterable<Buffer>): Promise<Buffer[]> {
@@ -123,5 +126,57 @@ describe("releasedKey", () => {
         expect.objectContaining({ code: "INVALID_OBJECT_KEY" }),
       );
     }
+  });
+});
+
+describe("local download links", () => {
+  const claims = {
+    bucket: "local",
+    key: "releases/p/1.0.0/u/sdk.zip",
+    name: "sdk.zip",
+    exp: 2_000,
+  };
+
+  it("round-trips untampered, unexpired claims", () => {
+    expect(
+      verifyLocalLink(signLocalLink(claims, "s3cret"), "s3cret", 1_000),
+    ).toEqual(claims);
+  });
+
+  it("rejects expired, tampered, foreign and malformed links", () => {
+    const token = signLocalLink(claims, "s3cret");
+    const [payload, signature] = token.split(".");
+    const forged = Buffer.from(
+      JSON.stringify({ ...claims, key: "staged/x" }),
+    ).toString("base64url");
+
+    expect(verifyLocalLink(token, "s3cret", 2_000)).toBeNull();
+    expect(
+      verifyLocalLink(forged + "." + signature, "s3cret", 1_000),
+    ).toBeNull();
+    expect(verifyLocalLink(token, "other-secret", 1_000)).toBeNull();
+    expect(verifyLocalLink(payload, "s3cret", 1_000)).toBeNull();
+    expect(verifyLocalLink(token + ".x", "s3cret", 1_000)).toBeNull();
+    expect(verifyLocalLink("garbage", "s3cret", 1_000)).toBeNull();
+  });
+});
+
+describe("contentDispositionAttachment", () => {
+  it("names the file for saving, with a UTF-8 form", () => {
+    expect(contentDispositionAttachment("emass-sdk-1.4.0.zip")).toBe(
+      `attachment; filename="emass-sdk-1.4.0.zip"; filename*=UTF-8''emass-sdk-1.4.0.zip`,
+    );
+    expect(contentDispositionAttachment("User guide (v2).pdf")).toBe(
+      `attachment; filename="User guide (v2).pdf"; filename*=UTF-8''User%20guide%20%28v2%29.pdf`,
+    );
+  });
+
+  it("keeps the quoted fallback ASCII and unbreakable", () => {
+    expect(contentDispositionAttachment('a"b\\c.zip')).toMatch(
+      /^attachment; filename="a_b_c\.zip"; /,
+    );
+    expect(contentDispositionAttachment("Größe.pdf")).toBe(
+      `attachment; filename="Gr__e.pdf"; filename*=UTF-8''Gr%C3%B6%C3%9Fe.pdf`,
+    );
   });
 });

@@ -1,4 +1,10 @@
-import { OtpPurpose, Prisma, UserStatus, type User } from "@prisma/client";
+import {
+  BlockReason,
+  OtpPurpose,
+  Prisma,
+  UserStatus,
+  type User,
+} from "@prisma/client";
 import { env } from "../../configs/env.js";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
@@ -33,6 +39,7 @@ export interface SignupInput {
   country: string;
   companyName: string;
   jobTitle: string;
+  useCase: string;
   captcha: string;
 }
 
@@ -75,13 +82,20 @@ export async function signup(
     country: input.country.toUpperCase(),
     companyName: input.companyName,
     jobTitle: input.jobTitle,
+    useCase: input.useCase,
   };
 
   if ((await classifySignupEmail(email)) === "COMPETITOR") {
     // Keep an internal audit row (never synced to HubSpot). An existing row
     // for this email is left untouched; the answer is the same either way.
     await prisma.user
-      .create({ data: { ...profile, status: UserStatus.BLOCKED } })
+      .create({
+        data: {
+          ...profile,
+          status: UserStatus.BLOCKED,
+          blockReason: BlockReason.COMPETITOR_DOMAIN,
+        },
+      })
       .catch((err: unknown) => {
         if (
           !(err instanceof Prisma.PrismaClientKnownRequestError) ||

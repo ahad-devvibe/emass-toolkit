@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CircleAlert, Copy, FileQuestion, Trash2 } from "lucide-react"
+import { Ban, CircleAlert, Copy, FileQuestion, Trash2, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { DeleteDialog } from "@/components/common/dialogs"
 import { Button } from "@/components/ui/button"
@@ -92,6 +92,26 @@ export function StagedFileRow({ releaseId, file, mapping, problem, rejected, onM
           </p>
         )}
       </div>
+      {file.blockedBy.length > 0 && (
+        <ul aria-label={`Why ${file.name} can't be submitted`} className="space-y-1 sm:pl-12">
+          {file.blockedBy.map((reason, index) => (
+            <li key={index} className="flex items-start gap-1.5 text-xs text-destructive">
+              <Ban aria-hidden className="mt-px size-3.5 shrink-0" />
+              {reason.message} Change the version, or remove this file.
+            </li>
+          ))}
+        </ul>
+      )}
+      {file.warnings.length > 0 && (
+        <ul aria-label={`Warnings for ${file.name}`} className="space-y-1 sm:pl-12">
+          {file.warnings.map((warning, index) => (
+            <li key={index} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+              <TriangleAlert aria-hidden className="mt-px size-3.5 shrink-0" />
+              {warning.message}
+            </li>
+          ))}
+        </ul>
+      )}
       <DeleteDialog open={removing} onOpenChange={setRemoving} itemName={file.name} description="The uploaded file is deleted from storage. You can upload it again later." confirmLabel="Remove" onConfirm={remove} />
     </li>
   )

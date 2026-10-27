@@ -3,6 +3,11 @@ import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
 import { getHubspotConfig, type HubspotConfig } from "../../configs/hubspot.js";
 import { countryName } from "../../utils/country.utils.js";
+import {
+  HUBSPOT_USE_CASE_PROPERTY,
+  firstDownloadNoteBody,
+  toDownloadProperties,
+} from "./hubspot.utils.js";
 
 export interface HubspotContactInput {
   email: string;
@@ -12,6 +17,7 @@ export interface HubspotContactInput {
   country: string;
   companyName: string;
   jobTitle: string;
+  useCase?: string | null;
 }
 
 /**
@@ -22,10 +28,21 @@ export interface HubspotContactInput {
 export interface HubspotClient {
   /** Resolves to the HubSpot contact record ID, or null when none is known. */
   upsertContact(input: HubspotContactInput): Promise<{ id: string } | null>;
+  /** Sets properties on an existing contact (by HubSpot record ID). */
+  updateContact(
+    contactId: string,
+    properties: Record<string, string>,
+  ): Promise<void>;
+  /** Adds a note to the contact's timeline. */
+  createNote(contactId: string, body: string, timestamp: Date): Promise<void>;
 }
 
 const HUBSPOT_BATCH_UPSERT_URL =
   "https://api.hubapi.com/crm/v3/objects/contacts/batch/upsert?archived=false";
+const HUBSPOT_CONTACTS_URL = "https://api.hubapi.com/crm/v3/objects/contacts";
+const HUBSPOT_NOTES_URL = "https://api.hubapi.com/crm/v3/objects/notes";
+// HubSpot-defined association type: note → contact
+const NOTE_TO_CONTACT = 202;
 
 function toContactProperties(
   input: HubspotContactInput,
@@ -43,6 +60,7 @@ function toContactProperties(
     lifecyclestage: "lead",
   };
   if (input.middleName) properties.middlename = input.middleName;
+  if (input.useCase) properties[HUBSPOT_USE_CASE_PROPERTY] = input.useCase;
   return properties;
 }
 
@@ -54,6 +72,15 @@ export function createLogHubspotClient(): HubspotClient {
         "hubspot contact (disabled, logged only)",
       );
       return null;
+    },
+    async updateContact(contactId, properties) {
+      logger.info(
+        { contactId, properties },
+        "hubspot contact update (disabled, logged only)",
+      );
+    },
+    async createNote(contactId) {
+      logger.info({ contactId }, "hubspot note (disabled, logged only)");
     },
   };
 }
@@ -121,7 +148,63 @@ export function createApiHubspotClient(
       logger.info({ email: input.email, id }, "hubspot contact upserted");
       return { id: String(id) };
     },
+
+    async updateContact(contactId, properties) {
+      await send(
+        `${HUBSPOT_CONTACTS_URL}/${encodeURIComponent(contactId)}`,
+        "PATCH",
+        { properties },
+        "hubspot contact update rejected",
+      );
+    },
+
+    async createNote(contactId, body, timestamp) {
+      await send(
+        HUBSPOT_NOTES_URL,
+        "POST",
+        {
+          properties: {
+            hs_note_body: body,
+            hs_timestamp: timestamp.toISOString(),
+          },
+          associations: [
+            {
+              to: { id: contactId },
+              types: [
+                {
+                  associationCategory: "HUBSPOT_DEFINED",
+                  associationTypeId: NOTE_TO_CONTACT,
+                },
+              ],
+            },
+          ],
+        },
+        "hubspot note rejected",
+      );
+    },
   };
+
+  async function send(
+    url: string,
+    method: "PATCH" | "POST",
+    payload: unknown,
+    failure: string,
+  ): Promise<void> {
+    const response = await fetchImpl(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${configFactory().apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      const body = (await response.text().catch(() => "")).slice(0, 500);
+      logger.error({ status: response.status, body }, failure);
+      throw new Error(`${failure} with status ${response.status}`);
+    }
+  }
 }
 
 export function createHubspotClient(): HubspotClient {
@@ -159,6 +242,7 @@ export async function syncHubspotContact(
       country: user.country,
       companyName: user.companyName,
       jobTitle: user.jobTitle,
+      useCase: user.useCase,
     });
   } catch (err) {
     logger.warn({ err, userId: user.id }, "hubspot contact sync failed");
@@ -183,5 +267,63 @@ export async function syncHubspotContact(
         ? "hubspot contact id already linked to another user; not stored"
         : "hubspot contact id not stored",
     );
+  }
+}
+
+/**
+ * Pushes a customer's stored download totals to their contact, and the
+ * first-download note once. Reads one user row; values are set (never
+ * incremented) in HubSpot, so a retry can't drift them. Progress is kept on
+ * the user (`hubspotSyncedDownloads`, `hubspotNoteSentAt`), which is how the
+ * catch-up sweep finds anything a failure left behind. Best effort: errors
+ * are logged, never thrown.
+ */
+export async function syncDownloadsToHubspot(
+  userId: string,
+  client: HubspotClient = hubspotService,
+): Promise<void> {
+  try {
+    let user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.downloadCount === 0) return;
+    // Activation sync may have missed this contact; create it now
+    if (!user.hubspotContactId) {
+      await syncHubspotContact(user, client);
+      user = await prisma.user.findUnique({ where: { id: userId } });
+    }
+    const contactId = user?.hubspotContactId;
+    if (!user || !contactId) return;
+
+    const synced = user.downloadCount;
+    await client.updateContact(contactId, toDownloadProperties(user));
+    // Never moves backwards if a newer sync already finished
+    await prisma.user.updateMany({
+      where: { id: userId, hubspotSyncedDownloads: { lt: synced } },
+      data: { hubspotSyncedDownloads: synced },
+    });
+
+    // Claim the note so concurrent syncs send it once; release on failure
+    const claimed = await prisma.user.updateMany({
+      where: { id: userId, hubspotNoteSentAt: null },
+      data: { hubspotNoteSentAt: new Date() },
+    });
+    if (claimed.count === 0) return;
+    try {
+      await client.createNote(
+        contactId,
+        firstDownloadNoteBody(user.firstDownloadLabel, {
+          acceptedAt: user.licenseAcceptedAt,
+          version: user.licenseVersion,
+        }),
+        user.firstDownloadAt ?? new Date(),
+      );
+    } catch (err) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { hubspotNoteSentAt: null },
+      });
+      throw err;
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, "hubspot download sync failed");
   }
 }

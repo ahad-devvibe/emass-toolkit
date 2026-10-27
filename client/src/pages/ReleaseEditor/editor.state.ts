@@ -101,12 +101,17 @@ export function savedHolderFor(files: ReleaseFileItem[], overrides: MappingOverr
 }
 
 /** Why Send for review is blocked, or null when it can go. */
-export function submitBlocker({ version, fileCount, queue, problems }: { version: string; fileCount: number; queue: QueueState; problems: Record<string, MappingProblem> }): string | null {
+/**
+ * Why Send for review can't go ahead yet, or null. `blockedFiles` counts saved
+ * files the server's rules now refuse (e.g. installers of another version).
+ */
+export function submitBlocker({ version, fileCount, queue, problems, blockedFiles = 0 }: { version: string; fileCount: number; queue: QueueState; problems: Record<string, MappingProblem>; blockedFiles?: number }): string | null {
   const kinds = new Set(Object.values(problems).map((problem) => problem.type))
   if (versionProblem(version)) return "Fix the version number first."
   if (isBusy(queue)) return "Wait for uploads to finish."
   if (hasFailures(queue)) return "Retry or remove the failed uploads."
   if (hasConflicts(queue)) return "Replace or re-map the uploads held on a platform."
+  if (blockedFiles > 0) return "Remove the files that can't be submitted, or change the version."
   if (kinds.has("duplicate")) return "Each platform can have only one SDK."
   if (kinds.has("needsType")) return "Choose a type for every file."
   if (kinds.has("needsPlatform")) return "Choose a platform for every SDK."

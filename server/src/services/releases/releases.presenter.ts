@@ -5,6 +5,7 @@ import type {
   ReleaseFile,
   User,
 } from "@prisma/client";
+import type { FileVerdict } from "./file-checks.utils.js";
 
 type Actor = Pick<User, "id" | "firstName" | "lastName" | "role">;
 
@@ -35,9 +36,12 @@ export function presentActor(user: Actor) {
   };
 }
 
+const noVerdict: FileVerdict = { reasons: [], warnings: [] };
+
 // sizeBytes is a BigInt column (JSON can't carry it); files are capped far
 // below 2^53, so a number is exact. objectKey never leaves the server.
-export function presentFile(file: ReleaseFile) {
+// `blockedBy` lists what stops submit; `warnings` what submit must confirm.
+export function presentFile(file: ReleaseFile, verdict = noVerdict) {
   return {
     id: file.id,
     kind: file.kind,
@@ -47,6 +51,10 @@ export function presentFile(file: ReleaseFile) {
     sizeBytes: Number(file.sizeBytes),
     sha256: file.sha256,
     createdAt: file.createdAt,
+    format: file.format,
+    detectedVersions: file.detectedVersions,
+    blockedBy: verdict.reasons,
+    warnings: verdict.warnings,
   };
 }
 
@@ -97,8 +105,11 @@ export const noReviewContext: ReviewContext = {
 export function presentRelease(
   release: DetailInput,
   review: ReviewContext = noReviewContext,
+  verdicts: Map<string, FileVerdict> = new Map(),
 ) {
-  const files = release.files.map(presentFile);
+  const files = release.files.map((file) =>
+    presentFile(file, verdicts.get(file.id)),
+  );
   return {
     ...presentReleaseSummary(release, {
       fileCount: files.length,

@@ -154,3 +154,43 @@ describe("local driver copyObject", () => {
     ).rejects.toMatchObject({ code: "INVALID_OBJECT_KEY" });
   });
 });
+
+describe("local driver readRange", () => {
+  beforeEach(async () => {
+    await driver.putStream({
+      bucket: "local",
+      key: "staged/a",
+      body: body("0123456789"),
+    });
+  });
+
+  it("returns exactly the requested bytes", async () => {
+    const bytes = await driver.readRange("local", "staged/a", 3, 4);
+    expect(Buffer.from(bytes).toString()).toBe("3456");
+  });
+
+  it("throws READ_FAILED for a range past the end", async () => {
+    await expect(
+      driver.readRange("local", "staged/a", 8, 4),
+    ).rejects.toMatchObject({
+      code: "READ_FAILED",
+    });
+  });
+
+  it("throws SOURCE_NOT_FOUND for a missing object", async () => {
+    await expect(
+      driver.readRange("local", "staged/missing", 0, 1),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      code: "SOURCE_NOT_FOUND",
+    });
+  });
+
+  it("rejects keys that escape the root", async () => {
+    await expect(
+      driver.readRange("local", "../../etc/passwd", 0, 1),
+    ).rejects.toMatchObject({
+      code: "INVALID_OBJECT_KEY",
+    });
+  });
+});

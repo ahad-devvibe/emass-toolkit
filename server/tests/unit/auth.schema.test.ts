@@ -21,10 +21,33 @@ const validSignup = {
   country: "us",
   companyName: "Acme Corp",
   jobTitle: "CTO",
+  useCase: "Evaluating EMASS for a smart doorbell",
   captcha: "AB12CD",
 };
 
 describe("signupSchema", () => {
+  it("trims the use case and tells missing, wrong type, short and long apart", () => {
+    const parse = (useCase: unknown) =>
+      signupSchema.safeParse({ ...validSignup, useCase });
+    const message = (useCase: unknown) => {
+      const result = parse(useCase);
+      return result.success ? null : result.error.issues[0].message;
+    };
+
+    const ok = parse("  Building a vision sensor  ");
+    expect(ok.success && ok.data.useCase).toBe("Building a vision sensor");
+    expect(message(undefined)).toBe("Use case is required");
+    expect(message("   ")).toBe("Use case is required");
+    expect(message(42)).toBe("Use case must be text");
+    expect(message("too short")).toBe(
+      "Tell us a bit more (at least 10 characters)",
+    );
+    expect(parse("x".repeat(200)).success).toBe(true);
+    expect(message("x".repeat(201))).toBe(
+      "Use case must be at most 200 characters",
+    );
+  });
+
   it("accepts a full valid signup", () => {
     const result = signupSchema.safeParse(validSignup);
     expect(result.success).toBe(true);
@@ -51,6 +74,7 @@ describe("signupSchema", () => {
       { path: ["country"], message: "Country is required" },
       { path: ["companyName"], message: "Company name is required" },
       { path: ["jobTitle"], message: "Job title is required" },
+      { path: ["useCase"], message: "Use case is required" },
     ]);
   });
 

@@ -26,6 +26,18 @@ enum UserStatus {
   BLOCKED
 }
 
+// Why an account is BLOCKED, so the dashboard can tell them apart
+enum BlockReason {
+  COMPETITOR_DOMAIN
+  SIGNUP_REJECTED
+}
+
+enum AuthEventType {
+  SIGN_IN_SUCCEEDED
+  SIGN_IN_FAILED
+  PASSWORD_RESET
+}
+
 enum EmailDomainKind {
   FREE_MAIL
   COMPETITOR
@@ -41,6 +53,8 @@ model User {
   country     String
   companyName String
   jobTitle    String
+  // What they told us at sign-up they will use EMASS for (null for older accounts)
+  useCase     String? @db.Text
 
   password String?
 
@@ -53,18 +67,34 @@ model User {
   hubspotContactId String?   @unique
   hubspotSyncedAt  DateTime?
 
-  rejectionReason String? @db.Text
+  rejectionReason        String?      @db.Text
+  blockReason            BlockReason?
+  // Download licence click-through (customers, once): when and which wording
+  licenseAcceptedAt      DateTime?
+  licenseVersion         String?
+  // Customer download totals, kept in step with Download rows (same
+  // transaction) so HubSpot sync reads one row instead of aggregating
+  downloadCount          Int          @default(0)
+  firstDownloadAt        DateTime?
+  firstDownloadLabel     String?
+  lastDownloadAt         DateTime?
+  lastDownloadLabel      String?
+  // HubSpot sync progress: the count HubSpot last received, and the note
+  hubspotSyncedDownloads Int          @default(0)
+  hubspotNoteSentAt      DateTime?
 
   refreshTokens       RefreshToken[]
   otps                Otp[]
   setPasswordTokens   SetPasswordToken[]
   passwordResetTokens PasswordResetToken[]
+  authEvents          AuthEvent[]
+  downloads           Download[]
+  activity            ActivityLog[]
 
   releasesCreated   Release[]         @relation("ReleaseCreatedBy")
   releasesPublished Release[]         @relation("ReleasePublishedBy")
   releaseEvents     ReleaseEvent[]
   resourcesUpdated  ProductResource[]
-  // downloads         Download[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,6 +152,24 @@ model PasswordResetToken {
   @@index([userId])
 }
 
+// Append-only sign-in audit trail. userId is null for unknown emails and
+// survives (as null) if the user is deleted.
+model AuthEvent {
+  id        String        @id @default(uuid())
+  type      AuthEventType
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email     String
+  // The ApiError code of a failed attempt, e.g. INVALID_CREDENTIALS
+  code      String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime      @default(now())
+
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
+}
+
 model EmailDomainPolicy {
   id        String          @id @default(uuid())
   domain    String          @unique
@@ -166,6 +214,16 @@ enum ReleaseFileKind {
   DOC
 }
 
+// Detected from a file's first bytes: installers (PE, DEB, PKG) get the
+// strict checks; PDF and OTHER follow the doc rules
+enum ReleaseFileFormat {
+  PE
+  DEB
+  PKG
+  PDF
+  OTHER
+}
+
 enum SdkPlatform {
   WINDOWS
   MACOS
@@ -182,6 +240,8 @@ enum ReleaseEventType {
   ROLLED_BACK
   RESTORED
   NOTES_EDITED
+  // Rollback emails went out to customers who downloaded the release
+  CUSTOMERS_NOTIFIED
 }
 
 model Release {
@@ -204,8 +264,9 @@ model Release {
   publishedById String?
   publishedBy   User?     @relation("ReleasePublishedBy", fields: [publishedById], references: [id])
 
-  files  ReleaseFile[]
-  events ReleaseEvent[]
+  files    ReleaseFile[]
+  events   ReleaseEvent[]
+  activity ActivityLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -233,12 +294,22 @@ model ReleaseFile {
   // staged/... until publish, then releases/...; never overwritten
   objectKey    String @unique
 
-  // downloads Download[]
+  // What the file-inspect parser found when it was uploaded (null for files
+  // uploaded before inspection existed); re-checked when the version changes
+  format           ReleaseFileFormat?
+  detectedVersions String[]           @default([])
+
+  downloads Download[]
+  activity  ActivityLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([releaseId, platform])
+  // The same bytes never appear twice in one release
+  @@unique([releaseId, sha256])
+  // Installer checks look up identical bytes in other releases
+  @@index([sha256])
 }
 
 model ReleaseEvent {
@@ -268,7 +339,7 @@ model ProductResource {
   updatedById String
   updatedBy   User   @relation(fields: [updatedById], references: [id])
 
-  // downloads Download[]
+  downloads Download[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -277,21 +348,44 @@ model ProductResource {
 }
 
 // One row per authorized download click (cookie-authenticated; the server
-// checks access, then issues a ~60s read-only PAR). Exactly one of
-// releaseFileId / resourceId is set (CHECK constraint in the migration).
-// HubSpot download properties are computed from these rows.
-// model Download {
-//   id            String           @id @default(uuid())
-//   userId        String
-//   user          User             @relation(fields: [userId], references: [id], onDelete: Restrict)
-//   releaseFileId String?
-//   releaseFile   ReleaseFile?     @relation(fields: [releaseFileId], references: [id], onDelete: SetNull)
-//   resourceId    String?
-//   resource      ProductResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
-//   // Denormalized so rollback recipients are one indexed query
-//   releaseId     String?
-//   createdAt     DateTime         @default(now())
+// checks access, then issues a read-only object PAR, ~1 hour). One of
+// releaseFileId / resourceId is set; both become null if the file is deleted.
+model Download {
+  id            String           @id @default(uuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  releaseFileId String?
+  releaseFile   ReleaseFile?     @relation(fields: [releaseFileId], references: [id], onDelete: SetNull)
+  resourceId    String?
+  resource      ProductResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  // Denormalized so rollback recipients are one indexed query
+  releaseId     String?
+  createdAt     DateTime         @default(now())
 
-//   @@index([releaseId, userId])
-//   @@index([userId, createdAt])
-// }
+  @@index([releaseId, userId])
+  @@index([userId, createdAt])
+}
+
+enum ActivityAction {
+  FILE_DOWNLOADED
+}
+
+// Staff actions worth keeping (for now: staff downloading release files).
+// Customer downloads go to Download, which stays customers-only.
+model ActivityLog {
+  id            String         @id @default(uuid())
+  actorId       String
+  actor         User           @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  action        ActivityAction
+  // Kept loose: a deleted draft or file leaves the log row with nulls
+  releaseId     String?
+  release       Release?       @relation(fields: [releaseId], references: [id], onDelete: SetNull)
+  releaseFileId String?
+  releaseFile   ReleaseFile?   @relation(fields: [releaseFileId], references: [id], onDelete: SetNull)
+  // e.g. { fileName, staged }
+  details       Json?
+  createdAt     DateTime       @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([releaseId, createdAt])
+}

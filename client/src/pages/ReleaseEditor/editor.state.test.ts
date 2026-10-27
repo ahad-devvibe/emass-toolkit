@@ -4,7 +4,7 @@ import type { ReleaseFileItem } from "@/pages/Releases/releases.model"
 import { changedFields, changedMappings, effectiveMapping, hasDuplicates, mappingProblems, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionProblem } from "./editor.state"
 import { emptyQueue, queueReducer, type QueueState } from "./upload-queue"
 
-const file = (id: string, kind: ReleaseFileItem["kind"], os: ReleaseFileItem["os"] = null): ReleaseFileItem => ({ id, name: `${id}.bin`, kind, os, contentType: "application/octet-stream", sizeBytes: 1, sha256: "a", createdAt: "2026-10-22T00:00:00.000Z" })
+const file = (id: string, kind: ReleaseFileItem["kind"], os: ReleaseFileItem["os"] = null): ReleaseFileItem => ({ id, name: `${id}.bin`, kind, os, contentType: "application/octet-stream", sizeBytes: 1, sha256: "a", createdAt: "2026-10-22T00:00:00.000Z", format: null, detectedVersions: [], blockedBy: [], warnings: [] })
 
 function queueWith(status: "queued" | "failed" | "conflict"): QueueState {
   let state = queueReducer(emptyQueue, { type: "added", items: [{ localId: "a", file: new File(["x"], "a.msi"), kind: "sdk", os: "windows", holder: status === "conflict" ? { fileId: "f", name: "x" } : null }] })
@@ -98,6 +98,7 @@ describe("submitBlocker", () => {
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("queued"), problems: none })).toBe("Wait for uploads to finish.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("failed"), problems: none })).toBe("Retry or remove the failed uploads.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("conflict"), problems: none })).toBe("Replace or re-map the uploads held on a platform.")
+    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none, blockedFiles: 1 })).toBe("Remove the files that can't be submitted, or change the version.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "duplicate", os: "windows", others: [] } } })).toBe("Each platform can have only one SDK.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsType" } } })).toBe("Choose a type for every file.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsPlatform" } } })).toBe("Choose a platform for every SDK.")

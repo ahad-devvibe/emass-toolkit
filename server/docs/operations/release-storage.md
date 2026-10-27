@@ -78,6 +78,8 @@ location /api/ {
 }
 ```
 
+Every hop an upload passes through needs the same long limit; any one left at its default cuts uploads off. In dev, that hop is the Vite server: `client/vite.config.ts` raises Vite's own Node `requestTimeout` (default 300 s) along with the proxy timeouts. Without it, any dev upload taking more than 5 minutes was cut off with a 408, even though the API still saved the file.
+
 ## 6. Verify on the real buckets
 
 From `server/` on the VM (or a machine with the same credentials):

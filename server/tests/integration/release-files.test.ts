@@ -30,6 +30,7 @@ import {
   stagedObjectExists,
   type StaffUser,
 } from "../helpers/releases.js";
+import { buildPdfDocument, buildPe } from "../helpers/file-fixtures.js";
 
 let dev: StaffUser;
 let otherDev: StaffUser;
@@ -75,7 +76,9 @@ function upload(
   let req = request(app)
     .post(`/api/releases/${releaseId}/files`)
     .set(user.cookie);
-  for (const [name, value] of Object.entries(fields)) {
+  // The browser always sends the hash; a test can set its own (or "")
+  const withHash = { sha256: sha256(file.body), ...fields };
+  for (const [name, value] of Object.entries(withHash)) {
     req = req.field(name, value);
   }
   return req.attach("file", file.body, {
@@ -187,12 +190,15 @@ describe("POST /api/releases/:id/files", () => {
 
   it("stores docs without a platform and keeps unsafe names readable", async () => {
     const release = await draft();
-    const body = Buffer.from("%PDF-1.7 guide");
 
     const res = await upload(
       release.id,
       { kind: "DOC" },
-      { body, name: "../My Guide (v2).pdf", type: "application/pdf" },
+      {
+        body: buildPdfDocument(),
+        name: "../My Guide (v2).pdf",
+        type: "application/pdf",
+      },
     );
 
     expect(res.status).toBe(201);
@@ -268,6 +274,7 @@ describe("POST /api/releases/:id/files", () => {
     const lateKind = await request(app)
       .post(`/api/releases/${release.id}/files`)
       .set(dev.cookie)
+      .field("sha256", sha256(Buffer.from("x")))
       .attach("file", Buffer.from("x"), "a.bin")
       .field("kind", "DOC");
     expect(lateKind.status).toBe(400);
@@ -277,6 +284,7 @@ describe("POST /api/releases/:id/files", () => {
       .post(`/api/releases/${release.id}/files`)
       .set(dev.cookie)
       .field("kind", "DOC")
+      .field("sha256", sha256(Buffer.from("x")))
       .attach("file", Buffer.from("x"), "a.bin")
       .field("note", "late");
     expect(trailing.status).toBe(400);
@@ -307,6 +315,7 @@ describe("POST /api/releases/:id/files", () => {
       .post(`/api/releases/${release.id}/files`)
       .set(dev.cookie)
       .field("kind", "DOC")
+      .field("sha256", sha256(Buffer.from("one")))
       .attach("file", Buffer.from("one"), "one.pdf")
       .attach("second", Buffer.from("two"), "two.pdf");
     expect(twoFiles.status).toBe(400);
@@ -494,11 +503,15 @@ describe("POST /api/releases/:id/files", () => {
 
   it("refuses an upload that finishes after the release was submitted", async () => {
     const release = await draft({ files: [{ platform: "MACOS" }] });
+    const half = randomBytes(512 * 1024);
     const head = multipartHead(
-      { kind: "SDK", platform: "WINDOWS" },
+      {
+        kind: "SDK",
+        platform: "WINDOWS",
+        sha256: sha256(Buffer.concat([half, half])),
+      },
       "late.msi",
     );
-    const half = randomBytes(512 * 1024);
     const { req, response } = rawRequest(
       release.id,
       head.length + half.length * 2 + multipartTail.length,
@@ -579,6 +592,7 @@ describe("file routes: roles, ownership and status", () => {
         const req = request(app).post(`/api/releases/${releaseId}/files`);
         return (user ? req.set(user.cookie) : req)
           .field("kind", "DOC")
+          .field("sha256", sha256(Buffer.from("x")))
           .attach("file", Buffer.from("x"), "a.pdf");
       },
     ],
@@ -631,9 +645,9 @@ describe("draft to review with real uploads", () => {
   it("uploads two SDKs and a doc, then submits", async () => {
     const release = await draft();
     for (const [fields, name] of [
-      [{ kind: "SDK", platform: "WINDOWS" }, "emass.msi"],
-      [{ kind: "SDK", platform: "MACOS" }, "emass.dmg"],
-      [{ kind: "DOC" }, "guide.pdf"],
+      [{ kind: "SDK", platform: "WINDOWS" }, "emass-1.0.0.msi"],
+      [{ kind: "SDK", platform: "MACOS" }, "emass-1.0.0.dmg"],
+      [{ kind: "DOC" }, "guide-1.0.0.txt"],
     ] as const) {
       const res = await upload(release.id, fields, {
         body: randomBytes(64 * 1024),
@@ -650,6 +664,289 @@ describe("draft to review with real uploads", () => {
     expect(submitted.body.data).toMatchObject({
       status: "IN_REVIEW",
       fileCount: 3,
+    });
+  });
+});
+
+describe("file rules on upload, read and submit", () => {
+  // Each test gets its own installer bytes (all say 2.5.0 inside): once a
+  // test ships one, the same bytes are rightly blocked everywhere else
+  let installers = 0;
+  const freshExe = () => buildPe({ paddingBefore: ++installers * 512 });
+
+  it("blocks an installer identical to another release's file and keeps nothing", async () => {
+    const exe = freshExe();
+    const product = await createProduct();
+    await createRelease({
+      productId: product.id,
+      createdById: dev.id,
+      version: "2.4.0",
+      status: "PUBLISHED",
+      files: [{ name: "emass-win.exe", sha256: sha256(exe) }],
+    });
+    const release = await draft({ productId: product.id, version: "2.5.0" });
+
+    const res = await upload(
+      release.id,
+      { kind: "SDK", platform: "WINDOWS" },
+      { body: exe, name: "setup.exe" },
+    );
+
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      code: "FILE_BLOCKED",
+      message: 'Identical to "emass-win.exe" in v2.4.0.',
+    });
+    expect(await fileRows(release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+  });
+
+  it("blocks an installer that says another version, after reading it from storage", async () => {
+    const exe = freshExe();
+    const release = await draft({ version: "2.6.0" });
+
+    const res = await upload(
+      release.id,
+      { kind: "SDK", platform: "WINDOWS" },
+      { body: exe, name: "setup.exe" },
+    );
+
+    expect(res.status).toBe(409);
+    expect(res.body.details.reasons).toEqual([
+      expect.objectContaining({
+        code: "VERSION_MISMATCH",
+        version: "2.5.0",
+        expected: "2.6.0",
+      }),
+    ]);
+    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+  });
+
+  it("requires the SHA-256 the browser computed", async () => {
+    const release = await draft();
+
+    const res = await upload(
+      release.id,
+      { kind: "DOC", sha256: "" },
+      { body: randomBytes(64), name: "notes.txt" },
+    );
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain("SHA-256 is required");
+    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+  });
+
+  it("refuses bytes that don't match the declared SHA-256", async () => {
+    const exe = freshExe();
+    const release = await draft({ version: "2.5.0" });
+
+    const res = await upload(
+      release.id,
+      { kind: "SDK", platform: "WINDOWS", sha256: sha256(randomBytes(10)) },
+      { body: exe, name: "setup.exe" },
+    );
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("CHECKSUM_MISMATCH");
+    expect(await fileRows(release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+  });
+
+  it("stores what inspection found when the declared SHA-256 matches", async () => {
+    const exe = freshExe();
+    const release = await draft({ version: "2.5.0" });
+
+    const res = await upload(
+      release.id,
+      { kind: "SDK", platform: "WINDOWS", sha256: sha256(exe).toUpperCase() },
+      { body: exe, name: "setup.exe" },
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.file).toMatchObject({
+      format: "PE",
+      detectedVersions: ["2.5.0"],
+      blockedBy: [],
+      warnings: [],
+    });
+    const [row] = await fileRows(release.id);
+    expect(row).toMatchObject({ format: "PE", detectedVersions: ["2.5.0"] });
+  });
+
+  it("allows a doc of another version, with a warning on upload and on read", async () => {
+    const release = await draft({ version: "2.5.0" });
+    const pdf = buildPdfDocument({ info: "/Subject(EMASS IDE Version 1.4)" });
+
+    const res = await upload(
+      release.id,
+      { kind: "DOC" },
+      { body: pdf, name: "User-Guide.pdf" },
+    );
+
+    expect(res.status).toBe(201);
+    const warning = {
+      code: "DOC_VERSION_MISMATCH",
+      message:
+        "This file says version 1.4.0 (Info Subject); this release is 2.5.0.",
+      version: "1.4.0",
+      fields: ["Info Subject"],
+      expected: "2.5.0",
+    };
+    expect(res.body.data.file.warnings).toEqual([warning]);
+
+    const detail = await request(app)
+      .get(`/api/releases/${release.id}`)
+      .set(dev.cookie);
+    // Stored files keep only the versions, so the fields are gone on read
+    expect(detail.body.data.files[0].warnings).toEqual([
+      {
+        ...warning,
+        message: "This file says version 1.4.0; this release is 2.5.0.",
+        fields: [],
+      },
+    ]);
+  });
+
+  it("re-judges installers after a version change, and submit refuses them", async () => {
+    const exe = freshExe();
+    const release = await draft({ version: "2.5.0" });
+    await upload(
+      release.id,
+      { kind: "SDK", platform: "WINDOWS" },
+      { body: exe, name: "setup.exe" },
+    ).expect(201);
+
+    await request(app)
+      .patch(`/api/releases/${release.id}`)
+      .set(dev.cookie)
+      .send({ version: "2.6.0" })
+      .expect(200);
+    const detail = await request(app)
+      .get(`/api/releases/${release.id}`)
+      .set(dev.cookie);
+    expect(detail.body.data.files[0].blockedBy).toEqual([
+      {
+        code: "VERSION_MISMATCH",
+        message: "This installer says version 2.5.0; this release is 2.6.0.",
+        version: "2.5.0",
+        fields: [],
+        expected: "2.6.0",
+      },
+    ]);
+
+    const submitted = await request(app)
+      .post(`/api/releases/${release.id}/submit`)
+      .set(dev.cookie)
+      .send({ confirmWarnings: true });
+    expect(submitted.status).toBe(409);
+    expect(submitted.body).toMatchObject({
+      code: "FILE_BLOCKED",
+      details: {
+        files: [
+          {
+            name: "setup.exe",
+            reasons: [expect.objectContaining({ code: "VERSION_MISMATCH" })],
+          },
+        ],
+      },
+    });
+  });
+
+  it("asks submit to confirm warnings, then records them on the event", async () => {
+    const release = await draft({ version: "2.5.0" });
+    await upload(
+      release.id,
+      { kind: "DOC" },
+      { body: randomBytes(512), name: "notes.txt" },
+    ).expect(201);
+    const submit = (body: object) =>
+      request(app)
+        .post(`/api/releases/${release.id}/submit`)
+        .set(dev.cookie)
+        .send(body);
+
+    const unconfirmed = await submit({});
+    expect(unconfirmed.status).toBe(409);
+    expect(unconfirmed.body).toMatchObject({
+      code: "FILE_WARNINGS_UNCONFIRMED",
+      details: {
+        files: [
+          {
+            name: "notes.txt",
+            warnings: [expect.objectContaining({ code: "NO_VERSION" })],
+          },
+        ],
+      },
+    });
+    expect((await submit({ confirmWarnings: "yes" })).status).toBe(400);
+
+    const confirmed = await submit({ confirmWarnings: true });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.data.status).toBe("IN_REVIEW");
+    const event = await prisma.releaseEvent.findFirstOrThrow({
+      where: { releaseId: release.id, type: "SUBMITTED" },
+    });
+    expect(event.note).toBe(
+      "Submitted with warnings: notes.txt: No version found in this file's name or contents.",
+    );
+  });
+
+  it("submits without a note when nothing warns", async () => {
+    const exe = freshExe();
+    const release = await draft({ version: "2.5.0" });
+    await upload(
+      release.id,
+      { kind: "SDK", platform: "WINDOWS" },
+      { body: exe, name: "setup.exe" },
+    ).expect(201);
+
+    await request(app)
+      .post(`/api/releases/${release.id}/submit`)
+      .set(dev.cookie)
+      .expect(200);
+    const event = await prisma.releaseEvent.findFirstOrThrow({
+      where: { releaseId: release.id, type: "SUBMITTED" },
+    });
+    expect(event.note).toBeNull();
+  });
+
+  it("inspects a file uploaded before inspection existed, once, from storage", async () => {
+    const release = await draft({
+      version: "1.0.0",
+      withObjects: true,
+      files: [{ kind: "DOC", name: "guide-9.9.9.zip", format: null }],
+    });
+
+    const detail = await request(app)
+      .get(`/api/releases/${release.id}`)
+      .set(dev.cookie);
+
+    expect(detail.body.data.files[0]).toMatchObject({
+      format: "OTHER",
+      detectedVersions: ["9.9.9"],
+      warnings: [expect.objectContaining({ code: "DOC_VERSION_MISMATCH" })],
+    });
+    const [row] = await fileRows(release.id);
+    expect(row).toMatchObject({ format: "OTHER", detectedVersions: ["9.9.9"] });
+  });
+
+  it("doesn't judge shipped releases", async () => {
+    const product = await createProduct();
+    const shipped = await createRelease({
+      productId: product.id,
+      createdById: dev.id,
+      version: "3.0.0",
+      status: "PUBLISHED",
+      files: [{ detectedVersions: ["2.0.0"], format: "PE" }],
+    });
+
+    const detail = await request(app)
+      .get(`/api/releases/${shipped.id}`)
+      .set(dev.cookie);
+
+    expect(detail.body.data.files[0]).toMatchObject({
+      blockedBy: [],
+      warnings: [],
     });
   });
 });

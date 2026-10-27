@@ -59,6 +59,22 @@ const resetTokenField = z
   .min(1, "Token is required")
   .max(128, "Token must be at most 128 characters");
 
+export const USE_CASE_MIN = 10;
+export const USE_CASE_MAX = 200;
+
+// Free text: what the person will use EMASS for (shown to admins, sent to HubSpot)
+const useCaseField = z
+  .string({
+    error: (iss) =>
+      iss.input === undefined || iss.input === null
+        ? "Use case is required"
+        : "Use case must be text",
+  })
+  .trim()
+  .min(1, "Use case is required")
+  .min(USE_CASE_MIN, `Tell us a bit more (at least ${USE_CASE_MIN} characters)`)
+  .max(USE_CASE_MAX, `Use case must be at most ${USE_CASE_MAX} characters`);
+
 export const signupSchema = z.object(
   {
     email: emailField,
@@ -76,6 +92,7 @@ export const signupSchema = z.object(
       .refine(isCountryCode, "Country must be a valid ISO 3166-1 alpha-2 code"),
     companyName: nameField("Company name", 120),
     jobTitle: nameField("Job title", 120),
+    useCase: useCaseField,
     captcha: z
       .string({ error: required("Captcha") })
       .trim()

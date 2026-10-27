@@ -68,6 +68,7 @@ export type ObjectStorageClientLike = Pick<
   ObjectStorageClient,
   | "putObject"
   | "headObject"
+  | "getObject"
   | "deleteObject"
   | "copyObject"
   | "getWorkRequest"

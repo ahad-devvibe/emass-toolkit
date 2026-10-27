@@ -30,6 +30,9 @@ describe("releaseActions", () => {
   it("gives ADMIN only review actions", () => {
     expect(releaseActions(admin, release("in_review"))).toEqual(["publish", "reject"])
     expect(releaseActions(admin, release("published"))).toEqual(["editNotes", "rollback"])
+    // Archived versions are still downloadable, so they can be withdrawn too
+    expect(releaseActions(admin, release("archived"))).toEqual(["rollback"])
+    expect(releaseActions(admin, release("rolled_back"))).toEqual([])
     expect(releaseActions(otherDev, release("published"))).toEqual([])
     expect(releaseActions(admin, release("draft"))).toEqual([])
   })

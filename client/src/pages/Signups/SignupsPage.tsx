@@ -13,9 +13,10 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { countryLabel } from "@/lib/countries/countries"
+import { cn } from "@/lib/utils"
 import { relativeTime } from "@/pages/Releases/releases.utils"
 import { loadMoreSignups, loadPendingSignups, removePendingSignup, usePendingSignups } from "./pendingSignups.store"
-import { signupsApi } from "./signups.api"
+import { PAGE_SIZE, signupsApi } from "./signups.api"
 
 type Decision = { kind: "approve" | "reject"; signup: SessionUser }
 
@@ -34,6 +35,7 @@ function SignupRow({ signup, onDecide }: { signup: SessionUser; onDecide: (kind:
             <span className="inline-flex items-center gap-1.5"><CountryFlag code={signup.country} className="h-3 w-4" />{countryLabel(signup.country)}</span>
             <span>Requested {relativeTime(signup.createdAt)}</span>
           </p>
+          {signup.useCase && <p tabIndex={0} title={signup.useCase} className="mt-2 line-clamp-2 border-l-2 border-primary/30 pl-2.5 text-sm text-foreground/80 outline-none focus-visible:ring-2 focus-visible:ring-ring/50">{signup.useCase}</p>}
         </div>
       </div>
       <div className="flex shrink-0 gap-2 sm:justify-end">
@@ -44,31 +46,49 @@ function SignupRow({ signup, onDecide }: { signup: SessionUser; onDecide: (kind:
   )
 }
 
+// Widths rotate so the placeholder rows don't look stamped
+const SKELETON_WIDTHS = [["w-40", "w-56", "w-64"], ["w-32", "w-48", "w-52"], ["w-48", "w-60", "w-44"]]
+
+/** One page of placeholder rows shaped like SignupRow; the card clips and fades what doesn't fit. */
 function LoadingRows() {
   return (
     <ul aria-hidden className="divide-y">
-      {[0, 1, 2].map((key) => (
-        <li key={key} className="flex items-center gap-3 px-4 py-4">
-          <Skeleton className="size-9 rounded-full" />
-          <div className="flex-1 space-y-2"><Skeleton className="h-3.5 w-40" /><Skeleton className="h-3 w-56" /></div>
-          <Skeleton className="h-7 w-40" />
-        </li>
-      ))}
+      {Array.from({ length: PAGE_SIZE }, (_, index) => {
+        const [name, email, meta] = SKELETON_WIDTHS[index % SKELETON_WIDTHS.length]
+        return (
+          // Phones have no fixed-height card: 6 rows are enough there
+          <li key={index} className={cn("flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4", index >= 6 && "hidden md:flex")}>
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <Skeleton className="mt-0.5 size-9 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-2 py-0.5">
+                <Skeleton className={cn("h-3.5 max-w-full", name)} />
+                <Skeleton className={cn("h-3.5 max-w-full", email)} />
+                <Skeleton className={cn("mt-3 h-3 max-w-full", meta)} />
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2"><Skeleton className="h-8 w-20" /><Skeleton className="h-8 w-20" /></div>
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
 export function SignupsPage() {
   const { status, signups, error, refreshing, total, nextCursor, loadingMore, moreError } = usePendingSignups()
+  const skeleton = status === "idle" || status === "loading"
   const [decision, setDecision] = useState<Decision | null>(null)
   // The URL holds the applied search so a reload or shared link keeps it
   const [params, setParams] = useSearchParams()
   const query = params.get("q") ?? ""
   const [search, setSearch] = useState(query)
   const sentinel = useRef<HTMLLIElement>(null)
+  // The rows scroll inside the card (md and up), so paging watches this box, not the window
+  const scroller = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void loadPendingSignups(query)
+    scroller.current?.scrollTo({ top: 0 })
   }, [query])
 
   // Debounce typing before it becomes the applied query
@@ -86,7 +106,11 @@ export function SignupsPage() {
     if (!node || !nextCursor) return
     const observer = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting) void loadMoreSignups()
-    }, { rootMargin: "240px" })
+    }, {
+      // md and up the rows scroll inside the card; on phones the page scrolls (a non-scrolling root would always intersect)
+      root: window.matchMedia("(min-width: 48rem)").matches ? scroller.current : null,
+      rootMargin: "240px",
+    })
     observer.observe(node)
     return () => observer.disconnect()
   }, [nextCursor])
@@ -122,17 +146,18 @@ export function SignupsPage() {
 
   return (
     <AppShell breadcrumb={["Admin", "Sign-up requests"]}>
-      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      {/* md and up: fills the screen under the sticky header (h-16 / lg:72px + 1px border); only the rows scroll */}
+      <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-8 md:max-h-[calc(100dvh-4rem-1px)] lg:max-h-[calc(100dvh-72px-1px)]">
+        <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold tracking-tight">Sign-up requests</h1>
-            <p className="text-sm text-muted-foreground">People who signed up with a personal email address. Approving emails them a link to set their password.</p>
+            <p className="text-sm text-muted-foreground">People who signed up with a personal email address. Approving lets them sign in, and we'll email them.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void loadPendingSignups(query)} disabled={refreshing || status === "loading"}><RefreshCw className={refreshing ? "animate-spin" : undefined} />Refresh</Button>
         </div>
 
-        <Card className="gap-0 overflow-hidden p-0">
-          <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <Card className="min-h-0 gap-0 overflow-hidden p-0">
+          <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm font-medium">
               {query ? "Search results" : "Waiting for review"}
               {status === "ready" && <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold tabular-nums text-secondary-foreground">{total} {query ? (total === 1 ? "match" : "matches") : "waiting"}</span>}
@@ -142,7 +167,9 @@ export function SignupsPage() {
               <Input type="search" aria-label="Search sign-up requests" placeholder="Search by name or email" maxLength={100} className="h-9 pl-8" value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
           </div>
-          {status === "idle" || status === "loading" ? (
+          {/* As tall as its rows; capped by main on md+, then only the rows scroll. While loading, the skeleton is clipped with a fade */}
+          <div ref={scroller} className={cn("min-h-0 overscroll-contain", skeleton ? "overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]" : "overflow-y-auto")}>
+          {skeleton ? (
             <LoadingRows />
           ) : status === "error" ? (
             <div role="alert" className="flex flex-col items-center gap-3 px-4 py-12 text-center">
@@ -174,6 +201,7 @@ export function SignupsPage() {
               </li>
             </ul>
           )}
+          </div>
         </Card>
       </main>
 
@@ -181,7 +209,7 @@ export function SignupsPage() {
         open={decision?.kind === "approve"}
         onOpenChange={(open) => !open && setDecision(null)}
         title="Approve this request?"
-        description={decision && <>We'll email <span className="font-medium text-foreground">{decision.signup.email}</span> a link to set their password. They can then sign in as a customer.</>}
+        description={decision && <>They'll be able to sign in as a customer straight away. We'll email <span className="font-medium text-foreground">{decision.signup.email}</span> to let them know.</>}
         onConfirm={() => (decision ? decide("approve", decision.signup) : true)}
       />
       <ReasonDialog

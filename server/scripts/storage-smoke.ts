@@ -9,7 +9,8 @@ import {
 import { createOciDriver } from "../src/services/storage/drivers/oci.driver.js";
 
 // Checks the OCI multipart path against the real staging bucket (needs OCI_*
-// env and credentials). Uploads ~50 MB in parts, verifies and deletes it,
+// env and credentials). Uploads ~50 MB in parts, verifies it, reads byte
+// ranges back (file inspection reads staged objects this way), deletes it,
 // then aborts an upload midway and checks no object was left behind.
 //   npm run storage:smoke
 const TOTAL_BYTES = 50 * 1024 ** 2;
@@ -46,11 +47,16 @@ async function main() {
   const prefix = `staged/_smoke/${randomUUID()}`;
 
   const okKey = `${prefix}/ok.bin`;
+  const data = randomBytes(TOTAL_BYTES);
   const started = Date.now();
   await driver.putStream({
     bucket: staging,
     key: okKey,
-    body: randomBody(TOTAL_BYTES),
+    body: (async function* () {
+      for (let at = 0; at < TOTAL_BYTES; at += CHUNK_BYTES) {
+        yield data.subarray(at, at + CHUNK_BYTES);
+      }
+    })(),
   });
   const size = await objectSize(staging, okKey);
   if (size !== TOTAL_BYTES)
@@ -59,6 +65,23 @@ async function main() {
     { key: okKey, ms: Date.now() - started },
     "multipart upload committed",
   );
+
+  // The start, a range spanning multipart part boundaries, and the very end
+  for (const [offset, length] of [
+    [0, 64 * 1024],
+    [TOTAL_BYTES / 2 - 1000, 128 * 1024],
+    [TOTAL_BYTES - 4096, 4096],
+  ]) {
+    const readStarted = Date.now();
+    const bytes = await driver.readRange(staging, okKey, offset, length);
+    if (!data.subarray(offset, offset + length).equals(Buffer.from(bytes))) {
+      throw new Error(`range ${offset}+${length} came back different`);
+    }
+    logger.info(
+      { offset, length, ms: Date.now() - readStarted },
+      "ranged read matches",
+    );
+  }
 
   await driver.deleteObject(staging, okKey);
   if ((await objectSize(staging, okKey)) !== null)

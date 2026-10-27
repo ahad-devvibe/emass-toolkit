@@ -1,6 +1,6 @@
 import type { UserRole } from "@/auth/auth.types"
 import type { FileKind, OperatingSystem } from "@/pages/Catalog/catalog.types"
-import type { FileMapping, FileMappingChange, PublishJob, PublishStatus, ReleaseActor, ReviewContext, ReleaseDetail, ReleaseEventItem, ReleaseEventKind, ReleaseFileItem, ReleaseList, ReleaseSummary } from "./releases.model"
+import type { FileMapping, FileFormat, FileIssue, FileMappingChange, PublishJob, PublishStatus, ReleaseActor, ReviewContext, ReleaseDetail, ReleaseEventItem, ReleaseEventKind, ReleaseFileItem, ReleaseList, ReleaseSummary } from "./releases.model"
 import type { ReleaseStatus } from "./releases.types"
 
 // --- Wire shapes, exactly as server/src/services/releases/releases.presenter.ts sends them ---
@@ -8,10 +8,24 @@ import type { ReleaseStatus } from "./releases.types"
 export type ApiStatus = "DRAFT" | "IN_REVIEW" | "CHANGES_REQUESTED" | "PUBLISHED" | "ARCHIVED" | "ROLLED_BACK"
 export type ApiKind = "SDK" | "DOC"
 export type ApiPlatform = "WINDOWS" | "MACOS" | "UBUNTU"
-type ApiEventType = "CREATED" | "SUBMITTED" | "WITHDRAWN" | "CHANGES_REQUESTED" | "PUBLISHED" | "ARCHIVED" | "ROLLED_BACK" | "RESTORED" | "NOTES_EDITED"
+type ApiEventType = "CREATED" | "SUBMITTED" | "WITHDRAWN" | "CHANGES_REQUESTED" | "PUBLISHED" | "ARCHIVED" | "ROLLED_BACK" | "RESTORED" | "NOTES_EDITED" | "CUSTOMERS_NOTIFIED"
 
 type ApiActor = { id: string; name: string; role: UserRole }
-export type ApiFile = { id: string; kind: ApiKind | null; platform: ApiPlatform | null; name: string; contentType: string; sizeBytes: number; sha256: string; createdAt: string }
+export type ApiFileIssue = { code: string; message: string; version?: string; fields?: string[]; expected?: string }
+export type ApiFile = {
+  id: string
+  kind: ApiKind | null
+  platform: ApiPlatform | null
+  name: string
+  contentType: string
+  sizeBytes: number
+  sha256: string
+  createdAt: string
+  format?: FileFormat | null
+  detectedVersions?: string[]
+  blockedBy?: ApiFileIssue[]
+  warnings?: ApiFileIssue[]
+}
 type ApiEvent = { id: string; type: ApiEventType; actor: ApiActor; note: string | null; createdAt: string }
 
 export type ApiReleaseSummary = {
@@ -37,7 +51,7 @@ export type ApiReleaseDetail = ApiReleaseSummary & {
 
 export type ApiPublishStatus = { job: PublishJob | null; status: ApiStatus }
 
-export type ApiReleaseList = { releases: ApiReleaseSummary[]; nextCursor: string | null; counts: Record<ApiStatus, number> }
+export type ApiReleaseList = { releases: ApiReleaseSummary[]; nextCursor: string | null; counts: Record<ApiStatus, number>; needsYou?: number }
 
 // --- Enum translation, both ways ---
 
@@ -83,6 +97,9 @@ export const fromApiPlatform = (platform: ApiPlatform): OperatingSystem => osFro
 
 const toActor = (actor: ApiActor): ReleaseActor => ({ id: actor.id, name: actor.name, role: actor.role })
 
+// Only what the UI shows; the server's extra fields (match, releaseId) stay behind
+export const toFileIssue = ({ code, message, version, fields, expected }: ApiFileIssue): FileIssue => ({ code, message, ...(version && { version }), ...(fields && { fields }), ...(expected && { expected }) })
+
 export function toReleaseFile(file: ApiFile): ReleaseFileItem {
   const kind = file.kind ? kindFromApi[file.kind] : null
   return {
@@ -94,6 +111,10 @@ export function toReleaseFile(file: ApiFile): ReleaseFileItem {
     sizeBytes: file.sizeBytes,
     sha256: file.sha256,
     createdAt: file.createdAt,
+    format: file.format ?? null,
+    detectedVersions: file.detectedVersions ?? [],
+    blockedBy: (file.blockedBy ?? []).map(toFileIssue),
+    warnings: (file.warnings ?? []).map(toFileIssue),
   }
 }
 
@@ -140,5 +161,5 @@ export function toReleaseList(list: ApiReleaseList): ReleaseList {
   for (const [status, count] of Object.entries(list.counts) as [ApiStatus, number][]) {
     if (status in statusFromApi) counts[statusFromApi[status]] = count
   }
-  return { releases: list.releases.map(toReleaseSummary), nextCursor: list.nextCursor, counts }
+  return { releases: list.releases.map(toReleaseSummary), nextCursor: list.nextCursor, counts, needsYou: list.needsYou ?? 0 }
 }

@@ -791,3 +791,36 @@ describe("PATCH /api/releases/:id with file mappings", () => {
     ]);
   });
 });
+
+describe("GET /api/releases needsYou", () => {
+  const needsYou = async (user: StaffUser, query = "") =>
+    (await request(app).get(`/api/releases${query}`).set(user.cookie)).body.data
+      .needsYou as number;
+
+  it("counts an admin's reviews and only a dev's own sent-back releases, ignoring filters", async () => {
+    const devB = await createDev("Bea");
+    const before = {
+      a: await needsYou(dev),
+      b: await needsYou(devB),
+      admin: await needsYou(admin),
+    };
+    const product = await createProduct();
+    const make = (
+      createdById: string,
+      status: "CHANGES_REQUESTED" | "IN_REVIEW",
+      version: string,
+    ) => createRelease({ productId: product.id, createdById, status, version });
+    await make(dev.id, "CHANGES_REQUESTED", "7.0.1");
+    await make(dev.id, "CHANGES_REQUESTED", "7.0.2");
+    await make(devB.id, "CHANGES_REQUESTED", "7.0.3");
+    await make(dev.id, "IN_REVIEW", "7.0.4");
+    await make(devB.id, "IN_REVIEW", "7.0.5");
+    await make(dev.id, "IN_REVIEW", "7.0.6");
+
+    expect((await needsYou(dev)) - before.a).toBe(2);
+    expect((await needsYou(devB)) - before.b).toBe(1);
+    expect((await needsYou(admin)) - before.admin).toBe(3);
+    // Filters narrow the list, never the badge
+    expect(await needsYou(dev, "?status=PUBLISHED&q=zzz")).toBe(before.a + 2);
+  });
+});

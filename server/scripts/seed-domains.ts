@@ -6,6 +6,7 @@ import { z } from "zod";
 import { EmailDomainKind } from "@prisma/client";
 import { prisma } from "../src/configs/prisma.js";
 import { logger } from "../src/configs/logger.js";
+import { DOMAIN_RE } from "../src/services/auth/domains.utils.js";
 
 const POLICY_FILE = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -13,8 +14,6 @@ const POLICY_FILE = join(
   "data",
   "domain-policy.json",
 );
-
-const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
 const policyFileSchema = z.object({
   freeMail: z.array(z.string()).default([]),

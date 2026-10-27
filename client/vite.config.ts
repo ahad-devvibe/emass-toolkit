@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vite.dev/config/
@@ -19,8 +19,21 @@ export default defineConfig(({ mode }) => {
     },
   }
 
+  // The proxy timeouts above only cover the hop to the API. Vite's own HTTP
+  // server keeps Node's 5-minute requestTimeout, which cut off any upload
+  // slower than that (the API still saved it; the browser saw a 408)
+  // (HTTP/2 servers, used only with https, have no such limit)
+  const raiseTimeout = (httpServer: unknown) => {
+    if (httpServer && typeof httpServer === 'object' && 'requestTimeout' in httpServer) httpServer.requestTimeout = uploadTimeoutMs
+  }
+  const uploadTimeouts: Plugin = {
+    name: 'upload-timeouts',
+    configureServer: (server) => raiseTimeout(server.httpServer),
+    configurePreviewServer: (server) => raiseTimeout(server.httpServer),
+  }
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), uploadTimeouts],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

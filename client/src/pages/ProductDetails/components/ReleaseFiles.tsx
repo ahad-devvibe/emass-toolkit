@@ -5,9 +5,9 @@ import { FileDetailsDialog, type FileVersion } from "./FileDetailsDialog"
 import { FileRow } from "./FileRow"
 import { Section } from "./Section"
 
-type ReleaseFilesProps = { files: ReleaseFile[]; version: FileVersion; recommendedOs: OperatingSystem | null; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }
+type ReleaseFilesProps = { files: ReleaseFile[]; version: FileVersion; recommendedOs: OperatingSystem | null; /** The file whose link is being made, if any */ downloadingId?: string | null; onDownload: (file: ReleaseFile) => void; onCopy: (value: string, label: string) => void }
 
-export function ReleaseFiles({ files: allFiles, version, recommendedOs, onDownload, onCopy }: ReleaseFilesProps) {
+export function ReleaseFiles({ files: allFiles, version, recommendedOs, downloadingId, onDownload, onCopy }: ReleaseFilesProps) {
   const [detailsFile, setDetailsFile] = useState<ReleaseFile | null>(null)
   const isRecommended = (file: ReleaseFile) => isSdkFile(file) && file.os === recommendedOs
   // The visitor's OS floats to the top of the SDK group; sort is stable so data order holds otherwise
@@ -19,10 +19,10 @@ export function ReleaseFiles({ files: allFiles, version, recommendedOs, onDownlo
     <>
       {groups.map(({ kind, files }) => (
         <Section key={kind} id={`files-${kind}`} title={fileKindMeta[kind].label} count={files.length}>
-          <ul className="divide-y">{files.map((file) => <FileRow key={file.name} file={file} recommended={isRecommended(file)} onDownload={onDownload} onDetails={setDetailsFile} />)}</ul>
+          <ul className="divide-y">{files.map((file) => <FileRow key={file.name} file={file} recommended={isRecommended(file)} downloading={downloadingId === file.id} onDownload={onDownload} onDetails={setDetailsFile} />)}</ul>
         </Section>
       ))}
-      <FileDetailsDialog file={detailsFile} version={version} onOpenChange={(open) => { if (!open) setDetailsFile(null) }} onDownload={onDownload} onCopy={onCopy} />
+      <FileDetailsDialog file={detailsFile} version={version} downloading={!!detailsFile && downloadingId === detailsFile.id} onOpenChange={(open) => { if (!open) setDetailsFile(null) }} onDownload={onDownload} onCopy={onCopy} />
     </>
   )
 }

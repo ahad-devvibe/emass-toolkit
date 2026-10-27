@@ -44,6 +44,20 @@ transition is recorded in an append-only history. API: `/api/releases`,
   - A new drop whose detected platform is already taken is held in the
     browser ("Replace it, or change this file's type") instead of uploaded.
   - One SDK per platform (Windows, macOS, Ubuntu); no architectures.
+- **Duplicate and stale file warnings (advisory, never blocking):**
+  - `SAME_CONTENT`: the file's SHA-256 matches another file in the same
+    release, or the most recent file in any other release, rolled-back ones
+    included. One indexed query per release (`ReleaseFile @@index([sha256])`).
+  - `NAME_VERSION_MISMATCH`: the file name contains versions (`1.2.0`, or
+    `v1_2_0` / `v1-2-0`) and none of them is the release's version.
+  - Computed on every read (`GET /releases/:id`, the upload response), not
+    stored, so they survive reloads and follow version edits. Shown on the
+    editor rows, in an upload toast, and in a review callout before publish.
+  - **Not done:** parsing binary metadata (PE version info, Mach-O, ELF, zip
+    directory, PDF info). The zip directory and PDF trailer sit at the end of
+    multi-GB streams, ELF and Mach-O carry no product version, and it needs a
+    parser per format. Matching on the same file name alone was also dropped:
+    versionless names repeat every release.
 - **Storage keys:** `staged/{productId}/{releaseId}/{uuid}/{safeName}` →
   `releases/{productId}/{version}/{uuid}/{safeName}`.
   - The random uuid is reused on publish, so retries are idempotent.
@@ -58,9 +72,24 @@ transition is recorded in an append-only history. API: `/api/releases`,
     status, the files (`RELEASE_CHANGED`) and the version, archives the
     previous release and publishes.
   - In-memory, one VM: a restart loses the job but never half-publishes.
-- **Rollback:** synchronous and copies nothing. It restores the newest
-  ARCHIVED release with a lower version (never a rolled-back one), or fails
-  with `NO_RESTORE_TARGET`.
+- **Rollback (ADMIN):** synchronous and copies nothing. It works on either
+  customer-facing state:
+  - **PUBLISHED:** becomes ROLLED_BACK. The newest ARCHIVED release with a
+    lower version (never a rolled-back one) is promoted to PUBLISHED if there
+    is one. Otherwise the product is left with no published release.
+  - **ARCHIVED:** becomes ROLLED_BACK, withdrawn from the version picker; the
+    published release is untouched.
+  - **Two texts:**
+    - an **internal reason** (required), stored on the `ROLLED_BACK` event;
+    - an optional **message to customers** (at most 1,000 characters), used
+      only in the email and not stored.
+  - **Emails after the commit** (`rollback-notify.service.ts`): every distinct
+    ACTIVE user with a `Download` of that release (customers only) gets one
+    "withdrawn" email. It points to the restored version or, for an archived
+    rollback, the current published one; with neither, it says a new version
+    will follow. Failures are logged per recipient. The outcome is recorded as
+    a `CUSTOMERS_NOTIFIED` event ("Emailed N customers… (M failed)") in the
+    release's Activity.
 - **History lives on events,** not on the release: review feedback (each
   round) and rollback reasons are event notes. The release keeps only what
   lists and rules need.

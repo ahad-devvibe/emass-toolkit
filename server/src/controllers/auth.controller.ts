@@ -14,6 +14,7 @@ import {
   signupVerifySchema,
   verifyOtpSchema,
 } from "../schemas/auth.schema.js";
+import type { RequestMeta } from "../services/auth/auth-events.service.js";
 import * as authService from "../services/auth/auth.service.js";
 import * as signupService from "../services/auth/signup.service.js";
 import * as passwordResetService from "../services/auth/password-reset.service.js";
@@ -96,9 +97,14 @@ export const signupComplete = async (req: Request, res: Response) => {
   );
 };
 
+const requestMeta = (req: Request): RequestMeta => ({
+  ip: req.ip ?? null,
+  userAgent: req.get("user-agent") ?? null,
+});
+
 export const login = async (req: Request, res: Response) => {
   const input = loginSchema.parse(req.body);
-  const result = await authService.loginEmail(input);
+  const result = await authService.loginEmail(input, requestMeta(req));
   if (result.mfaRequired) {
     res.json(
       ApiResponse.success(
@@ -132,7 +138,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
 export const verifyOtp = async (req: Request, res: Response) => {
   const input = verifyOtpSchema.parse(req.body);
   const { accessToken, refreshToken, ...body } =
-    await authService.verifyLoginOtp(input.email, input.code);
+    await authService.verifyLoginOtp(input.email, input.code, requestMeta(req));
   setAuthCookies(res, { accessToken, refreshToken });
   res.json(ApiResponse.success(body, "Logged in"));
 };
@@ -170,6 +176,7 @@ export const resetPassword = async (req: Request, res: Response) => {
   await passwordResetService.resetPasswordWithToken(
     input.token,
     input.newPassword,
+    requestMeta(req),
   );
   res.json(ApiResponse.ok("Password updated. Sign in with your new password"));
 };
