@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "review-fixes.md",
+                "file": "review-status-cards.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "review-fixes"
+              "title": "review-status-cards"
             }
           }
         ]
@@ -190,13 +190,14 @@
   },
   "active": "e4174a1c661fcee3",
   "lastOpenFiles": [
+    "review-fixes.md",
+    "review-status-cards.md",
     "block-release-files.md",
     "sedhMKerZ",
     "sedCq8Jc8",
     "release-management.md",
     "sedwRhWaG",
     "sedjrryWU",
-    "review-fixes.md",
     "release-management.md.tmp.7588.74058dd502d1",
     "release-management.md.tmp.14172.a0447db2dc0d",
     "release-management.md.tmp.14172.57a06d4b5316"

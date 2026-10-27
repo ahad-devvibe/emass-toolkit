@@ -13,7 +13,6 @@ import { startDownload } from "@/lib/download"
 import { authErrorMessage, errorCode } from "@/auth/auth.messages"
 import { forgetLicense, loadLicense, markLicenseAccepted } from "@/pages/Catalog/license"
 import { LicenseDialog } from "./components/LicenseDialog"
-import { detectOs } from "./detect-os"
 import { ProductHeader } from "./components/ProductHeader"
 import { ReleaseFiles } from "./components/ReleaseFiles"
 import { ReleaseNotes } from "./components/ReleaseNotes"
@@ -44,7 +43,6 @@ export function ProductDetailsPage({ productId }: { productId?: string }) {
 
 function ProductView({ product }: { product: Product }) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [recommendedOs] = useState(detectOs)
   const [notesOpen, setNotesOpen] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [licensePrompt, setLicensePrompt] = useState<{ file: ReleaseFile; terms: License } | null>(null)
@@ -137,7 +135,7 @@ function ProductView({ product }: { product: Product }) {
         )}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start">
           <div className="space-y-4">
-            <ReleaseFiles files={release.files} version={release} recommendedOs={recommendedOs} downloadingId={downloadingId} onDownload={download} onCopy={copy} />
+            <ReleaseFiles files={release.files} version={release} downloadingId={downloadingId} onDownload={download} onCopy={copy} />
             {release.releaseNotes && <ReleaseNotes notes={release.releaseNotes} open={notesOpen} onOpenChange={setNotesOpen} />}
           </div>
           <ReleaseSidebar product={product} release={release} onOpenNotes={release.releaseNotes ? openNotes : undefined} onDownloadResource={downloadResource} />

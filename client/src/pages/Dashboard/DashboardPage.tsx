@@ -110,7 +110,7 @@ function ReleaseQueue({ alerts }: { alerts: Dashboard["releaseAlerts"] | null })
 
 function SignupQueue({ alerts }: { alerts: Dashboard["signupAlerts"] | null }) {
   return (
-    <Panel title="Sign-up requests" count={alerts?.total ?? null} action={<Link to="/admin/signups" className={viewAll}>Review all<ArrowRight /></Link>}>
+    <Panel title="Signup Requests" count={alerts?.total ?? null} action={<Link to="/admin/signups" className={viewAll}>Review all<ArrowRight /></Link>}>
       {!alerts ? <LoadingRows /> : alerts.items.length === 0 ? <Empty Icon={Inbox} text="No sign-ups waiting for approval" /> : (
         <ul className="divide-y">
           {alerts.items.map((signup) => (

@@ -61,12 +61,12 @@ export function NewRelease() {
   }
 
   return (
-    <AppShell breadcrumb={["Releases", "New release"]}>
+    <AppShell breadcrumb={["All Releases", "New Release"]}>
       <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8">
         <header className="space-y-4">
-          <Link to="/releases" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 text-muted-foreground")}><ArrowLeft />Releases</Link>
+          <Link to="/releases" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 text-muted-foreground")}><ArrowLeft />All Releases</Link>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">New release</h1>
+            <h1 className="text-2xl font-bold tracking-tight">New Release</h1>
             <p className="mt-1 text-sm text-muted-foreground">Pick the product and version, then drop the build. Files upload as soon as you add them.</p>
           </div>
         </header>

@@ -106,7 +106,7 @@ export function ReleaseTable({ releases, counts, products, loading, error, onRet
   }
 
   return (
-    <section aria-label="All releases" className="space-y-4">
+    <section aria-label="All Releases" className="space-y-4">
       <Tabs value={status} onValueChange={(value) => onStatusChange(value as StatusFilter)}>
         {/* Room for the active underline, which sits below the list; without it the strip overflows
             vertically and Windows draws scroll arrows. Phones swipe the tabs with the bar hidden. */}
@@ -172,7 +172,7 @@ export function ReleaseTable({ releases, counts, products, loading, error, onRet
           <div className="flex flex-col items-center px-6 py-14 text-center">
             <p className="text-sm font-medium">{statusFilterOf(status).empty}</p>
             <p className="mt-1 text-sm text-muted-foreground">Releases show up here as soon as they're created.</p>
-            {canCreate && <Button size="sm" className="mt-4" render={<Link to="/releases/new" />}><Plus />New release</Button>}
+            {canCreate && <Button size="sm" className="mt-4" render={<Link to="/releases/new" />}><Plus />New Release</Button>}
           </div>
         )}
       </Card>

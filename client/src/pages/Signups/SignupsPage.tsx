@@ -145,12 +145,12 @@ export function SignupsPage() {
   }
 
   return (
-    <AppShell breadcrumb={["Admin", "Sign-up requests"]}>
+    <AppShell breadcrumb={["Admin", "Signup Requests"]}>
       {/* md and up: fills the screen under the sticky header (h-16 / lg:72px + 1px border); only the rows scroll */}
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-8 md:max-h-[calc(100dvh-4rem-1px)] lg:max-h-[calc(100dvh-72px-1px)]">
         <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight">Sign-up requests</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Signup Requests</h1>
             <p className="text-sm text-muted-foreground">People who signed up with a personal email address. Approving lets them sign in, and we'll email them.</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => void loadPendingSignups(query)} disabled={refreshing || status === "loading"}><RefreshCw className={refreshing ? "animate-spin" : undefined} />Refresh</Button>

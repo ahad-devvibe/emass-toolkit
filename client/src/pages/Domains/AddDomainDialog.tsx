@@ -20,13 +20,15 @@ type AddDomainDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onAdded: (row: DomainPolicy) => void
+  /** The rule selected when the dialog opens (the page's current tab). */
+  initialKind: DomainKind
 }
 
 /** Mounted fresh on each open (the caller keys it), so the form always starts empty. */
-export function AddDomainDialog({ open, onOpenChange, onAdded }: AddDomainDialogProps) {
+export function AddDomainDialog({ open, onOpenChange, onAdded, initialKind }: AddDomainDialogProps) {
   const id = useId()
   const [value, setValue] = useState("")
-  const [kind, setKind] = useState<DomainKind>("FREE_MAIL")
+  const [kind, setKind] = useState<DomainKind>(initialKind)
   const [error, setError] = useState<string | undefined>()
   const [saving, setSaving] = useState(false)
 

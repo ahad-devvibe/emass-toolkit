@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ScrollText, ShieldCheck } from "lucide-react"
+import { ScrollText } from "lucide-react"
 import { StatusBadge } from "@/components/common/StatusBadge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -53,7 +53,6 @@ export function ReleaseSidebar({ product, release, onOpenNotes, onDownloadResour
           </Detail>
         </dl>
         {onOpenNotes && <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onOpenNotes}><ScrollText />Release notes</Button>}
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="size-3.5 shrink-0 text-success" />SHA-256 checksums are in each file's details</p>
       </section>
 
       {product.resources.length > 0 && (

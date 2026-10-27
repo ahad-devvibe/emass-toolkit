@@ -12,7 +12,7 @@ function FileIcon({ file }: { file: ReleaseFile }) {
 }
 
 // The checksum lives in the details dialog; the row stays scannable
-export function FileRow({ file, recommended, downloading, onDownload, onDetails }: { file: ReleaseFile; recommended: boolean; downloading?: boolean; onDownload: (file: ReleaseFile) => void; onDetails: (file: ReleaseFile) => void }) {
+export function FileRow({ file, downloading, onDownload, onDetails }: { file: ReleaseFile; downloading?: boolean; onDownload: (file: ReleaseFile) => void; onDetails: (file: ReleaseFile) => void }) {
   const title = isSdkFile(file) ? osMeta[file.os].label : file.title
   const detail = isSdkFile(file) ? formatFromName(file.name) : file.format
 
@@ -23,7 +23,6 @@ export function FileRow({ file, recommended, downloading, onDownload, onDetails 
         <p className="flex items-center gap-2 text-sm">
           <span className="truncate font-medium" title={file.name}>{title}</span>
           <span className="text-muted-foreground">{detail}</span>
-          {recommended && <span className="rounded-full bg-primary/10 px-2 py-px text-[11px] font-medium text-primary">Your OS</span>}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">{file.size}</p>
       </div>
@@ -31,7 +30,7 @@ export function FileRow({ file, recommended, downloading, onDownload, onDetails 
         <TooltipTrigger render={<Button size="icon-sm" variant="ghost" aria-label={`Details for ${file.name}`} onClick={() => onDetails(file)} />}><Info /></TooltipTrigger>
         <TooltipContent>File details & checksum</TooltipContent>
       </Tooltip>
-      <Button size="sm" variant={recommended ? "default" : "outline"} aria-label={`Download ${file.name}`} disabled={downloading} onClick={() => onDownload(file)}>{downloading ? <Loader2 className="animate-spin" /> : <ArrowDownToLine />}<span className="hidden sm:inline">Download</span></Button>
+      <Button size="sm" variant="outline" aria-label={`Download ${file.name}`} disabled={downloading} onClick={() => onDownload(file)}>{downloading ? <Loader2 className="animate-spin" /> : <ArrowDownToLine />}<span className="hidden sm:inline">Download</span></Button>
     </li>
   )
 }

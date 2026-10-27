@@ -33,10 +33,10 @@ export function ReleasesPage() {
   const setQuery = useCallback((value: string) => setParam("q", value), [setParam])
 
   return (
-    <AppShell breadcrumb={["Workspace", "Releases"]}>
+    <AppShell breadcrumb={["Workspace", "All Releases"]}>
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-8">
         <header>
-          <h1 className="text-2xl font-bold tracking-tight">Releases</h1>
+          <h1 className="text-2xl font-bold tracking-tight">All Releases</h1>
           <p className="mt-1 text-sm text-muted-foreground">Draft, review and publish SDK versions.</p>
         </header>
         <ReleaseTable

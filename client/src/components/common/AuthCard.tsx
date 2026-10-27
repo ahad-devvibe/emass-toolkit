@@ -24,7 +24,7 @@ export function AuthCard({ title, description, descriptionClassName, eyebrow, ch
 
   return (
     <div className={cn("mx-auto my-auto w-full py-10 lg:py-6 short:py-4 compact:py-3", wide ? "max-w-[680px] xl:max-w-[760px]" : "max-w-[589px]")}>
-      <div className={cn("flex justify-center", largeBrand ? "mb-8 short:mb-6 compact:mb-4" : "mb-4 short:mb-3 compact:mb-2")}>
+      <div className={cn("hidden justify-center xl:flex", largeBrand ? "mb-8 short:mb-6 compact:mb-4" : "mb-4 short:mb-3 compact:mb-2")}>
         <img src="/brand/emass-logo-color.svg" alt="EMASS, a Nanoveu business" width={193} height={77} className={cn("h-auto dark:hidden", brandSize)} />
         <img src="/brand/emass-logo-white.svg" alt="EMASS, a Nanoveu business" width={434} height={175} className={cn("hidden h-auto dark:block", brandSize)} />
       </div>

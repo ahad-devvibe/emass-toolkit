@@ -42,7 +42,7 @@ export function EditRelease({ releaseId }: { releaseId: string }) {
   if (notFound) return <Navigate to="/releases" replace />
   if (error) {
     return (
-      <AppShell breadcrumb={["Releases", "Error"]}>
+      <AppShell breadcrumb={["All Releases", "Error"]}>
         <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-5xl flex-col items-center justify-center px-6 text-center">
           <h1 className="text-2xl font-semibold">Couldn't load this release</h1>
           <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
@@ -227,7 +227,7 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
   const mappingLabel = problemCount > 0 ? "Fix the files flagged above" : "Every file has a type and platform"
 
   return (
-    <AppShell breadcrumb={["Releases", `Edit v${release.version}`]}>
+    <AppShell breadcrumb={["All Releases", `Edit v${release.version}`]}>
       <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8">
         <header className="space-y-4">
           <Link to={`/releases/${release.id}`} onClick={(event) => { if ((busy || dirty) && !window.confirm(LEAVE_WARNING)) event.preventDefault() }} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 text-muted-foreground")}><ArrowLeft />Back to release</Link>

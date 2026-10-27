@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   AtSign,
+  FilePlus2,
   LayoutDashboard,
   Layers,
   Menu,
@@ -72,19 +73,30 @@ function useNavEntries(user: SessionUser): NavEntry[] {
       : []),
     {
       to: "/releases",
-      label: "Releases",
+      label: "All Releases",
       Icon: Layers,
-      active: pathname.startsWith("/releases"),
+      // /releases/new has its own item for devs
+      active: pathname.startsWith("/releases") && pathname !== "/releases/new",
       // Admins review submissions; devs act on changes requested on their own releases
       count: waiting,
       countNoun: isAdmin ? "in review" : "need changes",
     },
+    // Only devs create releases (the server enforces it too)
+    ...(canCreateRelease(user.role)
+      ? [
+          {
+            to: "/releases/new",
+            label: "New Release",
+            Icon: FilePlus2,
+            active: pathname === "/releases/new",
+          },
+        ]
+      : []),
     ...(isAdmin
       ? [
           {
             to: "/admin/signups",
-            // Short enough to fit beside a 99+ badge; the page itself is "Sign-up requests"
-            label: "Signups",
+            label: "Signup Requests",
             Icon: UserCheck,
             active: pathname.startsWith("/admin/signups"),
             count: badgeTotal ?? 0,
@@ -92,7 +104,7 @@ function useNavEntries(user: SessionUser): NavEntry[] {
           },
           {
             to: "/admin/domains",
-            label: "Domains",
+            label: "Domain Rules",
             Icon: AtSign,
             active: pathname.startsWith("/admin/domains"),
           },
@@ -109,10 +121,12 @@ function NavLinks({
   onNavigate?: () => void;
 }) {
   return (
-    <nav aria-label="Main navigation" className="space-y-2 px-4 py-6">
+    <nav aria-label="Main navigation" className="space-y-2.5 px-4 pt-5 pb-6">
       {entries.map(({ to, label, Icon, active, count, countNoun }) => {
         // Capped so a long queue never crowds the label; hover and screen readers get the exact count
-        const waiting = count ? `${count} ${countNoun ?? "waiting"}` : undefined;
+        const waiting = count
+          ? `${count} ${countNoun ?? "waiting"}`
+          : undefined;
         return (
           <Link
             key={to}
@@ -171,10 +185,14 @@ function UserFooter({ user }: { user: SessionUser }) {
 }
 
 function SidebarBrand() {
-  // Logo centred with breathing room above and below
+  // The logo at its natural size, on the same left edge as the nav icons
+  // (nav px-4 + item px-3.5), with a quiet line between it and the nav
   return (
-    <div className="flex shrink-0 items-center justify-center px-8 pt-4 pb-4">
-      <BrandLogo to="/releases" tone="light" className="w-[120px]" />
+    <div className="shrink-0">
+      <div className="text-center pt-9 pb-7">
+        <BrandLogo to="/releases" tone="light" className="w-[160px]" />
+      </div>
+      <div aria-hidden className="mx-4 border-b border-white/10" />
     </div>
   );
 }
@@ -188,7 +206,7 @@ function Sidebar({
 }) {
   // Standalone, full height; the top bar starts to its right
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-sidebar-navy shadow-[0_4px_8.3px_0_rgba(129,129,165,0.4)] md:flex md:flex-col dark:shadow-none">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 bg-sidebar-navy shadow-[0_4px_8.3px_0_rgba(129,129,165,0.4)] md:flex md:flex-col dark:shadow-none">
       <SidebarBrand />
       <NavLinks entries={entries} />
       <UserFooter user={user} />
@@ -245,14 +263,14 @@ export function StaffShell({
     canCreateRelease(user.role) && pathname !== "/releases/new" ? (
       <Button render={<Link to="/releases/new" />}>
         <Plus />
-        <span className="hidden sm:inline">New release</span>
+        <span className="hidden sm:inline">New Release</span>
       </Button>
     ) : null;
 
   return (
     <>
       <Sidebar user={user} entries={entries} />
-      <div className="md:pl-64">
+      <div className="md:pl-72">
         {/* The sidebar carries the logo on desktop; phones (no sidebar) keep it in the bar */}
         <AppHeader
           user={user}

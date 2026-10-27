@@ -38,7 +38,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 
 function Centered({ breadcrumb, title, body, action }: { breadcrumb: string; title: string; body: string; action: ReactNode }) {
   return (
-    <AppShell breadcrumb={["Releases", breadcrumb]}>
+    <AppShell breadcrumb={["All Releases", breadcrumb]}>
       <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-5xl flex-col items-center justify-center px-6 text-center">
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{body}</p>
@@ -79,10 +79,10 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
   }
 
   return (
-    <AppShell breadcrumb={["Releases", `${release.product.name} v${release.version}`]}>
+    <AppShell breadcrumb={["All Releases", `${release.product.name} v${release.version}`]}>
       <main aria-busy={loading || undefined} className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8">
         <header className="space-y-4">
-          <Link to="/releases" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 text-muted-foreground")}><ArrowLeft />Releases</Link>
+          <Link to="/releases" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 text-muted-foreground")}><ArrowLeft />All Releases</Link>
           <div className="flex items-center gap-4">
             <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-muted text-foreground/70"><ProductIcon productId={release.product.id} className="size-5" /></span>
             <div className="min-w-0">
@@ -121,7 +121,7 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <div className="space-y-4">
-            {files.length > 0 && <ReleaseFiles files={files} version={{ version: release.version, released: release.publishedAt ?? undefined }} recommendedOs={null} downloadingId={downloadingId} onDownload={download} onCopy={copy} />}
+            {files.length > 0 && <ReleaseFiles files={files} version={{ version: release.version, released: release.publishedAt ?? undefined }} downloadingId={downloadingId} onDownload={download} onCopy={copy} />}
             {unmapped.length > 0 && (
               <section className="rounded-xl border border-dashed bg-card px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-semibold"><FileQuestion className="size-4 text-amber-600 dark:text-amber-400" />Needs a type or platform <span className="rounded-full bg-muted px-2 text-xs font-normal tabular-nums text-muted-foreground">{unmapped.length}</span></h2>
