@@ -22,7 +22,20 @@ beforeAll(async () => {
   devId = (await promoteToDev(await createUser(uniqueEmail("dev")))).id;
 
   // Active: the admin and dev (staff) plus three customers
-  for (const n of [1, 2, 3]) await createUser(uniqueEmail(`cust${n}`));
+  const customers = [];
+  for (const n of [1, 2, 3])
+    customers.push(await createUser(uniqueEmail(`cust${n}`)));
+  // Four customer downloads, one of them older than 30 days
+  for (const [index, customer] of [...customers, customers[0]].entries()) {
+    await prisma.download.create({
+      data: {
+        userId: customer.id,
+        ...(index === 3 && {
+          createdAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000),
+        }),
+      },
+    });
+  }
   // Seven pending signups, a day apart
   for (let n = 0; n < 7; n++) {
     const user = await createUser(uniqueEmail(`pending${n}`), {
@@ -51,6 +64,14 @@ const getDashboard = (headers: Record<string, string> = adminCookie) =>
   request(app).get("/api/admin/dashboard").set(headers);
 
 describe("GET /api/admin/dashboard", () => {
+  it("counts customer downloads in total and over the last 30 days", async () => {
+    const res = await getDashboard();
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.downloads).toEqual({ total: 4, last30Days: 3 });
+    expect(res.body.data).not.toHaveProperty("releases");
+  });
+
   it("counts users by status, staff vs customers and block reason", async () => {
     const res = await getDashboard();
 
@@ -101,7 +122,6 @@ describe("GET /api/admin/dashboard", () => {
 
     const body = (await getDashboard()).body.data;
 
-    expect(body.releases.inReview).toBe(6);
     expect(body.releaseAlerts.total).toBe(6);
     expect(
       body.releaseAlerts.items.map((r: { version: string }) => r.version),

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { AlertCircle, ArrowRight, Ban, Clock3, Inbox, Layers, RefreshCw, ShieldX, UserCheck, Users, type LucideIcon } from "lucide-react"
+import { AlertCircle, ArrowRight, Ban, Clock3, Download, Inbox, Layers, RefreshCw, ShieldX, UserCheck, Users, type LucideIcon } from "lucide-react"
 import { Link } from "react-router-dom"
 import { AppShell } from "@/components/common/AppShell"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -10,20 +10,22 @@ import { cn } from "@/lib/utils"
 import { ProductIcon } from "@/pages/Releases/product-meta"
 import { relativeTime } from "@/pages/Releases/releases.utils"
 import type { Dashboard } from "./dashboard.api"
-import { breakdown, moreCount } from "./dashboard.utils"
+import { breakdown, compactCount, moreCount } from "./dashboard.utils"
 import { useDashboard } from "./useDashboard"
 
-// value and detail are null while the first load is in flight
-type StatProps = { label: string; value: number | null; detail: string | null; Icon: LucideIcon; to?: string; tone?: "default" | "amber" }
+// value and detail are null while the first load is in flight; format defaults to the full number
+type StatProps = { label: string; value: number | null; detail: string | null; Icon: LucideIcon; to?: string; tone?: "default" | "amber"; format?: (value: number) => string }
 
-function Stat({ label, value, detail, Icon, to, tone = "default" }: StatProps) {
+function Stat({ label, value, detail, Icon, to, tone = "default", format }: StatProps) {
+  const exact = value?.toLocaleString()
+  const shown = value !== null && format ? format(value) : exact
   const body = (
     <>
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">{label}</span>
         <span className={cn("grid size-8 place-items-center rounded-lg bg-secondary text-primary", tone === "amber" && "bg-amber-500/10 text-amber-600 dark:text-amber-400")}><Icon aria-hidden className="size-4" /></span>
       </div>
-      {value === null ? <Skeleton className="mt-3 mb-1 h-7 w-14" /> : <p className={cn("mt-2 text-3xl font-bold tabular-nums tracking-tight", tone === "amber" && "text-amber-700 dark:text-amber-300")}>{value.toLocaleString()}</p>}
+      {value === null ? <Skeleton className="mt-3 mb-1 h-7 w-14" /> : <p className={cn("mt-2 text-3xl font-bold tabular-nums tracking-tight", tone === "amber" && "text-amber-700 dark:text-amber-300")} title={shown !== exact ? exact : undefined}>{shown}</p>}
       {detail === null ? <Skeleton className="mt-2 h-3 w-28" /> : <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>}
     </>
   )
@@ -161,7 +163,7 @@ export function DashboardPage() {
               <Stat label="Pending sign-ups" value={data?.users.pendingApproval ?? null} detail="Waiting for approval" Icon={UserCheck} to="/admin/signups" tone={data && data.users.pendingApproval > 0 ? "amber" : "default"} />
               <Stat label="Competitors blocked" value={data?.users.blockedCompetitor ?? null} detail="Signed up with a competitor domain" Icon={ShieldX} />
               <Stat label="Sign-ups rejected" value={data?.users.blockedRejected ?? null} detail="Declined by an admin" Icon={Ban} />
-              <Stat label="Releases in review" value={data?.releases.inReview ?? null} detail="Waiting for an admin" Icon={Layers} to="/releases?status=in_review" tone={data && data.releases.inReview > 0 ? "amber" : "default"} />
+              <Stat label="Total downloads" value={data?.downloads.total ?? null} detail={data ? `${compactCount(data.downloads.last30Days)} in the last 30 days` : null} Icon={Download} format={compactCount} />
             </section>
             <div className="grid gap-6 lg:grid-cols-2">
               <ReleaseQueue alerts={data?.releaseAlerts ?? null} />

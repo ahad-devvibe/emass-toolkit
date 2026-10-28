@@ -96,7 +96,7 @@ describe("GET /api/auth/admin/signups/pending", () => {
 });
 
 describe("GET /api/auth/admin/signups/pending (pagination + search)", () => {
-  it("walks the queue with a cursor, oldest first, without gaps", async () => {
+  it("walks the queue with a cursor, newest first, without gaps", async () => {
     const headers = await adminAuthHeader();
     // Isolate this test's rows with a unique search token
     const tag = `pg${Date.now()}`;
@@ -131,7 +131,7 @@ describe("GET /api/auth/admin/signups/pending (pagination + search)", () => {
     } while (cursor);
 
     expect(pages).toBe(3);
-    expect(seen).toEqual(emails);
+    expect(seen).toEqual([...emails].reverse());
   });
 
   it("searches by email, first name and full name", async () => {

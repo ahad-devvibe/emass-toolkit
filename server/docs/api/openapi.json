@@ -193,7 +193,7 @@
                   "useCase": {
                     "type": "string",
                     "minLength": 10,
-                    "maxLength": 1000
+                    "maxLength": 200
                   },
                   "captcha": {
                     "type": "string",
@@ -1950,7 +1950,7 @@
         "tags": [
           "Admin"
         ],
-        "summary": "List PENDING_APPROVAL signups oldest first, cursor-paginated, with name/email search (ADMIN only)",
+        "summary": "List PENDING_APPROVAL signups newest first, cursor-paginated, with name/email search (ADMIN only)",
         "security": [
           {
             "cookieAuth": []
@@ -3025,10 +3025,14 @@
                             }
                           }
                         },
-                        "releases": {
+                        "downloads": {
                           "type": "object",
+                          "description": "Customer downloads (staff downloads are not counted)",
                           "properties": {
-                            "inReview": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "last30Days": {
                               "type": "integer"
                             }
                           }

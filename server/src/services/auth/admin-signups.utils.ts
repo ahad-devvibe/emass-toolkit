@@ -1,12 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import type { KeysetCursor } from "../../utils/cursor.utils.js";
 
-/** Rows strictly after the cursor in (createdAt, id) order. */
+/** Rows strictly after the cursor in newest-first (createdAt, id) order. */
 export function afterCursor(cursor: KeysetCursor): Prisma.UserWhereInput {
   return {
     OR: [
-      { createdAt: { gt: cursor.createdAt } },
-      { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+      { createdAt: { lt: cursor.createdAt } },
+      { createdAt: cursor.createdAt, id: { lt: cursor.id } },
     ],
   };
 }

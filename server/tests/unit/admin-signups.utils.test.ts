@@ -8,7 +8,7 @@ describe("signup afterCursor", () => {
   it("selects rows strictly after the cursor", () => {
     const createdAt = new Date("2026-10-19T00:00:00.000Z");
     expect(afterCursor({ createdAt, id: "b" })).toEqual({
-      OR: [{ createdAt: { gt: createdAt } }, { createdAt, id: { gt: "b" } }],
+      OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: "b" } }],
     });
   });
 });

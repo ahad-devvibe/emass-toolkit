@@ -18,7 +18,7 @@ export interface ListPendingSignupsInput {
   q?: string;
 }
 
-/** Oldest first, keyset-paginated on (createdAt, id); `total` ignores the cursor. */
+/** Newest first, keyset-paginated on (createdAt, id); `total` ignores the cursor. */
 export async function listPendingSignups({
   limit,
   cursor,
@@ -35,7 +35,7 @@ export async function listPendingSignups({
   const [rows, total] = await Promise.all([
     prisma.user.findMany({
       where: page,
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
     }),
     prisma.user.count({ where: filter }),

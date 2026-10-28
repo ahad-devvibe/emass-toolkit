@@ -321,7 +321,7 @@ const authPaths = {
       operationId: "listPendingSignups",
       tags: ["Admin"],
       summary:
-        "List PENDING_APPROVAL signups oldest first, cursor-paginated, with name/email search (ADMIN only)",
+        "List PENDING_APPROVAL signups newest first, cursor-paginated, with name/email search (ADMIN only)",
       security: [{ cookieAuth: [] }],
       parameters: [
         {
@@ -528,9 +528,14 @@ const authPaths = {
                 ].map((key) => [key, { type: "integer" }]),
               ),
             },
-            releases: {
+            downloads: {
               type: "object",
-              properties: { inReview: { type: "integer" } },
+              description:
+                "Customer downloads (staff downloads are not counted)",
+              properties: {
+                total: { type: "integer" },
+                last30Days: { type: "integer" },
+              },
             },
             releaseAlerts: {
               type: "object",

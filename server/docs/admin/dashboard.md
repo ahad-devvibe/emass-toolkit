@@ -5,7 +5,8 @@
 An admin-only Dashboard (`/admin/dashboard`, the admins' home page and the first
 sidebar entry). It shows:
 - **Five stats:** active users (customers and staff), pending sign-ups,
-  competitors blocked, sign-ups rejected, and releases in review.
+  competitors blocked, sign-ups rejected, and total downloads (with the
+  last 30 days).
 - **Queues:** the oldest 5 releases waiting for review and the oldest 5
   sign-ups waiting for approval, each with its total. The two cards are always
   the same height.
@@ -45,8 +46,10 @@ dashboard.
   - The staff password step isn't a sign-in yet, so it records nothing.
   - Writes are best effort and outside transactions: a failed audit write is
     logged and never fails the request.
-- **Downloads:** no card yet. It comes with the downloads task (`Download`
-  model).
+- **Downloads:** the card counts `Download` rows, which are customer
+  downloads only (staff downloads go to `ActivityLog`). Every click counts,
+  so it's downloads, not unique customers. It replaced "Releases in review",
+  which repeated the review queue's total.
 
 ## Assumptions
 
@@ -60,5 +63,5 @@ dashboard.
   days) before launch.
 - No activity-log page yet, so nobody sees failed sign-ins. Rate limiting is
   tracked in `tasks/review-fixes.md`.
-- Polling costs four small queries per open dashboard every 30 s.
+- Polling costs six small queries per open dashboard every 30 s.
   `User.status` has no index, which is fine at current sizes.

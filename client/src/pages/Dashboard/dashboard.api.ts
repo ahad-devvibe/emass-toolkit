@@ -11,7 +11,8 @@ export type Dashboard = {
     blockedCompetitor: number
     blockedRejected: number
   }
-  releases: { inReview: number }
+  // Customer downloads only; staff ones aren't counted
+  downloads: { total: number; last30Days: number }
   releaseAlerts: {
     total: number
     items: { id: string; product: { id: string; name: string }; version: string; createdBy: { id: string; name: string; role: UserRole }; submittedAt: string }[]
