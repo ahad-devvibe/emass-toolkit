@@ -285,6 +285,12 @@ Full decisions in `docs/releases/release-management.md`; deploy steps in
   Over `MAX_UPLOAD_BYTES` → 413 with the upload aborted.
   `server.requestTimeout = UPLOAD_TIMEOUT_MS` (2 h; Node only has a
   server-wide setting).
+- **File checks** (`docs/releases/file-checks.md`): the parser in
+  `services/releases/file-inspect/` (PE, deb, xar, PDF; `xz-decompress` and
+  Node's zstd, no native modules) reads only the byte ranges it needs. They
+  come from the browser before upload (`POST /releases/:id/files/check`) and
+  from `StorageDriver.readRange` after it. The client hashes in a Web Worker
+  (`hash-wasm`).
 - **Locks:** every release mutation runs in a transaction that starts with
   `SELECT … FOR UPDATE` on the release row; publish and rollback first lock
   every release of the product, which serialises changes to "the published

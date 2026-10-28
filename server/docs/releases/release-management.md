@@ -44,20 +44,14 @@ transition is recorded in an append-only history. API: `/api/releases`,
   - A new drop whose detected platform is already taken is held in the
     browser ("Replace it, or change this file's type") instead of uploaded.
   - One SDK per platform (Windows, macOS, Ubuntu); no architectures.
-- **Duplicate and stale file warnings (advisory, never blocking):**
-  - `SAME_CONTENT`: the file's SHA-256 matches another file in the same
-    release, or the most recent file in any other release, rolled-back ones
-    included. One indexed query per release (`ReleaseFile @@index([sha256])`).
-  - `NAME_VERSION_MISMATCH`: the file name contains versions (`1.2.0`, or
-    `v1_2_0` / `v1-2-0`) and none of them is the release's version.
-  - Computed on every read (`GET /releases/:id`, the upload response), not
-    stored, so they survive reloads and follow version edits. Shown on the
-    editor rows, in an upload toast, and in a review callout before publish.
-  - **Not done:** parsing binary metadata (PE version info, Mach-O, ELF, zip
-    directory, PDF info). The zip directory and PDF trailer sit at the end of
-    multi-GB streams, ELF and Mach-O carry no product version, and it needs a
-    parser per format. Matching on the same file name alone was also dropped:
-    versionless names repeat every release.
+- **File checks (blocking, before upload):** each dropped file is checked by
+  the server first (version ranges, then the SHA-256), then checked again after
+  upload.
+  - Installers with duplicate bytes or a wrong or existing version are
+    **blocked**.
+  - Docs only warn.
+  - Submit judges every file again and needs `confirmWarnings` for warnings.
+  - Details, rules and measurements: `docs/releases/file-checks.md`.
 - **Storage keys:** `staged/{productId}/{releaseId}/{uuid}/{safeName}` →
   `releases/{productId}/{version}/{uuid}/{safeName}`.
   - The random uuid is reused on publish, so retries are idempotent.

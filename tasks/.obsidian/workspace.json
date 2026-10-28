@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "review-status-cards.md",
+                "file": "resumable-uploads.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "review-status-cards"
+              "title": "resumable-uploads"
             }
           }
         ]
@@ -190,9 +190,12 @@
   },
   "active": "e4174a1c661fcee3",
   "lastOpenFiles": [
-    "review-fixes.md",
     "review-status-cards.md",
+    "ui-refresh.md",
+    "embedded-version-warnings.md",
     "block-release-files.md",
+    "resumable-uploads.md",
+    "review-fixes.md",
     "sedhMKerZ",
     "sedCq8Jc8",
     "release-management.md",

@@ -2,7 +2,7 @@
 
 **Status:** planned, not started (2026-10-27). To be refined before implementation. Updated 2026-10-27: publish progress for admins in the same panel (6.3b).
 
-**Related:** `tasks/block-release-files.md` (Phases 1–5, the file checks this builds on). This task replaces the single-request upload added there; the checks (version check, hash, final check, server re-inspection, file rules) stay as they are.
+**Related:** `server/docs/releases/file-checks.md` (the shipped file checks this builds on). This task replaces the single-request upload added there; the checks (version check, hash, final check, server re-inspection, file rules) stay as they are.
 
 ## Context
 - **The manual pass now works end to end:** the 505 MB `.pkg` uploads without errors after the Vite timeout fix.
