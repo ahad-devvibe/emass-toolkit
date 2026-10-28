@@ -15,7 +15,10 @@ if (env.TRUST_PROXY > 0) app.set("trust proxy", env.TRUST_PROXY);
 app.use(pinoHttp({ logger }));
 
 // Hosted frontends that call the API directly (no proxy in front of them)
-const ALLOWED_ORIGINS = new Set(["https://demo.galaxitron.com"]);
+const ALLOWED_ORIGINS = new Set([
+  "https://demo.galaxitron.com",
+  "https://emass-toolkit.vercel.app",
+]);
 
 app.use(
   cors({
