@@ -20,6 +20,7 @@ import { downloadFromServer } from "@/lib/download"
 import { cn } from "@/lib/utils"
 import { ActivityTimeline } from "./components/ActivityTimeline"
 import { ReleaseActions } from "./components/ReleaseActions"
+import { ReviewCards } from "./components/ReviewCards"
 import { filesUpdatedAfterFeedback, latestEvent, toCatalogFile } from "./release-detail.utils"
 
 function Callout({ tone, icon, title, children }: { tone: "amber" | "info" | "danger"; icon: ReactNode; title: string; children?: ReactNode }) {
@@ -91,6 +92,8 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
             </div>
           </div>
         </header>
+
+        {release.status === "in_review" && user.role === "ADMIN" && <ReviewCards release={release} />}
 
         {release.status === "changes_requested" && feedback && <Callout tone="amber" icon={<MessageSquareWarning />} title={`Changes requested by ${feedback.actor.name}`}>{feedback.note}</Callout>}
         {release.status === "in_review" && user.role === "ADMIN" && (

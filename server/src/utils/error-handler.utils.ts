@@ -83,6 +83,12 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
     return;
   }
 
+  // A body over the parser's limit (JSON, or an upload part)
+  if ((err as ErrorWithProps).type === "entity.too.large") {
+    sendError(res, 413, "The request body is too large", "PAYLOAD_TOO_LARGE");
+    return;
+  }
+
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code && PRISMA_ERROR_CODES[err.code]) {
       const mapped = PRISMA_ERROR_CODES[err.code];

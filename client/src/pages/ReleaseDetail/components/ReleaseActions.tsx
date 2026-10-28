@@ -3,7 +3,7 @@ import { CheckCircle2, FilePenLine, Loader2, MessageSquareWarning, Pencil, Rotat
 import { Link, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import type { SessionUser } from "@/auth/auth.types"
-import { DeleteDialog, ReasonDialog } from "@/components/common/dialogs"
+import { ReasonDialog } from "@/components/common/dialogs"
 import { Button } from "@/components/ui/button"
 import { ApiRequestError } from "@/lib/api/http"
 import { releaseActions, type ReleaseAction } from "@/pages/Releases/release-permissions"
@@ -14,6 +14,7 @@ import { highestShipped, unconfirmedWarnings } from "@/pages/Releases/releases.e
 import type { FileIssues, PublishJob, ReleaseDetail } from "@/pages/Releases/releases.model"
 import type { ReleaseStatus } from "@/pages/Releases/releases.types"
 import { notifyReleasesChanged } from "@/pages/Releases/useReleaseQueries"
+import { useDeleteRelease } from "@/pages/Releases/useDeleteRelease"
 import { isPublishRunning, publishLabel } from "../publish-progress"
 import { usePublishJob } from "../usePublishJob"
 import { EditNotesDialog } from "./EditNotesDialog"
@@ -36,7 +37,7 @@ type ReleaseActionsProps = {
   onStale: () => void
 }
 
-type Dialog = "publish" | "reject" | "rollback" | "delete" | "notes" | null
+type Dialog = "publish" | "reject" | "rollback" | "notes" | null
 
 export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseActionsProps) {
   const navigate = useNavigate()
@@ -65,6 +66,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
     },
   })
   const publishRunning = isPublishRunning(publishing.job)
+  const deletion = useDeleteRelease({ onDeleted: () => navigate("/releases") })
 
   function reportError(error: unknown) {
     if (!(error instanceof ApiRequestError)) {
@@ -112,18 +114,6 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
     }
   }
 
-  async function remove(): Promise<boolean> {
-    try {
-      await releasesApi.remove(release.id)
-      notifyReleasesChanged()
-      toast(`v${release.version} deleted`)
-      navigate("/releases")
-      return true
-    } catch (error) {
-      reportError(error)
-      return false
-    }
-  }
 
   const spinner = (action: ReleaseAction) => (busy === action ? <Loader2 className="animate-spin" /> : null)
   const hint = !isCreator && viewer.role === "DEV" && ["draft", "changes_requested", "in_review"].includes(release.status)
@@ -163,7 +153,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
               {spinner("withdraw") ?? <Undo2 />}Withdraw to draft
             </Button>
           )}
-          {actions.includes("delete") && <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDialog("delete")} disabled={busy !== null}><Trash2 />Delete</Button>}
+          {actions.includes("delete") && <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => deletion.request({ id: release.id, name: `v${release.version}` })} disabled={busy !== null}><Trash2 />Delete</Button>}
 
           {publishRunning && dialog !== "publish" && (
             <div className="space-y-1.5 pt-1" aria-live="polite">
@@ -217,13 +207,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
         onClose={() => setWarnedFiles(null)}
         onConfirm={() => confirm(() => releasesApi.submit(release.id, { confirmWarnings: true }), `v${release.version} sent for review`)}
       />
-      <DeleteDialog
-        open={dialog === "delete"}
-        onOpenChange={(open) => setDialog(open ? "delete" : null)}
-        itemName={`v${release.version}`}
-        description="This removes the release and its uploaded files. It can't be undone."
-        onConfirm={remove}
-      />
+      {deletion.dialog}
     </section>
   )
 }

@@ -1,6 +1,16 @@
-import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { copyFile, mkdir, open, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import {
+  copyFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -13,7 +23,9 @@ import type { StorageDriver } from "./storage.driver.js";
 /**
  * Filesystem driver for dev and tests: objects live at <root>/<bucket>/<key>.
  * Writes go to a .part file that is renamed on success, so a failed or
- * aborted upload (or copy) never leaves a visible object.
+ * aborted upload (or copy) never leaves a visible object. Multipart uploads
+ * keep their parts in <root>/<bucket>/.uploads/<uploadId>/<partNum> until they
+ * are joined on complete.
  */
 export function createLocalDriver(
   root: string = path.resolve(env.STORAGE_LOCAL_DIR),
@@ -28,7 +40,93 @@ export function createLocalDriver(
     return target;
   };
 
+  const uploadDir = (bucket: string, uploadId: string) => {
+    if (!/^[\w-]+$/.test(uploadId)) {
+      throw new ApiError(
+        404,
+        "The upload no longer exists",
+        "UPLOAD_NOT_FOUND",
+      );
+    }
+    return path.join(objectPath(bucket, ".uploads"), uploadId);
+  };
+
+  const assertOpen = async (dir: string) => {
+    const found = await stat(dir).catch(() => null);
+    if (!found?.isDirectory()) {
+      throw new ApiError(
+        404,
+        "The upload no longer exists",
+        "UPLOAD_NOT_FOUND",
+      );
+    }
+  };
+
   return {
+    async createUpload({ bucket, key }) {
+      objectPath(bucket, key);
+      const uploadId = randomUUID();
+      await mkdir(uploadDir(bucket, uploadId), { recursive: true });
+      return uploadId;
+    },
+
+    async uploadPart({ bucket, uploadId, partNum, body }) {
+      const dir = uploadDir(bucket, uploadId);
+      await assertOpen(dir);
+      await writeFile(path.join(dir, String(partNum)), body);
+      return createHash("md5").update(body).digest("hex");
+    },
+
+    // Joins the parts in the listed order into a .part file, then renames it
+    async completeUpload({ bucket, key, uploadId, parts }) {
+      const dir = uploadDir(bucket, uploadId);
+      await assertOpen(dir);
+      const target = objectPath(bucket, key);
+      const partFile = `${target}.${randomUUID()}.part`;
+      await mkdir(path.dirname(target), { recursive: true });
+
+      try {
+        const out = createWriteStream(partFile);
+        await pipeline(async function* () {
+          for (const { partNum } of parts) {
+            yield* createReadStream(path.join(dir, String(partNum)));
+          }
+        }, out);
+        await rename(partFile, target);
+      } catch (error) {
+        await rm(partFile, { force: true });
+        if (error instanceof ApiError) throw error;
+        logger.error(
+          { bucket, key, uploadId, err: error },
+          "Local completeUpload failed",
+        );
+        throw new ApiError(502, "Unable to upload file", "UPLOAD_FAILED");
+      }
+      await rm(dir, { recursive: true, force: true });
+    },
+
+    async listParts({ bucket, uploadId }) {
+      const dir = uploadDir(bucket, uploadId);
+      await assertOpen(dir);
+      const names = (await readdir(dir)).filter((name) => /^\d+$/.test(name));
+      const parts = await Promise.all(
+        names.map(async (name) => {
+          const bytes = await readFile(path.join(dir, name));
+          return {
+            partNum: Number(name),
+            etag: createHash("md5").update(bytes).digest("hex"),
+            md5: createHash("md5").update(bytes).digest("base64"),
+            size: bytes.length,
+          };
+        }),
+      );
+      return parts.sort((a, b) => a.partNum - b.partNum);
+    },
+
+    async abortUpload({ bucket, uploadId }) {
+      await rm(uploadDir(bucket, uploadId), { recursive: true, force: true });
+    },
+
     async putStream({ bucket, key, body }) {
       const target = objectPath(bucket, key);
       const partFile = `${target}.${randomUUID()}.part`;

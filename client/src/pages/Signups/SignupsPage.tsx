@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { AlertCircle, Check, Inbox, Loader2, RefreshCw, Search, UserX, X } from "lucide-react"
+import { AlertCircle, Check, ExternalLink, Inbox, Loader2, RefreshCw, Search, UserX, X } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import type { SessionUser } from "@/auth/auth.types"
+import { displayWebsite } from "@/pages/SignUp/signup.utils"
 import { authErrorMessage, errorCode } from "@/auth/auth.messages"
 import { AppShell } from "@/components/common/AppShell"
 import { CountryFlag } from "@/components/common/CountryFlag"
@@ -32,6 +33,7 @@ function SignupRow({ signup, onDecide }: { signup: SessionUser; onDecide: (kind:
           <p className="truncate text-sm text-muted-foreground">{signup.email}</p>
           <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="truncate">{signup.jobTitle} · {signup.companyName}</span>
+            {signup.website && <a href={signup.website} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1 text-primary hover:underline" title={signup.website}><span className="truncate">{displayWebsite(signup.website)}</span><ExternalLink aria-hidden className="size-3 shrink-0" /><span className="sr-only"> (opens in a new tab)</span></a>}
             <span className="inline-flex items-center gap-1.5"><CountryFlag code={signup.country} className="h-3 w-4" />{countryLabel(signup.country)}</span>
             <span>Requested {relativeTime(signup.createdAt)}</span>
           </p>

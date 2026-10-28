@@ -1,4 +1,4 @@
-import { authorizedRequest, authorizedUpload } from "@/auth/session"
+import { authorizedRequest, authorizedSend } from "@/auth/session"
 import type { UploadOptions } from "@/lib/api/upload"
 import type { OperatingSystem, FileKind } from "@/pages/Catalog/catalog.types"
 import type { FileFormat, FileIssue, FileMappingChange, ProductOption, PublishJob, PublishStatus, ReleaseDetail, ReleaseFileItem, ReleaseFilters, ReleaseList, VersionSuggestion } from "./releases.model"
@@ -8,6 +8,7 @@ export const RELEASES_PAGE_SIZE = 50
 
 const releasePath = (id: string) => `/releases/${encodeURIComponent(id)}`
 const filePath = (id: string, fileId: string) => `${releasePath(id)}/files/${encodeURIComponent(fileId)}`
+const uploadPath = (id: string, uploadId: string) => `${releasePath(id)}/uploads/${encodeURIComponent(uploadId)}`
 
 /** Query string for GET /releases: status in the server's vocabulary, blanks dropped. */
 export function listQuery({ statuses, productId, q, cursor, limit = RELEASES_PAGE_SIZE }: ReleaseFilters = {}): URLSearchParams {
@@ -20,8 +21,14 @@ export function listQuery({ statuses, productId, q, cursor, limit = RELEASES_PAG
 }
 
 // kind is null for a file whose type wasn't detected: it uploads unmapped.
-// sha256 is what the browser hashed; the server compares it with what arrives
-export type UploadInput = { file: File; kind: FileKind | null; os: OperatingSystem | null; replace?: string; sha256: string }
+// sha256 is what the browser hashed; the server checks it again at complete
+export type UploadCreateInput = { name: string; size: number; sha256: string; contentType?: string; kind: FileKind | null; os: OperatingSystem | null; replace?: string }
+
+/** An open resumable upload: send part partsDone + 1 next. */
+export type UploadSession = { uploadId: string; name: string; size: number; sha256: string; partSize: number; partsDone: number }
+
+/** A publish job with what the uploads panel needs to label it. */
+export type PublishJobEntry = { releaseId: string; version: string; productName: string; job: PublishJob }
 
 /** A byte range of the file, base64, as the server asked for it. */
 export type FileRange = { offset: number; data: string }
@@ -64,22 +71,22 @@ export const releasesApi = {
   /** Starts the background publish (202); poll publishStatus for progress. */
   publish: async (id: string): Promise<PublishJob> => (await authorizedRequest<{ job: PublishJob }>(`${releasePath(id)}/publish`, { method: "POST" })).job,
   publishStatus: async (id: string): Promise<PublishStatus> => toPublishStatus(await authorizedRequest<ApiPublishStatus>(`${releasePath(id)}/publish-status`)),
+  /** Every publish job running or recently settled (admins). */
+  publishJobs: async (): Promise<PublishJobEntry[]> => (await authorizedRequest<{ jobs: PublishJobEntry[] }>("/releases/publish-jobs")).jobs,
 
-  /** Streams one file; known fields go first, in the order the server reads them. */
   /** The rules' verdict before upload; call again with the ranges it asks for. */
   checkFile: async (id: string, input: FileCheckInput): Promise<FileCheckResult> => {
     const result = await authorizedRequest<ApiFileCheckResult>(`${releasePath(id)}/files/check`, { method: "POST", body: input })
     return result.status === "NEED_BYTES" ? result : { ...result, warnings: result.warnings.map(toFileIssue) }
   },
-  uploadFile: async (id: string, { file, kind, os, replace, sha256 }: UploadInput, options: UploadOptions = {}): Promise<ReleaseFileItem> => {
-    const { kind: apiKind, platform } = toApiMapping({ kind, os })
-    const fields: [string, string][] = []
-    if (apiKind) fields.push(["kind", apiKind])
-    if (platform) fields.push(["platform", platform])
-    if (replace) fields.push(["replace", replace])
-    fields.push(["sha256", sha256])
-    const { file: uploaded } = await authorizedUpload<{ file: ApiFile }>(`${releasePath(id)}/files`, fields, file, options)
-    return toReleaseFile(uploaded)
+  // Resumable uploads: open (or find) a session, send its parts in order, complete
+  uploads: {
+    create: async (id: string, { kind, os, replace, ...file }: UploadCreateInput): Promise<UploadSession> =>
+      authorizedRequest<UploadSession>(`${releasePath(id)}/uploads`, { method: "POST", body: { ...file, ...toApiMapping({ kind, os }), ...(replace && { replace }) } }),
+    list: async (id: string): Promise<UploadSession[]> => (await authorizedRequest<{ uploads: UploadSession[] }>(`${releasePath(id)}/uploads`)).uploads,
+    putPart: (id: string, uploadId: string, n: number, part: Blob, options: UploadOptions = {}): Promise<UploadSession> => authorizedSend<UploadSession>("PUT", `${uploadPath(id, uploadId)}/parts/${n}`, part, options),
+    complete: async (id: string, uploadId: string): Promise<ReleaseFileItem> => toReleaseFile((await authorizedRequest<{ file: ApiFile }>(`${uploadPath(id, uploadId)}/complete`, { method: "POST" })).file),
+    abort: (id: string, uploadId: string) => authorizedRequest<void>(uploadPath(id, uploadId), { method: "DELETE" }),
   },
   removeFile: (id: string, fileId: string) => authorizedRequest<void>(filePath(id, fileId), { method: "DELETE" }),
 }

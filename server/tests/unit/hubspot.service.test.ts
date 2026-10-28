@@ -55,6 +55,20 @@ describe("createApiHubspotClient", () => {
     expect(sent[1]).not.toHaveProperty("emass_use_case");
   });
 
+  it("sends the website as HubSpot's own website property only when there is one", async () => {
+    const { calls, fetchImpl } = fakeFetch();
+    const client = createApiHubspotClient(() => config, fetchImpl);
+
+    await client.upsertContact({ ...input, website: "https://acme.com" });
+    await client.upsertContact({ ...input, website: null });
+
+    const sent = calls.map(
+      (call) => JSON.parse(String(call.init.body)).inputs[0].properties,
+    );
+    expect(sent[0].website).toBe("https://acme.com");
+    expect(sent[1]).not.toHaveProperty("website");
+  });
+
   it("POSTs an idempotent email-keyed upsert as a lead", async () => {
     const { calls, fetchImpl } = fakeFetch();
     const client = createApiHubspotClient(() => config, fetchImpl);

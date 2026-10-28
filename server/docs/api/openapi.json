@@ -195,6 +195,9 @@
                     "minLength": 10,
                     "maxLength": 200
                   },
+                  "website": {
+                    "type": "string"
+                  },
                   "captcha": {
                     "type": "string",
                     "minLength": 1
@@ -11320,6 +11323,206 @@
         }
       }
     },
+    "/releases/publish-jobs": {
+      "get": {
+        "operationId": "listPublishJobs",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Every publish job running or recently settled (ADMIN)",
+        "description": "So a page that doesn't know the release ids (after a refresh, or in another tab) can follow publishing. Settled jobs stay listed for PUBLISH_JOB_TTL_MS; jobs live in memory, so a restart empties the list.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "jobs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "releaseId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "version": {
+                                "type": "string"
+                              },
+                              "productName": {
+                                "type": "string"
+                              },
+                              "job": {
+                                "type": "object",
+                                "properties": {
+                                  "phase": {
+                                    "type": "string",
+                                    "enum": [
+                                      "copying",
+                                      "finalizing",
+                                      "done",
+                                      "failed"
+                                    ]
+                                  },
+                                  "filesTotal": {
+                                    "type": "integer"
+                                  },
+                                  "filesDone": {
+                                    "type": "integer"
+                                  },
+                                  "percent": {
+                                    "type": "integer",
+                                    "description": "Size-weighted across files. OCI reports a single copy only as 0 or 100."
+                                  },
+                                  "error": {
+                                    "type": "object",
+                                    "nullable": true,
+                                    "properties": {
+                                      "code": {
+                                        "type": "string"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "startedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "finishedAt": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "nullable": true
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/releases/{id}/publish-status": {
       "get": {
         "operationId": "getPublishStatus",
@@ -12012,14 +12215,14 @@
         }
       }
     },
-    "/releases/{id}/files": {
+    "/releases/{id}/uploads": {
       "post": {
-        "operationId": "uploadReleaseFile",
+        "operationId": "createUploadSession",
         "tags": [
           "Releases"
         ],
-        "summary": "Stream one file into the draft (creating DEV; DRAFT or CHANGES_REQUESTED)",
-        "description": "multipart/form-data, streamed to storage with SHA-256 computed on the fly (max MAX_UPLOAD_BYTES, 1 GiB). Fields must come before the file part. Without kind the file is stored unmapped and typed later with Save draft. The stored object is then inspected (ranged reads) and judged by the same rules as /files/check; a blocked file is deleted and refused with 409 FILE_BLOCKED.",
+        "summary": "Open (or find) a resumable upload for one file (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "description": "Call after /files/check allowed the file. Opens a storage multipart upload and returns its session; the same sha256 again returns the existing session (that's how a client resumes after losing the id). Then send the parts in order and complete. The same bytes already in this release are refused here; every other rule runs on the stored object at complete. Sessions untouched for 24 h are aborted.",
         "security": [
           {
             "cookieAuth": []
@@ -12037,12 +12240,37 @@
           }
         ],
         "requestBody": {
+          "description": "The file to upload",
           "required": true,
           "content": {
-            "multipart/form-data": {
+            "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "name",
+                  "size",
+                  "sha256"
+                ],
                 "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "At most MAX_UPLOAD_BYTES (1 GiB)"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{64}$",
+                    "description": "What the browser hashed; checked again at complete"
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "maxLength": 255
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
@@ -12062,31 +12290,1012 @@
                   "replace": {
                     "type": "string",
                     "format": "uuid",
-                    "description": "Replace this file (the one holding the platform) once the upload succeeds"
-                  },
-                  "sha256": {
-                    "type": "string",
-                    "pattern": "^[0-9a-fA-F]{64}$",
-                    "description": "Required: what the browser hashed. A different hash on arrival is 422 CHECKSUM_MISMATCH."
-                  },
-                  "file": {
-                    "type": "string",
-                    "format": "binary"
+                    "description": "Replace this file (the one holding the platform) once the upload completes"
                   }
-                },
-                "required": [
-                  "sha256",
-                  "file"
-                ]
-              },
-              "encoding": {
-                "file": {
-                  "contentType": "application/octet-stream"
                 }
               }
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Upload ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uploadId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        },
+                        "partSize": {
+                          "type": "integer",
+                          "description": "UPLOAD_PART_BYTES"
+                        },
+                        "partsDone": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        400
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN",
+                        "NOT_RELEASE_OWNER"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        404
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "RELEASE_NOT_FOUND",
+                        "FILE_NOT_FOUND"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        409
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "RELEASE_LOCKED",
+                        "PLATFORM_TAKEN",
+                        "FILE_BLOCKED",
+                        "UPLOAD_SESSION_MISMATCH"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Over MAX_UPLOAD_BYTES",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        413
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FILE_TOO_LARGE"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Storage error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        502
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "UPLOAD_FAILED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listUploadSessions",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "The creating DEV's open uploads for a release",
+        "description": "So a client can rebuild its state after a refresh. Stale sessions are aborted first.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uploads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uploads": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "uploadId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer"
+                              },
+                              "sha256": {
+                                "type": "string"
+                              },
+                              "partSize": {
+                                "type": "integer",
+                                "description": "UPLOAD_PART_BYTES"
+                              },
+                              "partsDone": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN",
+                        "NOT_RELEASE_OWNER"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        404
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "UPLOAD_NOT_FOUND"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/releases/{id}/uploads/{uploadId}/parts/{n}": {
+      "put": {
+        "operationId": "putUploadPart",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Send part n of an upload (in order)",
+        "description": "Raw application/octet-stream body of exactly partSize bytes (the last part: what remains). Only part partsDone + 1 is stored; a part already stored is acknowledged (200, idempotent); a later one is 409 PART_OUT_OF_ORDER with details.expected.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "uploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Part stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uploadId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        },
+                        "partSize": {
+                          "type": "integer",
+                          "description": "UPLOAD_PART_BYTES"
+                        },
+                        "partsDone": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid part",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        400
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "PART_SIZE_INVALID",
+                        "PART_NUMBER_INVALID",
+                        "PART_BODY_INVALID"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN",
+                        "NOT_RELEASE_OWNER"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        404
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "UPLOAD_NOT_FOUND"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        409
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "RELEASE_LOCKED",
+                        "PART_OUT_OF_ORDER"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Over UPLOAD_PART_BYTES",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        413
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "PAYLOAD_TOO_LARGE"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Storage error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        502
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "UPLOAD_FAILED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/releases/{id}/uploads/{uploadId}/complete": {
+      "post": {
+        "operationId": "completeUploadSession",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Finish an upload: verify, store and save the file",
+        "description": "Every part must have arrived. The whole-file SHA-256 must equal the declared one (else 422 CHECKSUM_MISMATCH, and the upload is discarded). The stored object is then inspected (ranged reads) and judged by the same rules as /files/check; a blocked file is deleted and refused with 409 FILE_BLOCKED. Either way the session ends. A second complete while one runs is 409 UPLOAD_COMPLETING.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "uploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "201": {
             "description": "Stored",
@@ -12353,8 +13562,8 @@
               }
             }
           },
-          "400": {
-            "description": "Invalid upload",
+          "401": {
+            "description": "Missing or invalid access token",
             "content": {
               "application/json": {
                 "schema": {
@@ -12369,7 +13578,7 @@
                     "statusCode": {
                       "type": "integer",
                       "enum": [
-                        400
+                        401
                       ]
                     },
                     "message": {
@@ -12378,13 +13587,9 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "VALIDATION_ERROR",
-                        "FILE_MISSING",
-                        "TOO_MANY_FILES",
-                        "FIELDS_AFTER_FILE",
-                        "EMPTY_FILE",
-                        "UPLOAD_INVALID",
-                        "UPLOAD_ABORTED"
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
                       ]
                     },
                     "details": {}
@@ -12394,6 +13599,281 @@
                     "statusCode",
                     "message",
                     "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN",
+                        "NOT_RELEASE_OWNER"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        404
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "UPLOAD_NOT_FOUND",
+                        "FILE_NOT_FOUND"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        409
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "RELEASE_LOCKED",
+                        "PLATFORM_TAKEN",
+                        "FILE_BLOCKED",
+                        "UPLOAD_INCOMPLETE",
+                        "UPLOAD_COMPLETING"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The bytes that arrived don't match the declared sha256",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        422
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "CHECKSUM_MISMATCH"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Storage error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        502
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "UPLOAD_FAILED",
+                        "READ_FAILED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/releases/{id}/uploads/{uploadId}": {
+      "delete": {
+        "operationId": "abortUploadSession",
+        "tags": [
+          "Releases"
+        ],
+        "summary": "Cancel an upload, discarding its stored parts",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "uploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message"
                   ]
                 }
               }
@@ -12507,8 +13987,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "RELEASE_NOT_FOUND",
-                        "FILE_NOT_FOUND"
+                        "UPLOAD_NOT_FOUND"
                       ]
                     },
                     "details": {}
@@ -12549,169 +14028,7 @@
                       "type": "string",
                       "enum": [
                         "RELEASE_LOCKED",
-                        "PLATFORM_TAKEN",
-                        "FILE_BLOCKED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Over MAX_UPLOAD_BYTES",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        413
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "FILE_TOO_LARGE"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Not multipart/form-data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        415
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "UNSUPPORTED_MEDIA_TYPE"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "The bytes that arrived don't match the declared sha256",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        422
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "CHECKSUM_MISMATCH"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Storage error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        502
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "UPLOAD_FAILED",
-                        "READ_FAILED"
+                        "UPLOAD_COMPLETING"
                       ]
                     },
                     "details": {}

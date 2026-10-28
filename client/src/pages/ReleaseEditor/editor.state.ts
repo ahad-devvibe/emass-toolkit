@@ -1,9 +1,10 @@
 import { ApiRequestError } from "@/lib/api/http"
 import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
 import { highestShipped } from "@/pages/Releases/releases.errors"
-import type { FileMapping, FileMappingChange, ReleaseFileItem } from "@/pages/Releases/releases.model"
+import type { FileMapping, FileMappingChange, ReleaseFileItem, ReleaseSummary } from "@/pages/Releases/releases.model"
+import type { ReleaseStatus } from "@/pages/Releases/releases.types"
 import { parseSemver } from "@/pages/Releases/version.utils"
-import { hasConflicts, hasFailures, isBusy, type PlatformHolder, type QueueState } from "./upload-queue"
+import { forRelease, hasConflicts, hasFailures, hasUnfinished, isBusy, overall, type PlatformHolder, type QueueState } from "@/features/uploads/uploads.state"
 
 // Pure rules behind the release editor, kept out of the components so they're testable
 
@@ -109,6 +110,7 @@ export function submitBlocker({ version, fileCount, queue, problems, blockedFile
   const kinds = new Set(Object.values(problems).map((problem) => problem.type))
   if (versionProblem(version)) return "Fix the version number first."
   if (isBusy(queue)) return "Wait for uploads to finish."
+  if (hasUnfinished(queue)) return "Resume or cancel the paused uploads."
   if (hasFailures(queue)) return "Retry or remove the failed uploads."
   if (hasConflicts(queue)) return "Replace or re-map the uploads held on a platform."
   if (blockedFiles > 0) return "Remove the files that can't be submitted, or change the version."
@@ -117,4 +119,55 @@ export function submitBlocker({ version, fileCount, queue, problems, blockedFile
   if (kinds.has("needsPlatform")) return "Choose a platform for every SDK."
   if (fileCount === 0) return "Add at least one file."
   return null
+}
+
+export type DraftToContinue = {
+  id: string
+  label: string
+  /** Null for a draft known only from this tab's uploads (not listed yet). */
+  status: ReleaseStatus | null
+  updatedAt: string | null
+  /** "2 files uploading (61%)", "1 paused", …; null when nothing is uploading. */
+  uploads: string | null
+}
+
+const OPEN_STATUSES: ReleaseStatus[] = ["draft", "changes_requested"]
+
+/** What this tab is doing for one release's files, in a few words. */
+export function uploadsText(state: QueueState, releaseId: string): string | null {
+  const mine = forRelease(state, releaseId)
+  const count = (statuses: string[]) => mine.items.filter((item) => statuses.includes(item.status)).length
+  const moving = count(["queued", "checking", "hashing", "uploading", "finalizing", "waiting"])
+  if (moving > 0) {
+    const { loadedBytes, totalBytes } = overall({ ...mine, items: mine.items.filter((item) => item.status !== "done") })
+    const percent = totalBytes ? Math.floor((loadedBytes / totalBytes) * 100) : 0
+    return `${moving} ${moving === 1 ? "file" : "files"} uploading (${percent}%)`
+  }
+  const parts = [
+    [count(["paused"]), "paused"],
+    [count(["needsFile"]), "waiting for a file"],
+    [count(["failed"]), "failed"],
+  ] as const
+  const said = parts.filter(([n]) => n > 0).map(([n, label]) => `${n} ${label}`)
+  return said.length ? said.join(" · ") : null
+}
+
+/**
+ * The developer's releases still being worked on, for "Continue your draft"
+ * on New Release: drafts this tab is uploading to first (they may not be
+ * listed yet), then their open drafts with uploads, then the rest, newest first.
+ */
+export function draftsToContinue(releases: ReleaseSummary[], uploads: QueueState, userId: string, limit = 3): DraftToContinue[] {
+  const listed = releases
+    .filter((release) => release.createdBy.id === userId && OPEN_STATUSES.includes(release.status))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const listedIds = new Set(listed.map((release) => release.id))
+  const active = new Set(uploads.items.filter((item) => !["done", "cancelled", "blocked"].includes(item.status)).map((item) => item.releaseId))
+
+  const unlisted: DraftToContinue[] = [...active]
+    .filter((id) => !listedIds.has(id))
+    .map((id) => ({ id, label: uploads.items.find((item) => item.releaseId === id)?.releaseLabel || "Draft", status: null, updatedAt: null, uploads: uploadsText(uploads, id) }))
+  const known: DraftToContinue[] = listed.map((release) => ({ id: release.id, label: `${release.product.name} v${release.version}`, status: release.status, updatedAt: release.updatedAt, uploads: uploadsText(uploads, release.id) }))
+  // Uploading ones first: that's what someone coming back is looking for
+  return [...unlisted, ...known.filter((draft) => draft.uploads), ...known.filter((draft) => !draft.uploads)].slice(0, limit)
 }

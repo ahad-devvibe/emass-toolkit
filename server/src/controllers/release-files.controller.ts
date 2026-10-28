@@ -11,10 +11,7 @@ import {
 } from "../services/releases/releases.errors.js";
 import { createStaffDownload } from "../services/downloads/downloads.service.js";
 import { checkReleaseFile } from "../services/releases/file-checks.service.js";
-import {
-  deleteReleaseFile,
-  uploadReleaseFile,
-} from "../services/releases/release-files.service.js";
+import { deleteReleaseFile } from "../services/releases/release-files.service.js";
 
 // Malformed ids can't match anything, so they're 404s like unknown ones
 function releaseId(req: Request): string {
@@ -38,12 +35,6 @@ export const check = async (req: Request, res: Response) => {
   const input = fileCheckSchema.parse(req.body ?? {});
   const result = await checkReleaseFile(userId(req), releaseId(req), input);
   res.json(ApiResponse.success(result, "File checked"));
-};
-
-// The request itself is the multipart stream; the service parses it
-export const upload = async (req: Request, res: Response) => {
-  const result = await uploadReleaseFile(userId(req), releaseId(req), req);
-  res.status(201).json(ApiResponse.success(result, "File uploaded", 201));
 };
 
 export const remove = async (req: Request, res: Response) => {

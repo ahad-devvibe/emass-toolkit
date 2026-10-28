@@ -34,6 +34,20 @@ const idParam = {
   schema: { type: "string", format: "uuid" },
 };
 const fileIdParam = { ...idParam, name: "fileId" };
+const uploadIdParam = { ...idParam, name: "uploadId" };
+
+// An open resumable upload: send part partsDone + 1 next
+const uploadSession = {
+  type: "object",
+  properties: {
+    uploadId: { type: "string", format: "uuid" },
+    name: { type: "string" },
+    size: { type: "integer" },
+    sha256: { type: "string" },
+    partSize: { type: "integer", description: "UPLOAD_PART_BYTES" },
+    partsDone: { type: "integer" },
+  },
+};
 
 const status = {
   type: "string",
@@ -879,6 +893,37 @@ export const releasePaths = {
       },
     },
   },
+  "/releases/publish-jobs": {
+    get: {
+      operationId: "listPublishJobs",
+      tags: ["Releases"],
+      summary: "Every publish job running or recently settled (ADMIN)",
+      description:
+        "So a page that doesn't know the release ids (after a refresh, or in another tab) can follow publishing. Settled jobs stay listed for PUBLISH_JOB_TTL_MS; jobs live in memory, so a restart empties the list.",
+      security: cookie,
+      responses: {
+        200: successResponse("Jobs", {
+          type: "object",
+          properties: {
+            jobs: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  releaseId: { type: "string", format: "uuid" },
+                  version: { type: "string" },
+                  productName: { type: "string" },
+                  job: publishJob,
+                },
+              },
+            },
+          },
+        }),
+        401: unauthorized,
+        403: forbidden(),
+      },
+    },
+  },
   "/releases/{id}/publish-status": {
     get: {
       operationId: "getPublishStatus",
@@ -1008,90 +1053,200 @@ export const releasePaths = {
       },
     },
   },
-  "/releases/{id}/files": {
+  "/releases/{id}/uploads": {
     post: {
-      operationId: "uploadReleaseFile",
+      operationId: "createUploadSession",
       tags: ["Releases"],
       summary:
-        "Stream one file into the draft (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "Open (or find) a resumable upload for one file (creating DEV; DRAFT or CHANGES_REQUESTED)",
       description:
-        "multipart/form-data, streamed to storage with SHA-256 computed on the fly (max MAX_UPLOAD_BYTES, 1 GiB). Fields must come before the file part. Without kind the file is stored unmapped and typed later with Save draft. The stored object is then inspected (ranged reads) and judged by the same rules as /files/check; a blocked file is deleted and refused with 409 FILE_BLOCKED.",
+        "Call after /files/check allowed the file. Opens a storage multipart upload and returns its session; the same sha256 again returns the existing session (that's how a client resumes after losing the id). Then send the parts in order and complete. The same bytes already in this release are refused here; every other rule runs on the stored object at complete. Sessions untouched for 24 h are aborted.",
       security: cookie,
       parameters: [idParam],
-      requestBody: {
-        required: true,
-        content: {
-          "multipart/form-data": {
-            schema: {
-              type: "object",
-              properties: {
-                kind: { type: "string", enum: ["SDK", "DOC"] },
-                platform: {
-                  type: "string",
-                  enum: ["WINDOWS", "MACOS", "UBUNTU"],
-                  description: "Required with kind=SDK; not allowed otherwise",
-                },
-                replace: {
-                  type: "string",
-                  format: "uuid",
-                  description:
-                    "Replace this file (the one holding the platform) once the upload succeeds",
-                },
-                sha256: {
-                  type: "string",
-                  pattern: "^[0-9a-fA-F]{64}$",
-                  description:
-                    "Required: what the browser hashed. A different hash on arrival is 422 CHECKSUM_MISMATCH.",
-                },
-                file: { type: "string", format: "binary" },
-              },
-              required: ["sha256", "file"],
+      requestBody: jsonBody(
+        {
+          type: "object",
+          required: ["name", "size", "sha256"],
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 255 },
+            size: {
+              type: "integer",
+              minimum: 1,
+              description: "At most MAX_UPLOAD_BYTES (1 GiB)",
             },
-            encoding: { file: { contentType: "application/octet-stream" } },
+            sha256: {
+              type: "string",
+              pattern: "^[0-9a-fA-F]{64}$",
+              description: "What the browser hashed; checked again at complete",
+            },
+            contentType: { type: "string", maxLength: 255 },
+            kind: { type: "string", enum: ["SDK", "DOC"] },
+            platform: {
+              type: "string",
+              enum: ["WINDOWS", "MACOS", "UBUNTU"],
+              description: "Required with kind=SDK; not allowed otherwise",
+            },
+            replace: {
+              type: "string",
+              format: "uuid",
+              description:
+                "Replace this file (the one holding the platform) once the upload completes",
+            },
           },
         },
-      },
+        "The file to upload",
+      ),
       responses: {
-        201: successResponse("Stored", {
-          type: "object",
-          properties: { file },
-        }),
-        400: errorResponse(
-          "Invalid upload",
-          [
-            "VALIDATION_ERROR",
-            "FILE_MISSING",
-            "TOO_MANY_FILES",
-            "FIELDS_AFTER_FILE",
-            "EMPTY_FILE",
-            "UPLOAD_INVALID",
-            "UPLOAD_ABORTED",
-          ],
-          400,
-        ),
+        200: successResponse("Upload ready", uploadSession),
+        400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
         401: unauthorized,
         403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
         404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
         409: errorResponse(
           "Conflict",
-          ["RELEASE_LOCKED", "PLATFORM_TAKEN", "FILE_BLOCKED"],
+          [
+            "RELEASE_LOCKED",
+            "PLATFORM_TAKEN",
+            "FILE_BLOCKED",
+            "UPLOAD_SESSION_MISMATCH",
+          ],
           409,
         ),
         413: errorResponse("Over MAX_UPLOAD_BYTES", ["FILE_TOO_LARGE"], 413),
+        502: errorResponse("Storage error", ["UPLOAD_FAILED"], 502),
+      },
+    },
+    get: {
+      operationId: "listUploadSessions",
+      tags: ["Releases"],
+      summary: "The creating DEV's open uploads for a release",
+      description:
+        "So a client can rebuild its state after a refresh. Stale sessions are aborted first.",
+      security: cookie,
+      parameters: [idParam],
+      responses: {
+        200: successResponse("Uploads", {
+          type: "object",
+          properties: { uploads: { type: "array", items: uploadSession } },
+        }),
+        401: unauthorized,
+        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        404: notFound(["UPLOAD_NOT_FOUND"]),
+      },
+    },
+  },
+  "/releases/{id}/uploads/{uploadId}/parts/{n}": {
+    put: {
+      operationId: "putUploadPart",
+      tags: ["Releases"],
+      summary: "Send part n of an upload (in order)",
+      description:
+        "Raw application/octet-stream body of exactly partSize bytes (the last part: what remains). Only part partsDone + 1 is stored; a part already stored is acknowledged (200, idempotent); a later one is 409 PART_OUT_OF_ORDER with details.expected.",
+      security: cookie,
+      parameters: [
+        idParam,
+        uploadIdParam,
+        {
+          name: "n",
+          in: "path",
+          required: true,
+          schema: { type: "integer", minimum: 1 },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          "application/octet-stream": {
+            schema: { type: "string", format: "binary" },
+          },
+        },
+      },
+      responses: {
+        200: successResponse("Part stored", uploadSession),
+        400: errorResponse(
+          "Invalid part",
+          [
+            "VALIDATION_ERROR",
+            "PART_SIZE_INVALID",
+            "PART_NUMBER_INVALID",
+            "PART_BODY_INVALID",
+          ],
+          400,
+        ),
+        401: unauthorized,
+        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        404: notFound(["UPLOAD_NOT_FOUND"]),
+        409: errorResponse(
+          "Conflict",
+          ["RELEASE_LOCKED", "PART_OUT_OF_ORDER"],
+          409,
+        ),
+        413: errorResponse(
+          "Over UPLOAD_PART_BYTES",
+          ["PAYLOAD_TOO_LARGE"],
+          413,
+        ),
+        502: errorResponse("Storage error", ["UPLOAD_FAILED"], 502),
+      },
+    },
+  },
+  "/releases/{id}/uploads/{uploadId}/complete": {
+    post: {
+      operationId: "completeUploadSession",
+      tags: ["Releases"],
+      summary: "Finish an upload: verify, store and save the file",
+      description:
+        "Every part must have arrived. The whole-file SHA-256 must equal the declared one (else 422 CHECKSUM_MISMATCH, and the upload is discarded). The stored object is then inspected (ranged reads) and judged by the same rules as /files/check; a blocked file is deleted and refused with 409 FILE_BLOCKED. Either way the session ends. A second complete while one runs is 409 UPLOAD_COMPLETING.",
+      security: cookie,
+      parameters: [idParam, uploadIdParam],
+      responses: {
+        201: successResponse("Stored", {
+          type: "object",
+          properties: { file },
+        }),
+        401: unauthorized,
+        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        404: notFound(["UPLOAD_NOT_FOUND", "FILE_NOT_FOUND"]),
+        409: errorResponse(
+          "Conflict",
+          [
+            "RELEASE_LOCKED",
+            "PLATFORM_TAKEN",
+            "FILE_BLOCKED",
+            "UPLOAD_INCOMPLETE",
+            "UPLOAD_COMPLETING",
+          ],
+          409,
+        ),
         422: errorResponse(
           "The bytes that arrived don't match the declared sha256",
           ["CHECKSUM_MISMATCH"],
           422,
         ),
-        415: errorResponse(
-          "Not multipart/form-data",
-          ["UNSUPPORTED_MEDIA_TYPE"],
-          415,
-        ),
         502: errorResponse(
           "Storage error",
           ["UPLOAD_FAILED", "READ_FAILED"],
           502,
+        ),
+      },
+    },
+  },
+  "/releases/{id}/uploads/{uploadId}": {
+    delete: {
+      operationId: "abortUploadSession",
+      tags: ["Releases"],
+      summary: "Cancel an upload, discarding its stored parts",
+      security: cookie,
+      parameters: [idParam, uploadIdParam],
+      responses: {
+        200: successResponse("Upload cancelled"),
+        401: unauthorized,
+        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        404: notFound(["UPLOAD_NOT_FOUND"]),
+        409: errorResponse(
+          "Conflict",
+          ["RELEASE_LOCKED", "UPLOAD_COMPLETING"],
+          409,
         ),
       },
     },

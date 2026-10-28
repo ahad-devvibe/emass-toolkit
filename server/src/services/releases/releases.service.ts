@@ -740,7 +740,8 @@ export async function rollbackRelease(
 }
 
 /**
- * Deletes the staged objects, then the row (files and events cascade), all
+ * Cancels open uploads and deletes the staged objects, then the row (files,
+ * events and upload sessions cascade), all
  * under the row lock so no upload can land in between. A failed object
  * delete rolls back and leaves the release intact; retrying is safe because
  * a missing object counts as deleted.
@@ -755,9 +756,21 @@ export async function deleteRelease(devId: string, id: string): Promise<void> {
       });
       const { staging } = getStorageBuckets();
       const driver = getStorageDriver();
-      await Promise.all(
-        files.map((file) => driver.deleteObject(staging, file.objectKey)),
-      );
+      // Uploads still arriving are cancelled; their session rows cascade
+      const uploads = await tx.uploadSession.findMany({
+        where: { releaseId: id },
+        select: { objectKey: true, storageUploadId: true },
+      });
+      await Promise.all([
+        ...uploads.map((upload) =>
+          driver.abortUpload({
+            bucket: staging,
+            key: upload.objectKey,
+            uploadId: upload.storageUploadId,
+          }),
+        ),
+        ...files.map((file) => driver.deleteObject(staging, file.objectKey)),
+      ]);
       await tx.release.delete({ where: { id } });
     },
     { timeout: DELETE_TRANSACTION_TIMEOUT_MS },

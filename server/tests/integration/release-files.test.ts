@@ -1,17 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import path from "node:path";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { env } from "../../src/configs/env.js";
@@ -31,13 +21,17 @@ import {
   type StaffUser,
 } from "../helpers/releases.js";
 import { buildPdfDocument, buildPe } from "../helpers/file-fixtures.js";
+import {
+  completeUpload,
+  createUpload,
+  putPart,
+  uploadInParts,
+} from "../helpers/uploads.js";
 
 let dev: StaffUser;
 let otherDev: StaffUser;
 let admin: StaffUser;
 let customer: StaffUser;
-let server: http.Server;
-let port: number;
 
 beforeAll(async () => {
   await resetDb();
@@ -45,11 +39,7 @@ beforeAll(async () => {
   otherDev = await createDev("Omar");
   admin = await createAdmin();
   customer = await createCustomer();
-  server = app.listen(0);
-  port = (server.address() as AddressInfo).port;
 });
-
-afterAll(() => new Promise<void>((done) => server.close(() => done())));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -67,24 +57,15 @@ async function draft(
   });
 }
 
+// The browser's protocol: create the session, send the parts, complete.
+// The hash is sent unless a test overrides it ("" leaves it out).
 function upload(
   releaseId: string,
   fields: Record<string, string>,
   file: { body: Buffer; name: string; type?: string },
   user: StaffUser = dev,
 ) {
-  let req = request(app)
-    .post(`/api/releases/${releaseId}/files`)
-    .set(user.cookie);
-  // The browser always sends the hash; a test can set its own (or "")
-  const withHash = { sha256: sha256(file.body), ...fields };
-  for (const [name, value] of Object.entries(withHash)) {
-    req = req.field(name, value);
-  }
-  return req.attach("file", file.body, {
-    filename: file.name,
-    contentType: file.type ?? "application/octet-stream",
-  });
+  return uploadInParts(releaseId, user.cookie, file, fields);
 }
 
 async function storedBytes(objectKey: string): Promise<Buffer> {
@@ -99,67 +80,7 @@ async function fileRows(releaseId: string) {
 const sha256 = (data: Buffer) =>
   createHash("sha256").update(data).digest("hex");
 
-// --- raw multipart over a real socket (aborts, pauses, bogus lengths) ---
-
-const BOUNDARY = "----emass-test-boundary";
-
-function multipartHead(fields: Record<string, string>, filename: string) {
-  const parts = Object.entries(fields).map(
-    ([name, value]) =>
-      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
-  );
-  parts.push(
-    `--${BOUNDARY}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`,
-  );
-  return Buffer.from(parts.join(""));
-}
-
-const multipartTail = Buffer.from(`\r\n--${BOUNDARY}--\r\n`);
-
-interface RawResponse {
-  status: number;
-  body: { code?: string };
-}
-
-function rawRequest(releaseId: string, contentLength: number) {
-  const req = http.request({
-    port,
-    method: "POST",
-    path: `/api/releases/${releaseId}/files`,
-    headers: {
-      ...dev.cookie,
-      "Content-Type": `multipart/form-data; boundary=${BOUNDARY}`,
-      "Content-Length": contentLength,
-    },
-  });
-  const response = new Promise<RawResponse>((resolve, reject) => {
-    req.on("response", (res) => {
-      let text = "";
-      res.on("data", (chunk) => (text += chunk));
-      res.on("end", () =>
-        resolve({ status: res.statusCode ?? 0, body: JSON.parse(text) }),
-      );
-    });
-    req.on("error", reject);
-  });
-  return { req, response };
-}
-
-/** Polls until `check` passes (server-side cleanup is asynchronous). */
-async function eventually(check: () => Promise<void>, timeoutMs = 3000) {
-  const started = Date.now();
-  for (;;) {
-    try {
-      await check();
-      return;
-    } catch (error) {
-      if (Date.now() - started > timeoutMs) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
-}
-
-describe("POST /api/releases/:id/files", () => {
+describe("uploading a file (create, parts, complete)", () => {
   it("streams an SDK into staging with a server-computed SHA-256", async () => {
     const release = await draft();
     const body = randomBytes(3 * 1024 ** 2);
@@ -267,68 +188,17 @@ describe("POST /api/releases/:id/files", () => {
     expect(row).toMatchObject({ kind: null, platform: null });
   });
 
-  it("needs the fields before the file", async () => {
+  it("refuses an empty file before storing anything", async () => {
     const release = await draft();
-
-    // A kind sent after the file arrives too late to count
-    const lateKind = await request(app)
-      .post(`/api/releases/${release.id}/files`)
-      .set(dev.cookie)
-      .field("sha256", sha256(Buffer.from("x")))
-      .attach("file", Buffer.from("x"), "a.bin")
-      .field("kind", "DOC");
-    expect(lateKind.status).toBe(400);
-    expect(lateKind.body.code).toBe("FIELDS_AFTER_FILE");
-
-    const trailing = await request(app)
-      .post(`/api/releases/${release.id}/files`)
-      .set(dev.cookie)
-      .field("kind", "DOC")
-      .field("sha256", sha256(Buffer.from("x")))
-      .attach("file", Buffer.from("x"), "a.bin")
-      .field("note", "late");
-    expect(trailing.status).toBe(400);
-    expect(trailing.body.code).toBe("FIELDS_AFTER_FILE");
-
-    expect(await fileRows(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
-  });
-
-  it("rejects non-multipart bodies, missing files, extra files and empty files", async () => {
-    const release = await draft();
-
-    const json = await request(app)
-      .post(`/api/releases/${release.id}/files`)
-      .set(dev.cookie)
-      .send({ kind: "DOC" });
-    expect(json.status).toBe(415);
-    expect(json.body.code).toBe("UNSUPPORTED_MEDIA_TYPE");
-
-    const noFile = await request(app)
-      .post(`/api/releases/${release.id}/files`)
-      .set(dev.cookie)
-      .field("kind", "DOC");
-    expect(noFile.status).toBe(400);
-    expect(noFile.body.code).toBe("FILE_MISSING");
-
-    const twoFiles = await request(app)
-      .post(`/api/releases/${release.id}/files`)
-      .set(dev.cookie)
-      .field("kind", "DOC")
-      .field("sha256", sha256(Buffer.from("one")))
-      .attach("file", Buffer.from("one"), "one.pdf")
-      .attach("second", Buffer.from("two"), "two.pdf");
-    expect(twoFiles.status).toBe(400);
-    expect(twoFiles.body.code).toBe("TOO_MANY_FILES");
 
     const empty = await upload(
       release.id,
       { kind: "DOC" },
       { body: Buffer.alloc(0), name: "empty.pdf" },
     );
-    expect(empty.status).toBe(400);
-    expect(empty.body.code).toBe("EMPTY_FILE");
 
+    expect(empty.status).toBe(400);
+    expect(empty.body.code).toBe("VALIDATION_ERROR");
     expect(await fileRows(release.id)).toEqual([]);
     expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
   });
@@ -339,7 +209,7 @@ describe("POST /api/releases/:id/files", () => {
       env.MAX_UPLOAD_BYTES = original;
     });
 
-    it("stops a file that streams past the cap and leaves nothing behind", async () => {
+    it("refuses a file over the cap before any part is sent", async () => {
       env.MAX_UPLOAD_BYTES = 1024 ** 2;
       const release = await draft();
 
@@ -353,18 +223,6 @@ describe("POST /api/releases/:id/files", () => {
       expect(res.body.code).toBe("FILE_TOO_LARGE");
       expect(await fileRows(release.id)).toEqual([]);
       expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
-    });
-
-    it("refuses an oversized request from its Content-Length before reading it", async () => {
-      const release = await draft();
-      const { req, response } = rawRequest(release.id, 2 * 1024 ** 3);
-      req.flushHeaders();
-
-      const res = await response;
-      req.destroy();
-
-      expect(res.status).toBe(413);
-      expect(res.body.code).toBe("FILE_TOO_LARGE");
     });
   });
 
@@ -428,7 +286,7 @@ describe("POST /api/releases/:id/files", () => {
       { body: Buffer.from("old build"), name: "old.msi" },
     );
     const oldKey = (await fileRows(release.id))[0].objectKey;
-    vi.spyOn(getStorageDriver(), "putStream").mockRejectedValueOnce(
+    vi.spyOn(getStorageDriver(), "uploadPart").mockRejectedValueOnce(
       new ApiError(502, "Unable to upload file", "UPLOAD_FAILED"),
     );
 
@@ -480,55 +338,25 @@ describe("POST /api/releases/:id/files", () => {
     expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
   });
 
-  it("leaves nothing behind when the client disconnects mid-upload", async () => {
-    const release = await draft();
-    const head = multipartHead({ kind: "SDK", platform: "WINDOWS" }, "a.msi");
-    const fileBytes = 4 * 1024 ** 2;
-    const { req, response } = rawRequest(
-      release.id,
-      head.length + fileBytes + multipartTail.length,
-    );
-    response.catch(() => undefined);
-
-    req.write(head);
-    req.write(randomBytes(1024 ** 2));
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    req.destroy();
-
-    await eventually(async () => {
-      expect(await fileRows(release.id)).toEqual([]);
-      expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
-    });
-  });
-
-  it("refuses an upload that finishes after the release was submitted", async () => {
+  it("refuses to complete an upload after the release was submitted", async () => {
     const release = await draft({ files: [{ platform: "MACOS" }] });
-    const half = randomBytes(512 * 1024);
-    const head = multipartHead(
-      {
-        kind: "SDK",
-        platform: "WINDOWS",
-        sha256: sha256(Buffer.concat([half, half])),
-      },
-      "late.msi",
-    );
-    const { req, response } = rawRequest(
-      release.id,
-      head.length + half.length * 2 + multipartTail.length,
-    );
-
-    req.write(head);
-    req.write(half);
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const body = randomBytes(512 * 1024);
+    const file = { body, name: "late.msi" };
+    const created = await createUpload(release.id, dev.cookie, file, {
+      kind: "SDK",
+      platform: "WINDOWS",
+    });
+    const { uploadId } = created.body.data;
+    expect(
+      (await putPart(release.id, dev.cookie, uploadId, 1, body)).status,
+    ).toBe(200);
 
     const submitted = await request(app)
       .post(`/api/releases/${release.id}/submit`)
       .set(dev.cookie);
     expect(submitted.status).toBe(200);
 
-    req.write(half);
-    req.end(multipartTail);
-    const res = await response;
+    const res = await completeUpload(release.id, dev.cookie, uploadId);
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("RELEASE_LOCKED");
@@ -589,11 +417,13 @@ describe("file routes: roles, ownership and status", () => {
     [
       "upload",
       (releaseId, _fileId, user) => {
-        const req = request(app).post(`/api/releases/${releaseId}/files`);
-        return (user ? req.set(user.cookie) : req)
-          .field("kind", "DOC")
-          .field("sha256", sha256(Buffer.from("x")))
-          .attach("file", Buffer.from("x"), "a.pdf");
+        const req = request(app).post(`/api/releases/${releaseId}/uploads`);
+        return (user ? req.set(user.cookie) : req).send({
+          name: "a.pdf",
+          size: 1,
+          sha256: sha256(Buffer.from("x")),
+          kind: "DOC",
+        });
       },
     ],
     [
@@ -810,11 +640,15 @@ describe("file rules on upload, read and submit", () => {
   it("re-judges installers after a version change, and submit refuses them", async () => {
     const exe = freshExe();
     const release = await draft({ version: "2.5.0" });
-    await upload(
-      release.id,
-      { kind: "SDK", platform: "WINDOWS" },
-      { body: exe, name: "setup.exe" },
-    ).expect(201);
+    expect(
+      (
+        await upload(
+          release.id,
+          { kind: "SDK", platform: "WINDOWS" },
+          { body: exe, name: "setup.exe" },
+        )
+      ).status,
+    ).toBe(201);
 
     await request(app)
       .patch(`/api/releases/${release.id}`)
@@ -854,11 +688,15 @@ describe("file rules on upload, read and submit", () => {
 
   it("asks submit to confirm warnings, then records them on the event", async () => {
     const release = await draft({ version: "2.5.0" });
-    await upload(
-      release.id,
-      { kind: "DOC" },
-      { body: randomBytes(512), name: "notes.txt" },
-    ).expect(201);
+    expect(
+      (
+        await upload(
+          release.id,
+          { kind: "DOC" },
+          { body: randomBytes(512), name: "notes.txt" },
+        )
+      ).status,
+    ).toBe(201);
     const submit = (body: object) =>
       request(app)
         .post(`/api/releases/${release.id}/submit`)
@@ -894,11 +732,15 @@ describe("file rules on upload, read and submit", () => {
   it("submits without a note when nothing warns", async () => {
     const exe = freshExe();
     const release = await draft({ version: "2.5.0" });
-    await upload(
-      release.id,
-      { kind: "SDK", platform: "WINDOWS" },
-      { body: exe, name: "setup.exe" },
-    ).expect(201);
+    expect(
+      (
+        await upload(
+          release.id,
+          { kind: "SDK", platform: "WINDOWS" },
+          { body: exe, name: "setup.exe" },
+        )
+      ).status,
+    ).toBe(201);
 
     await request(app)
       .post(`/api/releases/${release.id}/submit`)

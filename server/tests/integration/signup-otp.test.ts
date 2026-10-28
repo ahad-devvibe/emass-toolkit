@@ -74,6 +74,31 @@ const wrongCode = (code: string) =>
   String((Number(code) + 1) % 1_000_000).padStart(6, "0");
 
 describe("POST /api/auth/signup", () => {
+  it("stores an optional website as a full URL, and refuses one that isn't", async () => {
+    captureEmails();
+    const email = uniqueEmail("website");
+
+    expect((await postSignup(email, { website: "acme.com/" })).status).toBe(
+      201,
+    );
+    const user = await prisma.user.findUnique({ where: { email } });
+    expect(user?.website).toBe("https://acme.com");
+
+    const bare = uniqueEmail("nosite");
+    expect((await postSignup(bare)).status).toBe(201);
+    expect(
+      (await prisma.user.findUnique({ where: { email: bare } }))?.website,
+    ).toBeNull();
+
+    const bad = await postSignup(uniqueEmail("badsite"), {
+      website: "not a site",
+    });
+    expect(bad.status).toBe(400);
+    expect(bad.body.details.fieldErrors.website).toEqual([
+      "Enter a website like acme.com",
+    ]);
+  });
+
   it("emails a code and answers with the email only, no HubSpot", async () => {
     const mail = captureEmails();
     const email = uniqueEmail("start");

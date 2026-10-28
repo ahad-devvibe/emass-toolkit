@@ -11,7 +11,9 @@ import { createOciDriver } from "../src/services/storage/drivers/oci.driver.js";
 // Checks the OCI multipart path against the real staging bucket (needs OCI_*
 // env and credentials). Uploads ~50 MB in parts, verifies it, reads byte
 // ranges back (file inspection reads staged objects this way), deletes it,
-// then aborts an upload midway and checks no object was left behind.
+// then aborts an upload midway and checks no object was left behind. Then
+// the piece-by-piece path resumable uploads use: create, parts one call at a
+// time (one sent twice), complete, verify; and an aborted one refuses parts.
 //   npm run storage:smoke
 const TOTAL_BYTES = 50 * 1024 ** 2;
 const CHUNK_BYTES = 1024 ** 2;
@@ -105,6 +107,82 @@ async function main() {
     throw new Error("aborted upload left an object behind");
   }
   logger.info("aborted upload left no object");
+
+  // Resumable uploads: each part is its own call, as each arrives in its own request
+  const partSize = 10 * 1024 ** 2;
+  const pieces = randomBytes(2 * partSize + 12345);
+  const pieceKey = `${prefix}/pieces.bin`;
+  const target = {
+    bucket: staging,
+    key: pieceKey,
+    uploadId: await driver.createUpload({
+      bucket: staging,
+      key: pieceKey,
+      fileName: "pieces.bin",
+    }),
+  };
+  const part = (n: number) => pieces.subarray((n - 1) * partSize, n * partSize);
+  const etags: { partNum: number; etag: string }[] = [];
+  for (const n of [1, 2, 3]) {
+    etags.push({
+      partNum: n,
+      etag: await driver.uploadPart({ ...target, partNum: n, body: part(n) }),
+    });
+  }
+  // A retried part replaces itself; commit with the etag of the last send
+  etags[1].etag = await driver.uploadPart({
+    ...target,
+    partNum: 2,
+    body: part(2),
+  });
+  // Commit what OCI holds now, as the server does: part 2 was sent twice
+  const listed = await driver.listParts(target);
+  if (listed.map((part) => part.partNum).join() !== "1,2,3") {
+    throw new Error(
+      `OCI lists parts ${listed.map((part) => part.partNum).join()}`,
+    );
+  }
+  if (listed[1].etag !== etags[1].etag) {
+    throw new Error("OCI kept another etag for the part sent twice");
+  }
+  await driver.completeUpload({
+    ...target,
+    parts: listed.map(({ partNum, etag }) => ({ partNum, etag })),
+  });
+  if ((await objectSize(staging, pieceKey)) !== pieces.length) {
+    throw new Error("piece-by-piece upload has the wrong size");
+  }
+  const seam = await driver.readRange(staging, pieceKey, partSize - 100, 200);
+  if (
+    !pieces.subarray(partSize - 100, partSize + 100).equals(Buffer.from(seam))
+  ) {
+    throw new Error("piece-by-piece upload came back different at a seam");
+  }
+  await driver.deleteObject(staging, pieceKey);
+  logger.info("piece-by-piece upload committed and verified");
+
+  const abandonedKey = `${prefix}/abandoned.bin`;
+  const abandoned = {
+    bucket: staging,
+    key: abandonedKey,
+    uploadId: await driver.createUpload({ bucket: staging, key: abandonedKey }),
+  };
+  await driver.uploadPart({ ...abandoned, partNum: 1, body: part(1) });
+  await driver.abortUpload(abandoned);
+  await driver.abortUpload(abandoned);
+  const refused = await driver
+    .uploadPart({ ...abandoned, partNum: 2, body: part(2) })
+    .then(
+      () => null,
+      (error: { code?: string }) => error.code,
+    );
+  if (refused !== "UPLOAD_NOT_FOUND") {
+    throw new Error(`a part after abort gave ${refused ?? "success"}`);
+  }
+  if ((await objectSize(staging, abandonedKey)) !== null) {
+    throw new Error("aborted piece-by-piece upload left an object");
+  }
+  logger.info("aborted piece-by-piece upload refuses parts and leaves nothing");
 }
 
 main().catch((err: unknown) => {

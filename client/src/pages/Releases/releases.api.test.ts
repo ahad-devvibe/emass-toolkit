@@ -3,14 +3,14 @@ import { ApiRequestError } from "@/lib/api/http"
 import { blockedFiles, fileBlockedReasons, highestShipped, platformTakenBy, unconfirmedWarnings } from "./releases.errors"
 
 // The session module opens a BroadcastChannel at import; the API module only needs its two calls
-const session = vi.hoisted(() => ({ authorizedRequest: vi.fn(), authorizedUpload: vi.fn() }))
+const session = vi.hoisted(() => ({ authorizedRequest: vi.fn(), authorizedSend: vi.fn() }))
 vi.mock("@/auth/session", () => session)
 
 const { listQuery, releasesApi } = await import("./releases.api")
 
 beforeEach(() => {
   session.authorizedRequest.mockReset()
-  session.authorizedUpload.mockReset()
+  session.authorizedSend.mockReset()
 })
 
 describe("listQuery", () => {
@@ -24,30 +24,58 @@ describe("listQuery", () => {
   })
 })
 
-describe("releasesApi.uploadFile", () => {
-  const file = new File(["x"], "emass.deb")
+describe("releasesApi.uploads", () => {
   const apiFile = { id: "f1", kind: "SDK", platform: "UBUNTU", name: "emass.deb", contentType: "application/octet-stream", sizeBytes: 1, sha256: "a", createdAt: "2026-10-22T00:00:00.000Z" }
+  const opened = { uploadId: "u1", name: "emass.deb", size: 1, sha256: "h", partSize: 10, partsDone: 0 }
 
-  it("sends kind, platform, replace and sha256, in that order, before the file", async () => {
-    session.authorizedUpload.mockResolvedValue({ file: apiFile })
+  it("opens a session with the file's details and its mapping in the server's vocabulary", async () => {
+    session.authorizedRequest.mockResolvedValue(opened)
 
-    const uploaded = await releasesApi.uploadFile("r/1", { file, kind: "sdk", os: "linux", replace: "old", sha256: "h" })
+    const result = await releasesApi.uploads.create("r/1", { name: "emass.deb", size: 1, sha256: "h", contentType: "application/vnd.debian.binary-package", kind: "sdk", os: "linux", replace: "old" })
 
-    expect(session.authorizedUpload).toHaveBeenCalledWith("/releases/r%2F1/files", [["kind", "SDK"], ["platform", "UBUNTU"], ["replace", "old"], ["sha256", "h"]], file, {})
-    expect(uploaded).toMatchObject({ id: "f1", kind: "sdk", os: "linux" })
+    expect(session.authorizedRequest).toHaveBeenCalledWith("/releases/r%2F1/uploads", {
+      method: "POST",
+      body: { name: "emass.deb", size: 1, sha256: "h", contentType: "application/vnd.debian.binary-package", kind: "SDK", platform: "UBUNTU", replace: "old" },
+    })
+    expect(result).toEqual(opened)
   })
 
-  it("sends no platform for a doc", async () => {
-    session.authorizedUpload.mockResolvedValue({ file: { ...apiFile, kind: "DOC", platform: null } })
-    await releasesApi.uploadFile("r1", { file, kind: "documentation", os: null, sha256: "h" })
-    expect(session.authorizedUpload.mock.calls[0][1]).toEqual([["kind", "DOC"], ["sha256", "h"]])
+  it("sends no platform for a doc and no mapping for an undetected file", async () => {
+    session.authorizedRequest.mockResolvedValue(opened)
+    await releasesApi.uploads.create("r1", { name: "a.pdf", size: 1, sha256: "h", kind: "documentation", os: null })
+    await releasesApi.uploads.create("r1", { name: "a.bin", size: 1, sha256: "h", kind: null, os: null })
+    expect(session.authorizedRequest.mock.calls[0][1].body).toEqual({ name: "a.pdf", size: 1, sha256: "h", kind: "DOC" })
+    expect(session.authorizedRequest.mock.calls[1][1].body).toEqual({ name: "a.bin", size: 1, sha256: "h" })
   })
 
-  it("sends no fields for an undetected file", async () => {
-    session.authorizedUpload.mockResolvedValue({ file: { ...apiFile, kind: null, platform: null } })
-    const uploaded = await releasesApi.uploadFile("r1", { file, kind: null, os: null, sha256: "h" })
-    expect(session.authorizedUpload.mock.calls[0][1]).toEqual([["sha256", "h"]])
-    expect(uploaded.kind).toBeNull()
+  it("puts a part as raw bytes, and maps the completed file", async () => {
+    const part = new Blob(["abc"])
+    const options = { onProgress: () => undefined }
+    session.authorizedSend.mockResolvedValue({ ...opened, partsDone: 3 })
+    await releasesApi.uploads.putPart("r1", "u/1", 3, part, options)
+    expect(session.authorizedSend).toHaveBeenCalledWith("PUT", "/releases/r1/uploads/u%2F1/parts/3", part, options)
+
+    session.authorizedRequest.mockResolvedValue({ file: apiFile })
+    const saved = await releasesApi.uploads.complete("r1", "u1")
+    expect(session.authorizedRequest).toHaveBeenCalledWith("/releases/r1/uploads/u1/complete", { method: "POST" })
+    expect(saved).toMatchObject({ id: "f1", kind: "sdk", os: "linux" })
+  })
+
+  it("lists and cancels uploads", async () => {
+    session.authorizedRequest.mockResolvedValue({ uploads: [opened] })
+    expect(await releasesApi.uploads.list("r1")).toEqual([opened])
+    session.authorizedRequest.mockResolvedValue(undefined)
+    await releasesApi.uploads.abort("r1", "u1")
+    expect(session.authorizedRequest).toHaveBeenLastCalledWith("/releases/r1/uploads/u1", { method: "DELETE" })
+  })
+})
+
+describe("releasesApi.publishJobs", () => {
+  it("reads every running publish job", async () => {
+    const entry = { releaseId: "r1", version: "1.0.0", productName: "EMASS IDE", job: { phase: "copying" } }
+    session.authorizedRequest.mockResolvedValue({ jobs: [entry] })
+    expect(await releasesApi.publishJobs()).toEqual([entry])
+    expect(session.authorizedRequest).toHaveBeenCalledWith("/releases/publish-jobs")
   })
 })
 

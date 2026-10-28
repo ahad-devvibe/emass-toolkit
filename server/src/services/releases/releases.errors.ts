@@ -78,9 +78,6 @@ export const fileTooLarge = (maxBytes: number) =>
     { maxBytes },
   );
 
-export const uploadAborted = () =>
-  ApiError.badRequest("The upload was cancelled", "UPLOAD_ABORTED");
-
 /** P2002 on (productId, version) means another release already has it. */
 export function translateVersionConflict(err: unknown): void {
   if (
@@ -143,4 +140,46 @@ export const releaseFilesBlocked = (files: FileReasonsByFile[]) =>
       .join(" ")}`,
     "FILE_BLOCKED",
     { files },
+  );
+
+// --- Resumable uploads (POST /releases/:id/uploads) ---
+
+/** The session was completed, aborted or expired, or never existed. */
+export const uploadNotFound = () =>
+  new ApiError(404, "The upload no longer exists", "UPLOAD_NOT_FOUND");
+
+/** Parts arrive in order; `expected` is the next one the server takes. */
+export const partOutOfOrder = (expected: number) =>
+  ApiError.conflict(`Send part ${expected} next`, "PART_OUT_OF_ORDER", {
+    expected,
+  });
+
+export const partSizeInvalid = (expected: number) =>
+  ApiError.badRequest(
+    `This part must be exactly ${expected} bytes`,
+    "PART_SIZE_INVALID",
+    { expected },
+  );
+
+/** Complete was called before every part arrived. */
+export const uploadIncomplete = (expected: number) =>
+  ApiError.conflict(
+    `Part ${expected} hasn't arrived yet`,
+    "UPLOAD_INCOMPLETE",
+    { expected },
+  );
+
+/** Storage holds a part that isn't what the server received: start the file over. */
+export const uploadPartsMismatch = (partNum: number) =>
+  ApiError.conflict(
+    "Some pieces of this file didn't arrive intact. Upload it again.",
+    "UPLOAD_PARTS_MISMATCH",
+    { partNum },
+  );
+
+/** The same bytes are already uploading, with another name, size or mapping. */
+export const uploadSessionMismatch = () =>
+  ApiError.conflict(
+    "This file is already uploading with different details. Cancel that upload first.",
+    "UPLOAD_SESSION_MISMATCH",
   );

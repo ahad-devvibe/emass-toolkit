@@ -18,6 +18,7 @@ export interface HubspotContactInput {
   companyName: string;
   jobTitle: string;
   useCase?: string | null;
+  website?: string | null;
 }
 
 /**
@@ -61,6 +62,8 @@ function toContactProperties(
   };
   if (input.middleName) properties.middlename = input.middleName;
   if (input.useCase) properties[HUBSPOT_USE_CASE_PROPERTY] = input.useCase;
+  // HubSpot's built-in contact property: nothing to set up in the portal
+  if (input.website) properties.website = input.website;
   return properties;
 }
 
@@ -243,6 +246,7 @@ export async function syncHubspotContact(
       companyName: user.companyName,
       jobTitle: user.jobTitle,
       useCase: user.useCase,
+      website: user.website,
     });
   } catch (err) {
     logger.warn({ err, userId: user.id }, "hubspot contact sync failed");

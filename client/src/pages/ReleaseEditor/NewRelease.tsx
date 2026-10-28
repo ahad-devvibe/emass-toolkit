@@ -10,7 +10,10 @@ import { releasesApi } from "@/pages/Releases/releases.api"
 import { useProducts, useVersionSuggestion } from "@/pages/Releases/useReleaseQueries"
 import { cn } from "@/lib/utils"
 import { serverVersionProblem, versionProblem } from "./editor.state"
-import { stashPendingFiles } from "./pending-files"
+import type { PickedFile } from "@/features/uploads/file-source"
+import { useUploadsStore } from "@/features/uploads/useUploads"
+import { useAuth } from "@/auth/useAuth"
+import { DraftsInProgress } from "./components/DraftsInProgress"
 import { CheckItem, EditorCard, VersionField } from "./components/EditorParts"
 import { FileDropzone } from "./components/FileDropzone"
 import { NotesEditor } from "./components/NotesEditor"
@@ -22,6 +25,8 @@ import { NotesEditor } from "./components/NotesEditor"
  */
 export function NewRelease() {
   const navigate = useNavigate()
+  const uploads = useUploadsStore()
+  const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const products = useProducts()
   const [chosen, setChosen] = useState<string | null>(searchParams.get("product"))
@@ -40,7 +45,7 @@ export function NewRelease() {
 
   const dropBlocker = products.loading ? "Loading products…" : !productId ? "No products available" : formatError ? "Pick a version first" : creating ? "Creating the draft…" : null
 
-  async function create(files: File[]) {
+  async function create(files: PickedFile[]) {
     if (!productId) return
     if (formatError) {
       setTouched(true)
@@ -49,9 +54,10 @@ export function NewRelease() {
     setCreating(true)
     try {
       const release = await releasesApi.create({ productId, version: version.trim(), releaseNotes: notes || undefined })
-      if (files.length) stashPendingFiles(release.id, files)
+      // The files start uploading now; the editor shows them once it opens
+      if (files.length) uploads.add(release.id, `${release.product.name} v${release.version}`, files)
       toast.success(files.length ? `Draft v${release.version} created` : "Draft saved", { description: files.length ? "Your files are uploading." : undefined })
-      navigate(`/releases/${release.id}/edit`, { replace: true })
+      navigate(`/releases/${release.id}/edit`, { replace: true, state: { release } })
     } catch (error) {
       const problem = serverVersionProblem(error)
       if (problem) setServerError(problem)
@@ -70,6 +76,8 @@ export function NewRelease() {
             <p className="mt-1 text-sm text-muted-foreground">Pick the product and version, then drop the build. Files upload as soon as you add them.</p>
           </div>
         </header>
+
+        {user && <DraftsInProgress userId={user.id} />}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <div className="space-y-5">

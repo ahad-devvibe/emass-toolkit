@@ -24,6 +24,33 @@ export interface ReadUrl {
   expiresAt: Date;
 }
 
+export interface CreateUploadInput {
+  bucket: string;
+  key: string;
+  contentType?: string;
+  /** Saved as the object's Content-Disposition (attachment), where supported. */
+  fileName?: string;
+}
+
+/** One open multipart upload: the object it will become and the provider's id. */
+export interface UploadTarget {
+  bucket: string;
+  key: string;
+  uploadId: string;
+}
+
+export interface UploadedPart {
+  partNum: number;
+  etag: string;
+}
+
+/** A part as storage holds it: the etag to commit, and what it contains. */
+export interface StoredPart extends UploadedPart {
+  /** Base64 MD5 of the part's bytes. */
+  md5: string;
+  size: number;
+}
+
 export interface CopyObjectInput {
   fromBucket: string;
   fromKey: string;
@@ -51,6 +78,18 @@ export interface CopyObjectInput {
  * `readRange` returns exactly `length` bytes from `offset` (an OCI ranged
  * GET), so file inspection reads a few KB of a large staged object. A missing
  * object throws SOURCE_NOT_FOUND; a short read or other failure READ_FAILED.
+ *
+ * Multipart, for uploads that arrive piece by piece across requests:
+ * `createUpload` opens one and returns its id; `uploadPart` stores part
+ * `partNum` (1-based; sending a number again replaces that part) and returns
+ * its etag; `completeUpload` commits the listed parts in order, and only then
+ * does the object exist; `abortUpload` discards it, and an upload that is
+ * already gone counts as aborted. A part or commit for an unknown upload throws
+ * UPLOAD_NOT_FOUND; a request storage refuses for good UPLOAD_REJECTED; other
+ * provider failures UPLOAD_FAILED. `listParts` returns the parts storage holds
+ * now (sending a part number twice keeps only the last, with a new etag), so a
+ * commit can use them rather than etags remembered earlier. `putStream` is
+ * built on these.
  */
 export interface StorageDriver {
   putStream(input: PutStreamInput): Promise<void>;
@@ -63,6 +102,15 @@ export interface StorageDriver {
     offset: number,
     length: number,
   ): Promise<Uint8Array>;
+  createUpload(input: CreateUploadInput): Promise<string>;
+  uploadPart(
+    target: UploadTarget & { partNum: number; body: Buffer },
+  ): Promise<string>;
+  completeUpload(
+    target: UploadTarget & { parts: UploadedPart[] },
+  ): Promise<void>;
+  abortUpload(target: UploadTarget): Promise<void>;
+  listParts(target: UploadTarget): Promise<StoredPart[]>;
 }
 
 let driver: StorageDriver | undefined;

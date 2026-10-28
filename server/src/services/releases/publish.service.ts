@@ -313,6 +313,37 @@ async function runPublish(
  * The job if one is known, plus the release's status, so the client can tell
  * "published" from "never started or lost in a restart" (still IN_REVIEW).
  */
+/**
+ * GET /releases/publish-jobs: every job still running or recently settled,
+ * with what an admin needs to label it. Lets a page that doesn't know the
+ * release ids (after a refresh, another tab) follow publishing.
+ */
+export async function listPublishJobs() {
+  const current = [...jobs.values()].map((job) => ({ ...job }));
+  if (current.length === 0) return { jobs: [] };
+  const releases = await prisma.release.findMany({
+    where: { id: { in: current.map((job) => job.releaseId) } },
+    select: { id: true, version: true, product: { select: { name: true } } },
+  });
+  const byId = new Map(releases.map((release) => [release.id, release]));
+  return {
+    jobs: current.flatMap((job) => {
+      const release = byId.get(job.releaseId);
+      // A release deleted since has nothing left to follow
+      return release
+        ? [
+            {
+              releaseId: job.releaseId,
+              version: release.version,
+              productName: release.product.name,
+              job,
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
 export async function getPublishStatus(releaseId: string) {
   const release = await prisma.release.findUnique({
     where: { id: releaseId },

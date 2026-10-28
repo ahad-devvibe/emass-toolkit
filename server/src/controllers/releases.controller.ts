@@ -14,6 +14,7 @@ import {
 import { releaseNotFound } from "../services/releases/releases.errors.js";
 import {
   getPublishStatus,
+  listPublishJobs,
   startPublish,
 } from "../services/releases/publish.service.js";
 import {
@@ -103,6 +104,10 @@ export const rollback = async (req: Request, res: Response) => {
 export const publish = async (req: Request, res: Response) => {
   const job = await startPublish(userId(req), releaseId(req));
   res.status(202).json(ApiResponse.success({ job }, "Publishing started", 202));
+};
+
+export const publishJobs = async (_req: Request, res: Response) => {
+  res.json(ApiResponse.success(await listPublishJobs()));
 };
 
 export const publishStatus = async (req: Request, res: Response) => {

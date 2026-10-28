@@ -17,6 +17,7 @@ import {
   type HubspotClient,
 } from "../hubspot/hubspot.service.js";
 import { presentUser, translateUniqueSignupError } from "./auth.errors.js";
+import { normalizeWebsite } from "../../schemas/auth.schema.js";
 import { hashPassword, normalizeEmail } from "./auth.utils.js";
 import { classifySignupEmail } from "./domains.service.js";
 import { checkOtp, issueOtp, verifyOtp } from "./otp.service.js";
@@ -40,6 +41,7 @@ export interface SignupInput {
   companyName: string;
   jobTitle: string;
   useCase: string;
+  website?: string;
   captcha: string;
 }
 
@@ -83,6 +85,7 @@ export async function signup(
     companyName: input.companyName,
     jobTitle: input.jobTitle,
     useCase: input.useCase,
+    website: input.website ? normalizeWebsite(input.website) : null,
   };
 
   if ((await classifySignupEmail(email)) === "COMPETITOR") {

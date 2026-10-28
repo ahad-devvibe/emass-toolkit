@@ -22,13 +22,19 @@ type Loaded<T> = { key: string; nonce: number; data: T | null; error: ApiRequest
 
 const asApiError = (error: unknown) => (error instanceof ApiRequestError ? error : new ApiRequestError(0, "UNKNOWN", "Something went wrong. Try again."))
 
+/** Data already in hand for `key` (e.g. the response that created it), shown while it loads again. */
+export function initialLoaded<T>(key: string | null, initial: T | undefined): Loaded<T> | null {
+  return key !== null && initial !== undefined ? { key, nonce: 0, data: initial, error: null } : null
+}
+
 /**
  * Loads `load()` whenever `key` changes; a null key loads nothing. With
  * `keepPrevious`, the last data stays visible while the next key loads
- * (filters, badges) instead of blanking.
+ * (filters, badges) instead of blanking. `initial` is shown at once and
+ * replaced when the load finishes.
  */
-export function useResource<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>, { keepPrevious = false } = {}): Resource<T> {
-  const [loaded, setLoaded] = useState<Loaded<T> | null>(null)
+export function useResource<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>, { keepPrevious = false, initial }: { keepPrevious?: boolean; initial?: T } = {}): Resource<T> {
+  const [loaded, setLoaded] = useState<Loaded<T> | null>(() => initialLoaded(key, initial))
   const [nonce, setNonce] = useState(0)
   const run = useEffectEvent((signal: AbortSignal) => load(signal))
 
@@ -65,8 +71,9 @@ export function useProducts(): Resource<ProductOption[]> {
   return useResource("products", () => productsApi.list())
 }
 
-export function useRelease(id: string | undefined): Resource<ReleaseDetail> & { notFound: boolean } {
-  const resource = useResource(id ?? null, () => releasesApi.get(id!))
+/** `initial` (the release as just created) skips the loader; it's used only if it's the same release. */
+export function useRelease(id: string | undefined, initial?: ReleaseDetail): Resource<ReleaseDetail> & { notFound: boolean } {
+  const resource = useResource(id ?? null, () => releasesApi.get(id!), { initial: initial?.id === id ? initial : undefined })
   return { ...resource, notFound: resource.error?.code === "RELEASE_NOT_FOUND" }
 }
 

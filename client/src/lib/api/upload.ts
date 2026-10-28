@@ -6,27 +6,24 @@ export type UploadOptions = { onProgress?: UploadProgress; signal?: AbortSignal 
 export const uploadCancelled = () => new ApiRequestError(0, "CANCELLED", "The upload was cancelled.")
 
 /**
- * Multipart POST over XMLHttpRequest, because fetch can't report upload
- * progress. Fields are appended before the file (the server needs them
- * first); the response goes through the same envelope parsing as apiRequest.
- * Progress reaches `total` once the bytes are sent; the server then still
- * commits the object, so callers show "Finalizing" until this resolves.
+ * Sends a raw Blob (one piece of a file) over XMLHttpRequest, because fetch
+ * can't report upload progress. The response goes through the same envelope
+ * parsing as apiRequest. Progress reaches `total` once the bytes are sent; the
+ * server then still stores them, so callers wait for this to resolve.
  */
-export function uploadMultipart<T>(path: string, fields: [string, string][], file: File, { onProgress, signal }: UploadOptions = {}): Promise<T> {
+export function sendBlob<T>(method: "PUT" | "POST", path: string, body: Blob, { onProgress, signal }: UploadOptions = {}): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (signal?.aborted) {
       reject(uploadCancelled())
       return
     }
 
-    const form = new FormData()
-    for (const [name, value] of fields) form.append(name, value)
-    form.append("file", file, file.name)
-
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${API_BASE}${path}`)
+    xhr.open(method, `${API_BASE}${path}`)
     xhr.responseType = "text"
+    xhr.withCredentials = true
     xhr.setRequestHeader("Accept", "application/json")
+    xhr.setRequestHeader("Content-Type", "application/octet-stream")
 
     const onAbort = () => xhr.abort()
     signal?.addEventListener("abort", onAbort, { once: true })
@@ -35,7 +32,7 @@ export function uploadMultipart<T>(path: string, fields: [string, string][], fil
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(event.loaded, event.total)
     }
-    xhr.upload.onload = () => onProgress?.(file.size, file.size)
+    xhr.upload.onload = () => onProgress?.(body.size, body.size)
 
     xhr.onload = () => {
       settle()
@@ -60,6 +57,6 @@ export function uploadMultipart<T>(path: string, fields: [string, string][], fil
       reject(uploadCancelled())
     }
 
-    xhr.send(form)
+    xhr.send(body)
   })
 }

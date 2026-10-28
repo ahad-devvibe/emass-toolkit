@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   forgotPasswordSchema,
   loginSchema,
+  normalizeWebsite,
   resendOtpSchema,
   resendSetPasswordSchema,
   resetPasswordCheckSchema,
@@ -384,5 +385,61 @@ describe("forgot/reset/refresh/logout schemas", () => {
     expect(
       issuesOf(resetPasswordCheckSchema.safeParse({ token: "x".repeat(129) })),
     ).toEqual([["token", "Token must be at most 128 characters"]]);
+  });
+});
+
+describe("normalizeWebsite", () => {
+  it("adds https:// and drops a bare domain's trailing slash", () => {
+    expect(normalizeWebsite("acme.com")).toBe("https://acme.com");
+    expect(normalizeWebsite("  www.acme.com/  ")).toBe("https://www.acme.com");
+    expect(normalizeWebsite("HTTP://Acme.com")).toBe("http://acme.com");
+  });
+
+  it("keeps a path, query and port", () => {
+    expect(normalizeWebsite("http://acme.com/en?x=1")).toBe(
+      "http://acme.com/en?x=1",
+    );
+    expect(normalizeWebsite("acme.com:8080/docs")).toBe(
+      "https://acme.com:8080/docs",
+    );
+  });
+
+  it("refuses anything that isn't a public web address", () => {
+    for (const value of [
+      "",
+      "not a site",
+      "localhost",
+      "ftp://acme.com",
+      "javascript:alert(1)",
+      "https://user:pass@acme.com",
+      ".com",
+      `acme.com/${"x".repeat(260)}`,
+    ]) {
+      expect(normalizeWebsite(value), value).toBeNull();
+    }
+  });
+});
+
+describe("signupSchema website", () => {
+  const parse = (website: unknown) =>
+    signupSchema.safeParse({ ...validSignup, website });
+
+  it("is optional: missing or blank is fine", () => {
+    expect(parse(undefined).success).toBe(true);
+    const blank = parse("   ");
+    expect(blank.success && blank.data.website).toBe("");
+  });
+
+  it("accepts what people type and refuses the rest with one message", () => {
+    expect(parse("acme.com").success).toBe(true);
+    const bad = parse("not a site");
+    expect(!bad.success && bad.error.issues[0]).toMatchObject({
+      path: ["website"],
+      message: "Enter a website like acme.com",
+    });
+    const wrongType = parse(42);
+    expect(!wrongType.success && wrongType.error.issues[0].message).toBe(
+      "Website must be text",
+    );
   });
 });

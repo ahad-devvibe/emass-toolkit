@@ -75,6 +75,49 @@ const useCaseField = z
   .min(USE_CASE_MIN, `Tell us a bit more (at least ${USE_CASE_MIN} characters)`)
   .max(USE_CASE_MAX, `Use case must be at most ${USE_CASE_MAX} characters`);
 
+export const WEBSITE_MAX = 255;
+const WEBSITE_MESSAGE = "Enter a website like acme.com";
+
+/**
+ * A website as people type it ("acme.com", "www.acme.com/en") as a full
+ * http(s) URL: https:// is added when no scheme is given, and a bare domain
+ * loses its trailing slash. Null when it isn't a public web address.
+ */
+export function normalizeWebsite(input: string): string | null {
+  const value = input.trim();
+  if (!value) return null;
+  const withScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(value)
+    ? value
+    : `https://${value}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  // A public host has a dot (no "localhost") and no credentials
+  const host = url.hostname;
+  if (!host.includes(".") || host.startsWith(".") || host.endsWith(".")) {
+    return null;
+  }
+  if (url.username || url.password) return null;
+  const bare = url.pathname === "/" && !url.search && !url.hash;
+  const href = bare ? `${url.protocol}//${url.host}` : url.href;
+  return href.length <= WEBSITE_MAX ? href : null;
+}
+
+// Optional: blank means not given; anything else must be a web address. Only
+// checked here (the API docs describe the raw input); the sign-up service
+// stores normalizeWebsite(value).
+const websiteField = z
+  .string({ error: "Website must be text" })
+  .trim()
+  .refine((value) => value === "" || normalizeWebsite(value) !== null, {
+    message: WEBSITE_MESSAGE,
+  })
+  .optional();
+
 export const signupSchema = z.object(
   {
     email: emailField,
@@ -93,6 +136,7 @@ export const signupSchema = z.object(
     companyName: nameField("Company name", 120),
     jobTitle: nameField("Job title", 120),
     useCase: useCaseField,
+    website: websiteField,
     captcha: z
       .string({ error: required("Captcha") })
       .trim()

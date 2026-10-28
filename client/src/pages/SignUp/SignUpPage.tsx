@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ApiRequestError } from "@/lib/api/http"
 import { cn } from "@/lib/utils"
 import { CountryCombobox } from "./components/CountryCombobox"
+import { normalizeWebsite, WEBSITE_MESSAGE } from "./signup.utils"
 
 // form → code (emailed) → password → signed in, or "request received" for personal addresses
 type Step =
@@ -26,18 +27,18 @@ type Step =
   | { kind: "password"; email: string; code: string }
   | { kind: "pending"; email: string }
 
-// Middle name is optional on the API; the form doesn't ask for it
+// Middle name is optional on the API; the form doesn't ask for it. Website is optional too ("" when not given)
 type Form = Required<Omit<SignupInput, "middleName">>
 type Field = keyof Form
 type Errors = Partial<Record<Field, string>>
 
-const emptyForm: Form = { email: "", firstName: "", lastName: "", country: "", companyName: "", jobTitle: "", useCase: "", captcha: "" }
+const emptyForm: Form = { email: "", firstName: "", lastName: "", country: "", companyName: "", website: "", jobTitle: "", useCase: "", captcha: "" }
 
 // Same limits as the server's signupSchema
 const USE_CASE_MIN = 10
 const USE_CASE_MAX = 200
 
-const required: Record<Field, string> = {
+const required: Record<Exclude<Field, "website">, string> = {
   email: "Email is required",
   firstName: "First name is required",
   lastName: "Last name is required",
@@ -56,6 +57,7 @@ function validate(form: Form): Errors {
   if (form.email.trim() && !EMAIL_PATTERN.test(form.email.trim())) errors.email = "Enter a valid email address"
   const useCase = form.useCase.trim()
   if (useCase && useCase.length < USE_CASE_MIN) errors.useCase = `Tell us a bit more (at least ${USE_CASE_MIN} characters)`
+  if (form.website.trim() && !normalizeWebsite(form.website)) errors.website = WEBSITE_MESSAGE
   return errors
 }
 
@@ -113,8 +115,9 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
     if (Object.keys(nextErrors).length > 0) return
     setSubmitting(true)
     try {
-      const trimmed = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim()])) as Form
-      const { email } = await authApi.signup(trimmed)
+      const { website, ...rest } = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim()])) as Form
+      // Sent as the full address (https://acme.com), and only when given
+      const { email } = await authApi.signup({ ...rest, ...(website && { website: normalizeWebsite(website)! }) })
       // The captcha is used up; a return to the form needs a fresh one
       setForm((current) => ({ ...current, captcha: "" }))
       onCodeSent(email)
@@ -180,23 +183,28 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
           <FormField id="companyName" label="Company" required error={errors.companyName}>
             <Input {...fieldA11y("companyName", errors.companyName)} autoComplete="organization" maxLength={120} placeholder="Acme Inc." value={form.companyName} onChange={(event) => update("companyName")(event.target.value)} />
           </FormField>
+          <FormField id="website" label="Website" optional error={errors.website}>
+            <Input {...fieldA11y("website", errors.website)} type="url" inputMode="url" autoComplete="url" maxLength={255} placeholder="acme.com" value={form.website} onChange={(event) => update("website")(event.target.value)} />
+          </FormField>
           <FormField id="jobTitle" label="Job title" required error={errors.jobTitle}>
             <Input {...fieldA11y("jobTitle", errors.jobTitle)} autoComplete="organization-title" maxLength={120} placeholder="Software Engineer" value={form.jobTitle} onChange={(event) => update("jobTitle")(event.target.value)} />
           </FormField>
+        </div>
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-3">
           <FormField id="country" label="Country" required error={errors.country}>
             <CountryCombobox id="country" value={form.country} onChange={update("country")} invalid={Boolean(errors.country)} describedBy={errors.country ? "country-error" : undefined} />
           </FormField>
-        </div>
-
-        <FormField
+          <FormField
           id="useCase"
+          className="@[36rem]:col-span-2"
           label="What will you use EMASS for?"
           required
           error={errors.useCase}
           labelAside={<span className={cn("text-xs tabular-nums text-muted-foreground", form.useCase.length >= USE_CASE_MAX && "text-destructive")}>{form.useCase.length}/{USE_CASE_MAX}</span>}
         >
           <Textarea {...fieldA11y("useCase", errors.useCase)} rows={2} maxLength={USE_CASE_MAX} placeholder="e.g. Evaluating EMASS for a battery-powered vision sensor" className="max-h-40 min-h-16 short:min-h-14 compact:min-h-12" value={form.useCase} onChange={(event) => update("useCase")(event.target.value)} />
-        </FormField>
+          </FormField>
+        </div>
 
         <FormField id="captcha" label="Type the characters you see" required error={errors.captcha}>
           <div className="flex items-center gap-3">

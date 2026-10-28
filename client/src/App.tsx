@@ -1,4 +1,5 @@
 import { AuthProvider } from "@/auth/AuthProvider"
+import { UploadsProvider } from "@/features/uploads/UploadsProvider"
 import { GuestOnly, RequireAuth } from "@/auth/RequireAuth"
 import { AuthLayout } from "@/components/common/AuthLayout"
 import { RequireRole, RoleHome } from "@/auth/RequireRole"
@@ -43,6 +44,7 @@ const customer = (page: ReactNode) => <RequireAuth><RequireRole roles={["CUSTOME
 export default function App() {
   return (
     <AuthProvider>
+      <UploadsProvider>
       <BrowserRouter>
         <Routes>
           {/* One persistent shell so the brand panel doesn't remount between auth pages */}
@@ -66,6 +68,7 @@ export default function App() {
           <Route path="*" element={<RequireAuth><RoleHome /></RequireAuth>} />
         </Routes>
       </BrowserRouter>
+      </UploadsProvider>
     </AuthProvider>
   )
 }

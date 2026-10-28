@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -192,5 +193,113 @@ describe("local driver readRange", () => {
     ).rejects.toMatchObject({
       code: "INVALID_OBJECT_KEY",
     });
+  });
+});
+
+describe("local driver multipart", () => {
+  const target = { bucket: "local", key: "staged/p/r/u/sdk.zip" };
+
+  it("joins parts in commit order and removes the upload's parts", async () => {
+    const uploadId = await driver.createUpload(target);
+    // Sent out of order, and part 2 sent twice: the last one wins
+    await driver.uploadPart({
+      ...target,
+      uploadId,
+      partNum: 2,
+      body: Buffer.from("xxx"),
+    });
+    await driver.uploadPart({
+      ...target,
+      uploadId,
+      partNum: 1,
+      body: Buffer.from("abc"),
+    });
+    await driver.uploadPart({
+      ...target,
+      uploadId,
+      partNum: 2,
+      body: Buffer.from("def"),
+    });
+    await driver.completeUpload({
+      ...target,
+      uploadId,
+      parts: [
+        { partNum: 1, etag: "" },
+        { partNum: 2, etag: "" },
+      ],
+    });
+
+    const stored = await readFile(path.join(root, "local", target.key), "utf8");
+    expect(stored).toBe("abcdef");
+    expect(await filesUnder(path.join(root, "local", ".uploads"))).toEqual([]);
+  });
+
+  it("returns a stable etag per part content", async () => {
+    const uploadId = await driver.createUpload(target);
+    const part = { ...target, uploadId, partNum: 1, body: Buffer.from("abc") };
+    expect(await driver.uploadPart(part)).toBe(await driver.uploadPart(part));
+  });
+
+  it("leaves no object after an abort, and aborting twice is fine", async () => {
+    const uploadId = await driver.createUpload(target);
+    await driver.uploadPart({
+      ...target,
+      uploadId,
+      partNum: 1,
+      body: Buffer.from("abc"),
+    });
+    await driver.abortUpload({ ...target, uploadId });
+    await driver.abortUpload({ ...target, uploadId });
+
+    expect(await filesUnder(root)).toEqual([]);
+  });
+
+  it("refuses parts and commits for an unknown upload", async () => {
+    const unknown = { ...target, uploadId: "missing-upload" };
+    await expect(
+      driver.uploadPart({ ...unknown, partNum: 1, body: Buffer.from("a") }),
+    ).rejects.toMatchObject({ statusCode: 404, code: "UPLOAD_NOT_FOUND" });
+    await expect(
+      driver.completeUpload({ ...unknown, parts: [] }),
+    ).rejects.toMatchObject({ code: "UPLOAD_NOT_FOUND" });
+  });
+
+  it("refuses upload ids that could escape the uploads folder", async () => {
+    await expect(
+      driver.uploadPart({
+        ...target,
+        uploadId: "../x",
+        partNum: 1,
+        body: Buffer.from("a"),
+      }),
+    ).rejects.toMatchObject({ code: "UPLOAD_NOT_FOUND" });
+  });
+});
+
+describe("local driver listParts", () => {
+  it("lists the parts with their size and md5", async () => {
+    const target = { bucket: "local", key: "staged/p/r/u/a.bin" };
+    const uploadId = await driver.createUpload(target);
+    await driver.uploadPart({
+      ...target,
+      uploadId,
+      partNum: 2,
+      body: Buffer.from("de"),
+    });
+    const etag = await driver.uploadPart({
+      ...target,
+      uploadId,
+      partNum: 1,
+      body: Buffer.from("abc"),
+    });
+
+    const parts = await driver.listParts({ ...target, uploadId });
+
+    expect(parts.map((part) => [part.partNum, part.size])).toEqual([
+      [1, 3],
+      [2, 2],
+    ]);
+    expect(parts[0].etag).toBe(etag);
+    expect(parts[0].md5).toBe(createHash("md5").update("abc").digest("base64"));
   });
 });

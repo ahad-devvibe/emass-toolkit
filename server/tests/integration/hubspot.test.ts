@@ -32,7 +32,11 @@ describe("HubSpot contact lifecycle", () => {
     const email = uniqueEmail("hs-custom");
     const hubspot = createMockHubspotClient();
     const sender = createMockEmailSender();
-    const code = await startSignup(email, sender, { middleName: "Byron" });
+    // The website goes in as typed and reaches HubSpot as a full address
+    const code = await startSignup(email, sender, {
+      middleName: "Byron",
+      website: "analytical-engines.co.uk/",
+    });
     expect(hubspot.upserted).toHaveLength(0);
 
     await completeSignup(email, code, SIGNUP_PASSWORD, sender, hubspot);
@@ -47,6 +51,7 @@ describe("HubSpot contact lifecycle", () => {
         companyName: "Analytical Engines Ltd",
         jobTitle: "Engineer",
         useCase: "Evaluating EMASS for a battery-powered vision sensor",
+        website: "https://analytical-engines.co.uk",
       },
     ]);
   });

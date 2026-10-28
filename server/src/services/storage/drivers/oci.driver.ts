@@ -42,6 +42,35 @@ function isNotFound(error: unknown): boolean {
   );
 }
 
+// Provider failures become UPLOAD_FAILED (UPLOAD_NOT_FOUND for an unknown
+// upload); errors that are already ApiErrors, or come from a body, pass through
+async function provider<T>(key: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (isNotFound(error)) {
+      throw new ApiError(
+        404,
+        "The upload no longer exists",
+        "UPLOAD_NOT_FOUND",
+      );
+    }
+    logger.error({ key, err: error }, "OCI multipart upload failed");
+    // A request OCI refuses as such (4xx) fails again if retried: say so
+    const status = (error as { statusCode?: unknown })?.statusCode;
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      throw new ApiError(
+        409,
+        "Storage refused this upload. Upload the file again.",
+        "UPLOAD_REJECTED",
+        { serviceCode: (error as { serviceCode?: unknown }).serviceCode },
+      );
+    }
+    throw new ApiError(502, "Unable to upload file", "UPLOAD_FAILED");
+  }
+}
+
 /**
  * Streams uploads into an OCI multipart upload, one part in memory at a time.
  * Every upload goes through multipart (even tiny files) so there is one path.
@@ -58,25 +87,21 @@ export function createOciDriver({
   sleep = wait,
   now = Date.now,
 }: OciDriverOptions = {}): StorageDriver {
-  return {
-    async putStream({ bucket, key, contentType, fileName, body }) {
+  const uploadRef = (bucket: string, key: string, uploadId: string) => ({
+    namespaceName: getConfig().namespace,
+    bucketName: bucket,
+    objectName: key,
+    uploadId,
+  });
+
+  const driver: StorageDriver = {
+    async createUpload({ bucket, key, contentType, fileName }) {
       const { namespace } = getConfig();
-      const target = { namespaceName: namespace, bucketName: bucket };
-
-      // Provider failures become UPLOAD_FAILED; body errors pass through as-is
-      const provider = async <T>(call: () => Promise<T>): Promise<T> => {
-        try {
-          return await call();
-        } catch (error) {
-          logger.error({ key, err: error }, "OCI multipart upload failed");
-          throw new ApiError(502, "Unable to upload file", "UPLOAD_FAILED");
-        }
-      };
-
-      const client = await provider(getClient);
-      const { multipartUpload } = await provider(() =>
+      const client = await provider(key, getClient);
+      const { multipartUpload } = await provider(key, () =>
         client.createMultipartUpload({
-          ...target,
+          namespaceName: namespace,
+          bucketName: bucket,
           createMultipartUploadDetails: {
             object: key,
             contentType,
@@ -87,46 +112,105 @@ export function createOciDriver({
           },
         }),
       );
-      const upload = {
-        ...target,
-        objectName: key,
-        uploadId: multipartUpload.uploadId,
-      };
+      return multipartUpload.uploadId;
+    },
+
+    async uploadPart({ bucket, key, uploadId, partNum, body }) {
+      const client = await provider(key, getClient);
+      const { eTag } = await provider(key, () =>
+        client.uploadPart({
+          ...uploadRef(bucket, key, uploadId),
+          uploadPartNum: partNum,
+          uploadPartBody: body,
+          contentLength: body.length,
+        }),
+      );
+      return eTag;
+    },
+
+    async completeUpload({ bucket, key, uploadId, parts }) {
+      const client = await provider(key, getClient);
+      await provider(key, () =>
+        client.commitMultipartUpload({
+          ...uploadRef(bucket, key, uploadId),
+          commitMultipartUploadDetails: { partsToCommit: parts },
+        }),
+      );
+    },
+
+    async abortUpload({ bucket, key, uploadId }) {
+      const client = await provider(key, getClient);
+      try {
+        await client.abortMultipartUpload(uploadRef(bucket, key, uploadId));
+      } catch (error) {
+        if (isNotFound(error)) return;
+        logger.error(
+          { key, uploadId, err: error },
+          "OCI abortMultipartUpload failed",
+        );
+        throw new ApiError(502, "Unable to cancel the upload", "UPLOAD_FAILED");
+      }
+    },
+
+    async listParts({ bucket, key, uploadId }) {
+      const client = await provider(key, getClient);
+      const parts: {
+        partNum: number;
+        etag: string;
+        md5: string;
+        size: number;
+      }[] = [];
+      let page: string | undefined;
+      do {
+        const response = await provider(key, () =>
+          client.listMultipartUploadParts({
+            ...uploadRef(bucket, key, uploadId),
+            limit: 1000,
+            ...(page && { page }),
+          }),
+        );
+        for (const part of response.items) {
+          parts.push({
+            partNum: part.partNumber,
+            etag: part.etag,
+            md5: part.md5,
+            size: part.size,
+          });
+        }
+        page = response.opcNextPage || undefined;
+      } while (page);
+      return parts.sort((a, b) => a.partNum - b.partNum);
+    },
+
+    async putStream({ bucket, key, contentType, fileName, body }) {
+      const uploadId = await driver.createUpload({
+        bucket,
+        key,
+        contentType,
+        fileName,
+      });
+      const target = { bucket, key, uploadId };
 
       try {
         const parts: { partNum: number; etag: string }[] = [];
         const send = async (part: Buffer) => {
           const partNum = parts.length + 1;
-          const { eTag } = await provider(() =>
-            client.uploadPart({
-              ...upload,
-              uploadPartNum: partNum,
-              uploadPartBody: part,
-              contentLength: part.length,
-            }),
-          );
-          parts.push({ partNum, etag: eTag });
+          parts.push({
+            partNum,
+            etag: await driver.uploadPart({ ...target, partNum, body: part }),
+          });
         };
 
         for await (const part of chunkStream(body, partSize)) await send(part);
         // A commit needs at least one part, so an empty file sends an empty one
         if (parts.length === 0) await send(Buffer.alloc(0));
 
-        await provider(() =>
-          client.commitMultipartUpload({
-            ...upload,
-            commitMultipartUploadDetails: { partsToCommit: parts },
-          }),
-        );
+        await driver.completeUpload({ ...target, parts });
       } catch (error) {
         try {
-          await client.abortMultipartUpload(upload);
-        } catch (abortError) {
-          // The bucket lifecycle rule cleans up uploads that fail to abort
-          logger.error(
-            { key, uploadId: upload.uploadId, err: abortError },
-            "OCI abortMultipartUpload failed",
-          );
+          await driver.abortUpload(target);
+        } catch {
+          // Logged by abortUpload; the bucket lifecycle rule cleans up the rest
         }
         throw error;
       }
@@ -313,6 +397,7 @@ export function createOciDriver({
       return bytes;
     },
   };
+  return driver;
 }
 
 /** A GetObject body (a Node stream or a web ReadableStream) as one buffer. */

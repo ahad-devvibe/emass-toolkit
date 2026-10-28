@@ -76,6 +76,7 @@ export type ObjectStorageClientLike = Pick<
   | "createMultipartUpload"
   | "uploadPart"
   | "commitMultipartUpload"
+  | "listMultipartUploadParts"
   | "abortMultipartUpload"
 >;
 

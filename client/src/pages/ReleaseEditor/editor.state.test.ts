@@ -1,17 +1,18 @@
 import { describe, expect, it } from "vitest"
 import { ApiRequestError } from "@/lib/api/http"
-import type { ReleaseFileItem } from "@/pages/Releases/releases.model"
-import { changedFields, changedMappings, effectiveMapping, hasDuplicates, mappingProblems, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionProblem } from "./editor.state"
-import { emptyQueue, queueReducer, type QueueState } from "./upload-queue"
+import type { ReleaseFileItem, ReleaseSummary } from "@/pages/Releases/releases.model"
+import { changedFields, changedMappings, draftsToContinue, effectiveMapping, hasDuplicates, mappingProblems, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionProblem } from "./editor.state"
+import { emptyQueue, queueReducer, type QueueState } from "@/features/uploads/uploads.state"
 
 const file = (id: string, kind: ReleaseFileItem["kind"], os: ReleaseFileItem["os"] = null): ReleaseFileItem => ({ id, name: `${id}.bin`, kind, os, contentType: "application/octet-stream", sizeBytes: 1, sha256: "a", createdAt: "2026-10-22T00:00:00.000Z", format: null, detectedVersions: [], blockedBy: [], warnings: [] })
 
-function queueWith(status: "queued" | "failed" | "conflict"): QueueState {
-  let state = queueReducer(emptyQueue, { type: "added", items: [{ localId: "a", file: new File(["x"], "a.msi"), kind: "sdk", os: "windows", holder: status === "conflict" ? { fileId: "f", name: "x" } : null }] })
+function queueWith(status: "queued" | "failed" | "conflict" | "paused"): QueueState {
+  let state = queueReducer(emptyQueue, { type: "added", items: [{ localId: "a", releaseId: "r1", releaseLabel: "EMASS v1.0.0", file: new File(["x"], "a.msi"), handle: null, kind: "sdk", os: "windows", holder: status === "conflict" ? { fileId: "f", name: "x" } : null }] })
   if (status === "failed") {
     state = queueReducer(state, { type: "started", localId: "a" })
     state = queueReducer(state, { type: "failed", localId: "a", error: { code: "X", message: "" } })
   }
+  if (status === "paused") state = queueReducer(state, { type: "paused", localId: "a" })
   return state
 }
 
@@ -98,6 +99,7 @@ describe("submitBlocker", () => {
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("queued"), problems: none })).toBe("Wait for uploads to finish.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("failed"), problems: none })).toBe("Retry or remove the failed uploads.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("conflict"), problems: none })).toBe("Replace or re-map the uploads held on a platform.")
+    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("paused"), problems: none })).toBe("Resume or cancel the paused uploads.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none, blockedFiles: 1 })).toBe("Remove the files that can't be submitted, or change the version.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "duplicate", os: "windows", others: [] } } })).toBe("Each platform can have only one SDK.")
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsType" } } })).toBe("Choose a type for every file.")
@@ -107,5 +109,43 @@ describe("submitBlocker", () => {
 
   it("clears once everything is in place", () => {
     expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none })).toBeNull()
+  })
+})
+
+describe("draftsToContinue", () => {
+  const summary = (id: string, status: ReleaseSummary["status"], updatedAt: string, createdById = "dev1"): ReleaseSummary => ({ id, product: { id: "p", name: "EMASS IDE" }, version: `1.0.${id.length}`, status, createdBy: { id: createdById, name: "Dana", role: "DEV" }, createdAt: updatedAt, updatedAt, fileCount: 0, totalBytes: 0 })
+  // 100-byte files 61% of the way up, one per release
+  const uploadingTo = (...releaseIds: string[]) =>
+    releaseIds.reduce((state, releaseId) => {
+      const localId = `u-${releaseId}`
+      return [
+        { type: "added" as const, items: [{ localId, releaseId, releaseLabel: "EMASS SDK v2.0.0", file: new File([new Uint8Array(100)], "a.zip"), handle: null, kind: null, os: null, holder: null }] },
+        { type: "started" as const, localId },
+        { type: "allowed" as const, localId, warnings: [] },
+        { type: "progressed" as const, localId, loaded: 61 },
+      ].reduce(queueReducer, state)
+    }, emptyQueue)
+
+  it("lists the developer's open drafts, newest first, and nobody else's", () => {
+    const drafts = draftsToContinue(
+      [summary("old", "draft", "2026-10-01T00:00:00.000Z"), summary("new", "changes_requested", "2026-10-20T00:00:00.000Z"), summary("theirs", "draft", "2026-10-25T00:00:00.000Z", "dev2"), summary("live", "published", "2026-10-26T00:00:00.000Z")],
+      emptyQueue,
+      "dev1",
+    )
+    expect(drafts.map((draft) => [draft.id, draft.status])).toEqual([["new", "changes_requested"], ["old", "draft"]])
+    expect(drafts[0].uploads).toBeNull()
+  })
+
+  it("puts drafts with uploads first, including one not listed yet", () => {
+    const drafts = draftsToContinue([summary("listed", "draft", "2026-10-20T00:00:00.000Z"), summary("busy", "draft", "2026-10-01T00:00:00.000Z")], uploadingTo("fresh", "busy"), "dev1")
+
+    expect(drafts.map((draft) => draft.id)).toEqual(["fresh", "busy", "listed"])
+    expect(drafts[0]).toMatchObject({ label: "EMASS SDK v2.0.0", status: null })
+    expect(drafts[1].uploads).toBe("1 file uploading (61%)")
+  })
+
+  it("keeps it to three", () => {
+    const many = ["a", "b", "c", "d"].map((id, index) => summary(id, "draft", `2026-10-0${index + 1}T00:00:00.000Z`))
+    expect(draftsToContinue(many, emptyQueue, "dev1")).toHaveLength(3)
   })
 })

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useEffectEvent, useState } from "react"
-import { ArrowLeft, Loader2, MessageSquareWarning, RefreshCw } from "lucide-react"
-import { Link, Navigate, useNavigate } from "react-router-dom"
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
+import { ArrowLeft, Loader2, MessageSquareWarning, RefreshCw, Trash2 } from "lucide-react"
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/useAuth"
 import { AppShell } from "@/components/common/AppShell"
@@ -11,7 +11,8 @@ import { osMeta } from "@/pages/Catalog/catalog.meta"
 import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
 import { formatBytes } from "@/pages/ProductDetails/release.utils"
 import { latestEvent } from "@/pages/ReleaseDetail/release-detail.utils"
-import { canEditRelease } from "@/pages/Releases/release-permissions"
+import { canEditRelease, releaseActions } from "@/pages/Releases/release-permissions"
+import { useDeleteRelease } from "@/pages/Releases/useDeleteRelease"
 import { releasesApi } from "@/pages/Releases/releases.api"
 import { duplicatePlatforms } from "@/pages/Releases/releases.errors"
 import { SubmitWarningsDialog } from "@/pages/Releases/components/SubmitWarningsDialog"
@@ -21,12 +22,16 @@ import type { FileIssues, ReleaseDetail, ReleaseFileItem } from "@/pages/Release
 import { useRelease, useVersionSuggestion } from "@/pages/Releases/useReleaseQueries"
 import { cn } from "@/lib/utils"
 import { changedFields, changedMappings, effectiveMapping, hasDuplicates, mappingProblems, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionProblem, type MappingOverrides } from "./editor.state"
-import { hasConflicts, isBusy, overall } from "./upload-queue"
-import { useUploadQueue } from "./useUploadQueue"
+import { hasConflicts, isBusy, overall } from "@/features/uploads/uploads.state"
+import { CancelUploadDialog } from "@/features/uploads/CancelUploadDialog"
+import { InterruptedNotice } from "@/features/uploads/InterruptedNotice"
+import { QueueRow } from "@/features/uploads/QueueRow"
+import { needsCancelConfirm } from "@/features/uploads/row-actions"
+import type { QueueItem } from "@/features/uploads/uploads.state"
+import { useReleaseUploads } from "./useReleaseUploads"
 import { CheckItem, EditorCard, VersionField, type CheckState } from "./components/EditorParts"
 import { AddFilesButton, DropOverlayArea, FileDropzone } from "./components/FileDropzone"
 import { NotesEditor } from "./components/NotesEditor"
-import { QueueRow } from "./components/QueueRow"
 import { SaveBar } from "./components/SaveBar"
 import { StagedFileRow } from "./components/StagedFileRow"
 
@@ -37,7 +42,9 @@ const LEAVE_WARNING = "You have uploads running or unsaved changes. Leave anyway
 /** Loads the draft, then hands it to the form; only its creator may edit it. */
 export function EditRelease({ releaseId }: { releaseId: string }) {
   const { user } = useAuth()
-  const { data: release, error, notFound, reload, setData } = useRelease(releaseId)
+  // A draft just created arrives with the navigation, so its editor opens without a loader
+  const created = (useLocation().state as { release?: ReleaseDetail } | null)?.release
+  const { data: release, error, notFound, reload, setData } = useRelease(releaseId, created)
 
   if (notFound) return <Navigate to="/releases" replace />
   if (error) {
@@ -60,6 +67,9 @@ type EditFormProps = { release: ReleaseDetail; onReload: () => void; onSaved: (r
 
 function EditForm({ release, onReload, onSaved }: EditFormProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  // The draft is gone: leave without the "unsaved changes" question
+  const deletion = useDeleteRelease({ onDeleted: () => navigate("/releases", { replace: true }) })
   const suggestion = useVersionSuggestion(release.product.id)
   const [version, setVersion] = useState(release.version)
   const [notes, setNotes] = useState(release.releaseNotes)
@@ -73,6 +83,8 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [pending, setPending] = useState<"save" | "submit" | null>(null)
   const [attempted, setAttempted] = useState(false)
+  // The upload whose cancel waits for "Cancel upload"
+  const [confirmingCancel, setConfirmingCancel] = useState<QueueItem | null>(null)
 
   // New drops are checked against the platforms as currently edited
   const savedHolder = useCallback((os: OperatingSystem) => savedHolderFor(release.files, overrides, os), [release.files, overrides])
@@ -82,8 +94,16 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
     if (first) toast.warning(`Check ${file.name}`, { description: first.message })
     onReload()
   }, [onReload])
-  const { queue, state } = useUploadQueue(release.id, { onUploaded, savedHolder })
+  const { queue, state } = useReleaseUploads(release.id, `${release.product.name} v${release.version}`, { onUploaded, savedHolder })
   const busy = isBusy(state)
+
+  // A new saved version may let files blocked for the old one through
+  const checkedVersion = useRef(release.version)
+  useEffect(() => {
+    if (checkedVersion.current === release.version) return
+    checkedVersion.current = release.version
+    queue.recheckRelease(release.id)
+  }, [queue, release.id, release.version])
 
   const formatError = versionProblem(version)
   const versionError = serverError ?? (touched || attempted ? formatError : null)
@@ -231,9 +251,14 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
       <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8">
         <header className="space-y-4">
           <Link to={`/releases/${release.id}`} onClick={(event) => { if ((busy || dirty) && !window.confirm(LEAVE_WARNING)) event.preventDefault() }} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2.5 text-muted-foreground")}><ArrowLeft />Back to release</Link>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Edit {release.product.name} v{release.version}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{SAVE_RULE}</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Edit {release.product.name} v{release.version}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{SAVE_RULE}</p>
+            </div>
+            {user && releaseActions(user, release).includes("delete") && (
+              <Button variant="ghost" className="text-destructive hover:text-destructive" disabled={pending !== null} onClick={() => deletion.request({ id: release.id, name: `v${release.version}` })}><Trash2 />Delete draft</Button>
+            )}
           </div>
         </header>
 
@@ -271,6 +296,7 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
                 >
                   {rows.length > 0 && (
                     <div>
+                      <InterruptedNotice releaseId={release.id} />
                       {busy && (
                         <p className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground" aria-live="polite">
                           <Loader2 aria-hidden className="size-3 animate-spin" />
@@ -284,9 +310,14 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
                             item={item}
                             holderName={item.holder?.name ?? nameOf(item.holder?.fileId)}
                             onMap={(kind, os) => queue.map(item.localId, kind, os)}
-                            onCancel={() => queue.cancel(item.localId)}
-                            onRetry={() => queue.retry(item.localId)}
                             onReplace={() => queue.replace(item.localId)}
+                            onPause={() => queue.pause(item.localId)}
+                            onResume={() => queue.resume(item.localId)}
+                            onResumeWithHandle={() => void queue.resumeWithHandle(item.localId)}
+                            onPickFile={(file, handle) => queue.resumeWithFile(item.localId, file, handle)}
+                            onCancel={() => (needsCancelConfirm(item) ? setConfirmingCancel(item) : queue.cancel(item.localId))}
+                            onRetry={() => queue.retry(item.localId)}
+                            versionUnsaved={version.trim() !== release.version}
                             onDismiss={() => queue.dismiss(item.localId)}
                           />
                         ))}
@@ -339,6 +370,8 @@ function EditForm({ release, onReload, onSaved }: EditFormProps) {
         </div>
 
         <SubmitWarningsDialog files={warnedFiles} onClose={() => setWarnedFiles(null)} onConfirm={confirmSubmit} />
+        {deletion.dialog}
+        <CancelUploadDialog item={confirmingCancel} onClose={() => setConfirmingCancel(null)} onConfirm={(localId) => queue.cancel(localId)} />
         {dirty && <SaveBar summary={unsavedSummary(fieldChanges, fileChanges.length)} error={saveError} uploading={busy} saving={pending === "save"} onDiscard={discard} onSave={() => void saveDraft()} />}
       </main>
     </AppShell>

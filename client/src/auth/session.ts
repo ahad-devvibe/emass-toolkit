@@ -1,5 +1,5 @@
 import { apiRequest, ApiRequestError, type RequestOptions } from "@/lib/api/http"
-import { uploadCancelled, uploadMultipart, type UploadOptions } from "@/lib/api/upload"
+import { sendBlob, type UploadOptions } from "@/lib/api/upload"
 
 /*
  * Session + refresh coordination.
@@ -194,26 +194,18 @@ export async function authorizedRequest<T>(path: string, options: RequestOptions
 }
 
 /**
- * Multipart upload for signed-in calls. The server checks the cookie at the
- * start of the request but only answers once the whole body has arrived, so
- * a cheap authorized call first refreshes an expiring cookie before any
- * bytes go out; a 401 that still slips through refreshes once and resends.
+ * One piece of a file for signed-in calls. Pieces are small and quick, so an
+ * access cookie that expires mid-upload just fails the next piece with a 401:
+ * refresh once, then send that piece again.
  */
-export async function authorizedUpload<T>(path: string, fields: [string, string][], file: File, options: UploadOptions = {}): Promise<T> {
-  try {
-    await authorizedRequest("/auth/me", { signal: options.signal })
-  } catch (error) {
-    // fetch reports an abort as TIMEOUT; for an upload it's a cancel
-    if (options.signal?.aborted) throw uploadCancelled()
-    throw error
-  }
+export async function authorizedSend<T>(method: "PUT" | "POST", path: string, body: Blob, options: UploadOptions = {}): Promise<T> {
   const seen = generation
   try {
-    return await uploadMultipart<T>(path, fields, file, options)
+    return await sendBlob<T>(method, path, body, options)
   } catch (error) {
     if (!(error instanceof ApiRequestError) || error.status !== 401 || !RETRYABLE_AUTH_CODES.has(error.code)) throw error
     const ok = generation !== seen ? active : await refreshSession()
     if (!ok) throw sessionEnded()
-    return uploadMultipart<T>(path, fields, file, options)
+    return sendBlob<T>(method, path, body, options)
   }
 }

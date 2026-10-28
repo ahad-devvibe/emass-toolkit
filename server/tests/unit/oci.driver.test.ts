@@ -30,6 +30,9 @@ function mockClient() {
     })),
     commitMultipartUpload: vi.fn().mockResolvedValue({}),
     abortMultipartUpload: vi.fn().mockResolvedValue({}),
+    listMultipartUploadParts: vi
+      .fn()
+      .mockResolvedValue({ items: [], opcNextPage: undefined }),
     deleteObject: vi.fn().mockResolvedValue({}),
   };
 }
@@ -557,5 +560,143 @@ describe("oci driver readRange", () => {
     );
     expect(bytes).toHaveLength(0);
     expect(getObject).not.toHaveBeenCalled();
+  });
+});
+
+describe("oci driver multipart", () => {
+  const target = {
+    bucket: "staging",
+    key: upload.objectName,
+    uploadId: "upload-1",
+  };
+
+  it("opens an upload with the attachment name and returns its id", async () => {
+    const client = mockClient();
+    const uploadId = await driverFor(client).createUpload({
+      bucket: "staging",
+      key: upload.objectName,
+      contentType: "application/zip",
+      fileName: "sdk.zip",
+    });
+
+    expect(uploadId).toBe("upload-1");
+    expect(
+      client.createMultipartUpload.mock.calls[0][0]
+        .createMultipartUploadDetails,
+    ).toMatchObject({
+      object: upload.objectName,
+      contentType: "application/zip",
+      contentDisposition: expect.stringContaining("sdk.zip"),
+    });
+  });
+
+  it("sends a part with its number and length and returns the etag", async () => {
+    const client = mockClient();
+    const etag = await driverFor(client).uploadPart({
+      ...target,
+      partNum: 3,
+      body: Buffer.from("abcd"),
+    });
+
+    expect(etag).toBe("etag-1");
+    expect(client.uploadPart).toHaveBeenCalledWith({
+      ...upload,
+      uploadPartNum: 3,
+      uploadPartBody: Buffer.from("abcd"),
+      contentLength: 4,
+    });
+  });
+
+  it("commits the listed parts", async () => {
+    const client = mockClient();
+    const parts = [
+      { partNum: 1, etag: "a" },
+      { partNum: 2, etag: "b" },
+    ];
+    await driverFor(client).completeUpload({ ...target, parts });
+
+    expect(client.commitMultipartUpload).toHaveBeenCalledWith({
+      ...upload,
+      commitMultipartUploadDetails: { partsToCommit: parts },
+    });
+  });
+
+  it("maps an unknown upload to UPLOAD_NOT_FOUND and other failures to UPLOAD_FAILED", async () => {
+    const gone = mockClient();
+    gone.uploadPart.mockRejectedValue({ statusCode: 404 });
+    await expect(
+      driverFor(gone).uploadPart({
+        ...target,
+        partNum: 1,
+        body: Buffer.from("a"),
+      }),
+    ).rejects.toMatchObject({ statusCode: 404, code: "UPLOAD_NOT_FOUND" });
+
+    const broken = mockClient();
+    broken.commitMultipartUpload.mockRejectedValue(new Error("boom"));
+    await expect(
+      driverFor(broken).completeUpload({ ...target, parts: [] }),
+    ).rejects.toMatchObject({ statusCode: 502, code: "UPLOAD_FAILED" });
+  });
+
+  it("treats aborting an upload that is already gone as done", async () => {
+    const client = mockClient();
+    client.abortMultipartUpload.mockRejectedValue({ statusCode: 404 });
+    await expect(
+      driverFor(client).abortUpload(target),
+    ).resolves.toBeUndefined();
+
+    client.abortMultipartUpload.mockRejectedValue(new Error("boom"));
+    await expect(driverFor(client).abortUpload(target)).rejects.toBeInstanceOf(
+      ApiError,
+    );
+  });
+});
+
+describe("oci driver listParts and refused requests", () => {
+  const target = {
+    bucket: "staging",
+    key: upload.objectName,
+    uploadId: "upload-1",
+  };
+  const summary = (partNumber: number) => ({
+    partNumber,
+    etag: `e${partNumber}`,
+    md5: `m${partNumber}`,
+    size: 4,
+  });
+
+  it("lists every page of parts, in part order", async () => {
+    const client = mockClient();
+    client.listMultipartUploadParts
+      .mockResolvedValueOnce({
+        items: [summary(2), summary(1)],
+        opcNextPage: "next",
+      })
+      .mockResolvedValueOnce({ items: [summary(3)], opcNextPage: undefined });
+
+    const parts = await driverFor(client).listParts(target);
+
+    expect(parts.map((part) => part.partNum)).toEqual([1, 2, 3]);
+    expect(parts[0]).toEqual({ partNum: 1, etag: "e1", md5: "m1", size: 4 });
+    expect(client.listMultipartUploadParts.mock.calls[1][0]).toMatchObject({
+      page: "next",
+    });
+  });
+
+  it("reports a request OCI refuses (4xx) as UPLOAD_REJECTED, not a retryable failure", async () => {
+    const client = mockClient();
+    client.commitMultipartUpload.mockRejectedValue({
+      statusCode: 400,
+      serviceCode: "InvalidUploadPart",
+    });
+
+    await expect(
+      driverFor(client).completeUpload({ ...target, parts: [] }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "UPLOAD_REJECTED",
+      details: { serviceCode: "InvalidUploadPart" },
+    });
   });
 });

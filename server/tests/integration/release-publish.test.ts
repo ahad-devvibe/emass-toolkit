@@ -398,3 +398,65 @@ describe("GET /api/releases/:id/publish-status", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("GET /api/releases/publish-jobs", () => {
+  const jobs = (user: StaffUser = admin) =>
+    request(app).get("/api/releases/publish-jobs").set(user.cookie);
+  const originalTtl = env.PUBLISH_JOB_TTL_MS;
+  afterEach(() => {
+    env.PUBLISH_JOB_TTL_MS = originalTtl;
+  });
+
+  it("is for admins only", async () => {
+    expect((await request(app).get("/api/releases/publish-jobs")).status).toBe(
+      401,
+    );
+    for (const user of [dev, customer]) {
+      const res = await jobs(user);
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("FORBIDDEN");
+    }
+  });
+
+  it("lists a running job with its release's label", async () => {
+    const release = await inReview({ version: "7.1.0" });
+    const held = holdCopies();
+    await publish(release.id).expect(202);
+
+    const res = await jobs();
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.jobs).toEqual([
+      {
+        releaseId: release.id,
+        version: "7.1.0",
+        productName: expect.any(String),
+        job: expect.objectContaining({ phase: "copying" }),
+      },
+    ]);
+    held.release();
+    await waitForJob(release.id);
+  });
+
+  it("keeps a settled job for a while, then drops it", async () => {
+    env.PUBLISH_JOB_TTL_MS = 100;
+    const release = await inReview({ version: "7.2.0" });
+    await publish(release.id).expect(202);
+    expect((await waitForJob(release.id)).phase).toBe("done");
+
+    const settled = (await jobs()).body.data.jobs;
+    expect(settled).toEqual([
+      expect.objectContaining({
+        releaseId: release.id,
+        job: expect.objectContaining({ phase: "done" }),
+      }),
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect((await jobs()).body.data.jobs).toEqual([]);
+  });
+
+  it("is empty when nothing is publishing", async () => {
+    expect((await jobs()).body.data).toEqual({ jobs: [] });
+  });
+});

@@ -29,6 +29,7 @@ import { AppHeader, Breadcrumb } from "./AppHeader";
 import { BrandLogo } from "./BrandLogo";
 import { openSettings } from "./settings/settings-dialog.store";
 import { UserAvatar } from "./UserAvatar";
+import { UploadPanel } from "@/features/uploads/UploadPanel";
 
 // Navy sidebar items (Figma reference): bold white labels, active pill in #0D72B9 with a white bar
 const navItem =
@@ -284,6 +285,8 @@ export function StaffShell({
         </AppHeader>
         {children}
       </div>
+      {/* Uploads and publish jobs, followed from any staff page */}
+      <UploadPanel />
     </>
   );
 }

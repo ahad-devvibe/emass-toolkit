@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 import { Plus, UploadCloud } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import type { PickedFile } from "@/features/uploads/file-source"
 import { cn } from "@/lib/utils"
 import { useFileDrop } from "../useFileDrop"
 
@@ -8,7 +9,7 @@ import { useFileDrop } from "../useFileDrop"
  * The large drop area shown while a release has no files yet.
  * `disabledReason` turns it off and says why (e.g. no version yet).
  */
-export function FileDropzone({ onFiles, disabledReason }: { onFiles: (files: File[]) => void; disabledReason?: string | null }) {
+export function FileDropzone({ onFiles, disabledReason }: { onFiles: (files: PickedFile[]) => void; disabledReason?: string | null }) {
   const disabled = Boolean(disabledReason)
   const { dragging, dropProps, inputProps, open } = useFileDrop(onFiles, disabled)
 
@@ -28,7 +29,7 @@ export function FileDropzone({ onFiles, disabledReason }: { onFiles: (files: Fil
 }
 
 /** The compact "Add files" picker for a card that already lists files. */
-export function AddFilesButton({ onFiles }: { onFiles: (files: File[]) => void }) {
+export function AddFilesButton({ onFiles }: { onFiles: (files: PickedFile[]) => void }) {
   const { inputProps, open } = useFileDrop(onFiles)
   return (
     <>
@@ -42,7 +43,7 @@ export function AddFilesButton({ onFiles }: { onFiles: (files: File[]) => void }
  * Turns a whole card into a drop target once it lists files: a dashed
  * overlay appears while files are dragged over it.
  */
-export function DropOverlayArea({ onFiles, children, className }: { onFiles: (files: File[]) => void; children: ReactNode; className?: string }) {
+export function DropOverlayArea({ onFiles, children, className }: { onFiles: (files: PickedFile[]) => void; children: ReactNode; className?: string }) {
   const { dragging, dropProps } = useFileDrop(onFiles)
   return (
     <div {...dropProps} className={cn("relative", className)}>

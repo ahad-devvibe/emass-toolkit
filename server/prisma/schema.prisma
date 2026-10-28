@@ -55,6 +55,7 @@ model User {
   jobTitle    String
   // What they told us at sign-up they will use EMASS for (null for older accounts)
   useCase     String? @db.Text
+  website     String?
 
   password String?
 
@@ -93,6 +94,7 @@ model User {
 
   releasesCreated   Release[]         @relation("ReleaseCreatedBy")
   releasesPublished Release[]         @relation("ReleasePublishedBy")
+  uploadSessions    UploadSession[]
   releaseEvents     ReleaseEvent[]
   resourcesUpdated  ProductResource[]
 
@@ -266,6 +268,7 @@ model Release {
 
   files    ReleaseFile[]
   events   ReleaseEvent[]
+  uploads  UploadSession[]
   activity ActivityLog[]
 
   createdAt DateTime @default(now())
@@ -310,6 +313,49 @@ model ReleaseFile {
   @@unique([releaseId, sha256])
   // Installer checks look up identical bytes in other releases
   @@index([sha256])
+}
+
+// A release file arriving piece by piece (POST /releases/:id/uploads). Parts
+// come in order, so the server hashes as they arrive; hashState is hash-wasm's
+// saved SHA-256 state, so the whole-file hash survives restarts. The row is
+// deleted when the file is saved, aborted, or untouched for 24 h.
+model UploadSession {
+  id          String  @id @default(uuid())
+  releaseId   String
+  release     Release @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User    @relation(fields: [createdById], references: [id])
+
+  // The staged object being written, and the storage multipart upload id
+  objectKey       String @unique
+  storageUploadId String
+
+  fileName       String
+  contentType    String
+  sizeBytes      BigInt
+  partSize       Int
+  partsDone      Int    @default(0)
+  // { "<part number>": "<etag>" }, committed in order on complete
+  etags          Json   @default("{}")
+  hashState      Bytes
+  declaredSha256 String
+
+  kind          ReleaseFileKind?
+  platform      SdkPlatform?
+  replaceFileId String?
+
+  // Set while one request completes the upload, so a second complete can't
+  // race it; a stale claim (crashed request) expires
+  completingAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Creating the same file again returns this session: that's how a client
+  // that lost the session id resumes
+  @@unique([releaseId, declaredSha256])
+  // Stale sessions are found by age
+  @@index([updatedAt])
 }
 
 model ReleaseEvent {
