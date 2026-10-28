@@ -1,8 +1,12 @@
-// Thin fetch wrapper for the Express API. Every call goes to same-origin /api
-// (proxied by Vite), sends cookies, and unwraps the { success, data } envelope.
+// Thin fetch wrapper for the Express API. Every call goes to /api (same-origin,
+// proxied by Vite, unless VITE_API_BASE_URL names the API's own host), sends
+// cookies, and unwraps the { success, data } envelope.
 // Auth rides on httpOnly cookies the browser attaches; JS never sees a token.
 
-export const API_BASE = "/api"
+/** `/api` on `base` (the API's origin), or same-origin `/api` when it's empty. */
+export const apiBase = (base: string | undefined) => `${(base ?? "").trim().replace(/\/+$/, "")}/api`
+
+export const API_BASE = apiBase(import.meta.env.VITE_API_BASE_URL)
 
 export type FieldErrors = Record<string, string[] | undefined>
 

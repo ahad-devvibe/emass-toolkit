@@ -209,6 +209,22 @@ migration folder per change — delete empty leftovers.
   `NODE_ENV=test`). Pipe through `pino-pretty` in dev if desired. `pino-http`
   logs every request (id, method, url, status, responseTime).
 
+### Client hosting and CORS
+
+- The client is a static build. In dev, Vite proxies same-origin `/api` to
+  the API. A build hosted without a proxy (e.g. Hostinger at
+  `https://demo.nanoveu.com`) sets `VITE_API_BASE_URL` to the API's origin at
+  build time and calls it directly; `client/public/.htaccess` gives Apache the
+  SPA fallback.
+- CORS (`src/app.ts`) allows no-origin requests, localhost, private-network
+  addresses, and the exact origins in `ALLOWED_ORIGINS`; anything else gets
+  403 `CORS_ORIGIN_DENIED`. Credentials are allowed.
+- Auth cookies are `SameSite=Strict`, so the browser only sends them when the
+  client and API are on the **same site** (same registrable domain, e.g.
+  `demo.nanoveu.com` → `api.nanoveu.com`). A client on another domain passes
+  CORS but can't stay logged in.
+- Set `APP_BASE_URL` to the client's origin so email links point at it.
+
 ### 8a. LAN development hosting
 
 `app.listen(port)` binds all interfaces, so a single `npm run dev` serves both

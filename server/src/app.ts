@@ -14,10 +14,13 @@ if (env.TRUST_PROXY > 0) app.set("trust proxy", env.TRUST_PROXY);
 
 app.use(pinoHttp({ logger }));
 
+// Hosted frontends that call the API directly (no proxy in front of them)
+const ALLOWED_ORIGINS = new Set(["https://demo.galaxitron.com"]);
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
+      if (!origin || ALLOWED_ORIGINS.has(origin)) return callback(null, true);
       try {
         const { hostname } = new URL(origin);
         const isLocalhost =
