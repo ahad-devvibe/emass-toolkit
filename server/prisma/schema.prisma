@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // EmailOutbox's due index covers only rows still to send
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -91,6 +93,7 @@ model User {
   authEvents          AuthEvent[]
   downloads           Download[]
   activity            ActivityLog[]
+  emailOutbox         EmailOutbox[]
 
   releasesCreated   Release[]         @relation("ReleaseCreatedBy")
   releasesPublished Release[]         @relation("ReleasePublishedBy")
@@ -435,3 +438,56 @@ model ActivityLog {
   @@index([actorId, createdAt])
   @@index([releaseId, createdAt])
 }
+
+enum EmailKind {
+  // Rollback notice to everyone who downloaded the withdrawn release
+  RELEASE_WITHDRAWN
+  // New-release announcement (later task)
+  RELEASE_ANNOUNCED
+}
+
+enum EmailStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+// Bulk mail queue: one row per recipient, written in the same transaction as
+// the event that causes it and sent at a set pace by the in-process worker.
+// Sent rows are kept as the record of who was emailed.
+model EmailOutbox {
+  id            String      @id @default(uuid())
+  kind          EmailKind
+  // Lower goes first: 0 = rollback notice, 10 = announcement
+  priority      Int         @default(10)
+  // The causing event's id (the ROLLED_BACK event for rollbacks); no FK, as
+  // announcement batches won't come from a ReleaseEvent
+  batchId       String
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  toEmail       String
+  // Template input: firstName, product, versions, url, message
+  payload       Json
+  status        EmailStatus @default(PENDING)
+  // Counted when a worker claims the row, so a send that crashes the process also runs out
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  // A claiming worker's lease; another worker may re-claim the row once it passes
+  lockedUntil   DateTime?
+  lastError     String?     @db.Text
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  // Re-running an enqueue can't queue anyone twice
+  @@unique([batchId, toEmail])
+  @@index([batchId, status])
+  // Rolling 24 h daily cap
+  @@index([sentAt])
+  // Claims read only the rows still to send, however many are SENT. The
+  // condition is written as Postgres stores it (IN becomes = ANY): Prisma
+  // compares the text, and any other spelling makes migrate dev re-create it
+  @@index([priority, createdAt], map: "EmailOutbox_due_idx", where: raw("(status = ANY (ARRAY['PENDING'::\"EmailStatus\", 'SENDING'::\"EmailStatus\"]))"))
+}
+
+// TODO: Remove these migrations and create new ones - they are creating and droping indexes

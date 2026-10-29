@@ -174,7 +174,7 @@ known (e.g. "email already exists"); the middleware is the fallback.
   `CUSTOMER/DEV/ADMIN`), `RefreshToken`, `Otp`
   (`MFA_LOGIN`/`SIGNUP_VERIFY` in use; `PASSWORD_RESET` left unused),
   `PasswordResetToken` (forgot-password links), `AuthEvent` (sign-in audit),
-  `User.blockReason` (competitor vs rejected), `User.useCase` (sign-up free text), `Download` (customer download clicks), `ActivityLog` (staff actions: file downloads), `User.licenseAcceptedAt`/`licenseVersion` (download licence, once), `User.downloadCount`/`first…`/`lastDownload…` plus `hubspotSyncedDownloads`/`hubspotNoteSentAt` (download totals and HubSpot sync progress) + enums — see
+  `User.blockReason` (competitor vs rejected), `User.useCase` (sign-up free text), `Download` (customer download clicks), `ActivityLog` (staff actions: file downloads), `EmailOutbox` (bulk mail queue: one row per recipient, kept after sending; its claim index `EmailOutbox_due_idx` is partial, `WHERE status IN ('PENDING','SENDING')`, via the `partialIndexes` preview feature; a `where:` must be written exactly as Postgres stores it, e.g. `= ANY (ARRAY[…])` rather than `IN (…)`, or `migrate dev` keeps generating a drop/re-create), `User.licenseAcceptedAt`/`licenseVersion` (download licence, once), `User.downloadCount`/`first…`/`lastDownload…` plus `hubspotSyncedDownloads`/`hubspotNoteSentAt` (download totals and HubSpot sync progress) + enums — see
   `prisma/schema.prisma`
 - Migrations: **never run without explicit approval**; apply to test DB via
   `npm run test:migrate`

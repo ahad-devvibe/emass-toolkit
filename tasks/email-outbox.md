@@ -1,6 +1,30 @@
 # Task: durable email outbox for bulk mail (rollback + new-release announcements)
 
-**Status:** planned, not started (2026-10-26). To be refined before implementation.
+**Status:** in progress. Phase 1 (schema and migration) done 2026-10-29; phases 2–6 below.
+
+## Phases
+| Phase | What | Status |
+|---|---|---|
+| 1 | Schema and migration `20261029120000_email_outbox`: `EmailOutbox` plus enums `EmailKind` and `EmailStatus`. The partial due index is in the schema through Prisma's `partialIndexes` preview feature (7.9.1). Its `where:` is written exactly as Postgres stores it (`status = ANY (ARRAY[…::"EmailStatus"])`). Prisma compares the text, and the original `IN (…)` spelling made `migrate dev` generate a drop/re-create migration that broke fresh DBs; that migration was removed. | done |
+| 2 | Send errors classified: `retryable` / `providerStatus` / `serviceCode` from OCI's status (429, 5xx and network are retryable). Existing callers keep their 502. | |
+| 3 | Outbox service: enqueue (`INSERT … SELECT … ON CONFLICT DO NOTHING`), claim, mark results, batch completion | |
+| 4 | Worker: kick, drain, pacing, daily cap, retry timer, `stop()` / `settled()` | |
+| 5 | Wiring: rollback enqueues in its transaction; start-up kick and SIGTERM; `rollback-notify.service.ts` removed | |
+| 6 | Benchmark and docs; the task converted | |
+
+## Review findings (2026-10-29, against the code)
+1. **`email.service.ts` turns every OCI failure into 502 `EMAIL_SEND_FAILED`** and drops the status code, so the worker can't tell retry from give-up. Phase 2 fixes this.
+2. **Templates need per-person data** (`firstName`). The enqueue builds `payload` with `jsonb_build_object`: firstName, product name, versions, URL from `APP_BASE_URL`, customerMessage.
+3. **`CUSTOMERS_NOTIFIED` needs an `actorId`.** `batchId` is the `ROLLED_BACK` event's id, so the worker reads the actor and release from that event.
+4. **No recipients:** write "No customers had downloaded vX" inside the rollback transaction when 0 rows were queued, because an empty batch never completes.
+5. **Attempts are counted at claim,** so a send that crashes the process also runs out after 5 attempts.
+6. **Claim no more than fits in the lease:** `min(25, what the limiter allows in 2 min)`. When the daily cap stops a batch, put its unsent claimed rows back to `PENDING`.
+7. **The daily cap counts `SENT` rows with `sentAt` in the last 24 h** (index on `sentAt`), so a restart doesn't reset it.
+8. **Tests wait with `emailWorker.settled()`** (replacing `rollbackNotificationsSettled`). No start-up kick under `NODE_ENV=test`, and the retry timer is `unref()`ed.
+9. **`server.ts` has no SIGTERM/SIGINT handling yet:** add `server.close()` + `emailWorker.stop()`.
+10. **Re-check the user at send time:** a user blocked or deleted after being queued is skipped and marked `FAILED` ("user no longer active").
+11. **The partial index:** settled in Phase 1 (preview feature).
+12. **The existing `node-cron` scheduler** isn't needed by the worker and is left alone.
 
 **Related:** today’s rollback mail is sent in memory by `server/src/services/releases/rollback-notify.service.ts`; this task replaces that. OCI limits and pricing are summarised in “OCI Email Delivery facts” below.
 
