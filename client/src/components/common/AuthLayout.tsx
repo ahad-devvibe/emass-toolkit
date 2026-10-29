@@ -85,8 +85,11 @@ export function AuthLayout() {
       <section className="relative flex min-h-0 flex-col overflow-hidden">
         {/* The theme toggle stays in the top bar; the auth logo is shown above the form heading. */}
         <div className="relative flex items-center px-4 pt-6 sm:px-10 tiny:pt-3 xl:absolute xl:top-6 xl:right-8 xl:z-10 xl:p-0">
-          <img src={COLOR_LOGO_SRC} alt="EMASS, a Nanoveu business" width={193} height={77} className="h-auto w-[132px] dark:hidden xl:hidden" />
-          <img src={LOGO_SRC} alt="EMASS, a Nanoveu business" width={434} height={175} className="hidden h-auto w-[132px] dark:block xl:hidden" />
+          {/* Hidden as a whole on wide screens (the brand panel has the logo), so dark:block can't outrank it */}
+          <div className="xl:hidden">
+            <img src={COLOR_LOGO_SRC} alt="EMASS, a Nanoveu business" width={193} height={77} className="h-auto w-[132px] dark:hidden" />
+            <img src={LOGO_SRC} alt="EMASS, a Nanoveu business" width={434} height={175} className="hidden h-auto w-[132px] dark:block" />
+          </div>
           <div className="ml-auto"><ThemeToggle isDark={isDark} onToggle={toggleTheme} /></div>
         </div>
         {/* If a form is taller than the screen, this panel scrolls inside itself, never the page */}
