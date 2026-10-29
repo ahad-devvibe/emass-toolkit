@@ -38,9 +38,15 @@ Two bulk events send one email per customer: **release rollback** (today) and **
 | `attempts`, `nextAttemptAt`, `lockedUntil`, `lastError`, `sentAt`, `createdAt` | retry, lease and audit |
 
 - **Indexes:**
-  - `(status, nextAttemptAt, priority)`, for claiming due rows;
+  - **for claiming, a partial index of due rows only:** `CREATE INDEX "EmailOutbox_due_idx" ON "EmailOutbox" ("priority", "createdAt") WHERE status IN ('PENDING','SENDING')`.
+    - It stays the size of the current backlog however many rows are `SENT`, and serves the claim's `ORDER BY priority, createdAt LIMIT 25` directly.
+    - If the Prisma schema can't express a partial index, add it as raw SQL in the migration, and record how `prisma migrate dev` drift is handled.
   - `(batchId, status)`, for progress.
 - **Uniqueness:** `@@unique([batchId, toEmail])`, so re-running an enqueue can't double-queue a person.
+- **Growth (rows are kept, nothing is deleted for now):**
+  - Each row is inserted once and updated through PENDING → SENDING → SENT/FAILED. Sent rows stay as the record of who was emailed.
+  - **Claims stay fast as the table grows:** they read only the partial index, so their cost follows the backlog, not the table size. Expected growth is tens of thousands of rows a year (about 1,000 customers × a few bulk events a month).
+  - **Watch claim time and table size.** If either degrades (about a year in), add a retention purge: old `SENT` rows deleted in chunks after a drain, `FAILED` rows kept longer, with the batch summary on the `CUSTOMERS_NOTIFIED` event as the lasting record.
 
 ## The flow
 1. **Rollback:** inside the rollback transaction, **one statement** queues everyone:
@@ -114,6 +120,7 @@ Two bulk events send one email per customer: **release rollback** (today) and **
   - DB statement count;
   - peak RSS.
 - **Second run with two worker processes,** to show no duplicates across instances.
+- **Third run with about 1M `SENT` rows already in the table,** to show claim time doesn't change as the table grows.
 
 ## Verification
 - **Server tests:** `npx dotenv -e .env.test -- vitest run` (after migrations), then lint; then run the benchmark and record the results in `docs/operations/email-outbox.md`, alongside the settings (pace per tenancy tier).
@@ -136,3 +143,4 @@ Two bulk events send one email per customer: **release rollback** (today) and **
 3. **Retry and backoff:** is the schedule (1 min, 5 min, 30 min, 2 h; 5 attempts) right?
 4. **Who sends announcements:** HubSpot marketing email (lists, unsubscribe and analytics built in; needs Marketing Hub), or this outbox? Rollback notices stay in the outbox either way.
 5. **Admin view:** a “Retry failed” action and a per-batch progress view: in this task or later?
+6. **Retention:** when to add the purge (if claims or table size degrade), and whether personal data in sent rows (address, payload) should be cleared sooner.

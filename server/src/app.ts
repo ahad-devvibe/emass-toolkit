@@ -18,6 +18,7 @@ app.use(pinoHttp({ logger }));
 const ALLOWED_ORIGINS = new Set([
   "https://demo.galaxitron.com",
   "https://emass-toolkit.vercel.app",
+  "https://emassportal.nanoveu.com"
 ]);
 
 app.use(
