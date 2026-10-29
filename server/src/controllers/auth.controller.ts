@@ -21,14 +21,15 @@ import * as passwordResetService from "../services/auth/password-reset.service.j
 import { getSetPasswordInvite } from "../services/auth/set-password.service.js";
 import { createCaptchaChallenge } from "../services/captcha/captcha.service.js";
 import {
-  ACCESS_COOKIE_PATH,
   ACCESS_TOKEN_COOKIE,
   CAPTCHA_COOKIE,
-  LEGACY_REFRESH_COOKIE_PATH,
-  REFRESH_COOKIE_PATH,
   REFRESH_TOKEN_COOKIE,
   accessCookieOptions,
   captchaCookieOptions,
+  clearAccessCookieOptions,
+  clearCaptchaCookieOptions,
+  clearLegacyRefreshCookieOptions,
+  clearRefreshCookieOptions,
   refreshCookieOptions,
 } from "../configs/cookie.config.js";
 import type { TokenPair } from "../services/auth/token.service.js";
@@ -37,15 +38,15 @@ function setAuthCookies(
   res: Response,
   { accessToken, refreshToken }: TokenPair,
 ) {
-  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: LEGACY_REFRESH_COOKIE_PATH });
+  res.clearCookie(REFRESH_TOKEN_COOKIE, clearLegacyRefreshCookieOptions);
   res.cookie(ACCESS_TOKEN_COOKIE, accessToken, accessCookieOptions);
   res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
 }
 
 function clearAuthCookies(res: Response) {
-  res.clearCookie(ACCESS_TOKEN_COOKIE, { path: ACCESS_COOKIE_PATH });
-  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: REFRESH_COOKIE_PATH });
-  res.clearCookie(REFRESH_TOKEN_COOKIE, { path: LEGACY_REFRESH_COOKIE_PATH });
+  res.clearCookie(ACCESS_TOKEN_COOKIE, clearAccessCookieOptions);
+  res.clearCookie(REFRESH_TOKEN_COOKIE, clearRefreshCookieOptions);
+  res.clearCookie(REFRESH_TOKEN_COOKIE, clearLegacyRefreshCookieOptions);
 }
 
 function readRefreshCookie(req: Request): string | undefined {
@@ -63,7 +64,7 @@ export const signup = async (req: Request, res: Response) => {
   const input = signupSchema.parse(req.body);
   const captchaCookie = req.cookies?.[CAPTCHA_COOKIE] as string | undefined;
   const result = await signupService.signup(input, captchaCookie);
-  res.clearCookie(CAPTCHA_COOKIE, { path: "/" });
+  res.clearCookie(CAPTCHA_COOKIE, clearCaptchaCookieOptions);
   res
     .status(201)
     .json(

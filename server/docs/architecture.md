@@ -219,10 +219,20 @@ migration folder per change — delete empty leftovers.
 - CORS (`src/app.ts`) allows no-origin requests, localhost, private-network
   addresses, and the exact origins in `ALLOWED_ORIGINS`; anything else gets
   403 `CORS_ORIGIN_DENIED`. Credentials are allowed.
-- Auth cookies are `SameSite=Strict`, so the browser only sends them when the
-  client and API are on the **same site** (same registrable domain, e.g.
-  `demo.nanoveu.com` → `api.nanoveu.com`). A client on another domain passes
-  CORS but can't stay logged in.
+- Auth cookies follow `COOKIE_SAME_SITE` (`strict` by default, set in
+  `configs/cookie.config.ts`):
+  - **`strict`** when the client and API are on the **same site** (same
+    registrable domain, e.g. `portal.galaxitron.com` → `api.galaxitron.com`).
+    A client on another domain passes CORS but can't stay logged in.
+  - **`none`** when the client is on another domain than the API. The cookies
+    are then always `Secure`, and they're cleared with the same attributes, or
+    logout wouldn't clear them cross-site.
+    - Safari blocks such third-party cookies by default, so Safari users can't
+      stay logged in. Same-site hosting is the full fix.
+    - **CSRF:** cookies now go with cross-site requests, so the CORS origin check
+      is the defence. It refuses any `Origin` not allowed with 403 before a
+      route runs; browsers always send `Origin` on cross-site writes, and every
+      GET route is read-only. Keep both true.
 - Set `APP_BASE_URL` to the client's origin so email links point at it.
 
 ### 8a. LAN development hosting

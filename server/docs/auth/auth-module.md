@@ -106,20 +106,23 @@ The original spec is `tasks/auth.md`.
 - **Tokens** travel **only in httpOnly cookies**. No response body ever
   carries a token, and JS never reads one.
   - **Access token:**
-    - a 15-minute JWT in the `accessToken` cookie, `sameSite=strict`, path
+    - a 15-minute JWT in the `accessToken` cookie, `sameSite` from `COOKIE_SAME_SITE` (default `strict`), path
       `/api`, with max-age equal to the JWT lifetime;
     - `requireAuth` reads only this cookie; an `Authorization: Bearer` header
       is ignored, giving `401 TOKEN_MISSING`.
   - **Refresh token:**
     - a 14-day rotating token (stored hashed) in the `refreshToken` cookie,
-      `sameSite=strict`, path `/api/auth`, so both `/refresh` and `/logout`
+      same `sameSite`, path `/api/auth`, so both `/refresh` and `/logout`
       receive it; a token sent in the body is ignored;
     - login, MFA verify, signup completion (company address) and refresh set
       both cookies; logout revokes the refresh token and clears both.
-  - **CSRF** is covered by `sameSite=strict` plus the CORS origin check
-    (`app.ts`), which rejects disallowed origins with
-    `403 CORS_ORIGIN_DENIED` before any route runs. The SPA and API share one
-    origin.
+  - **Cross-site clients:** a client on another domain than the API sets
+    `COOKIE_SAME_SITE=none`. The cookies are then always `Secure`, and are cleared
+    with the same attributes. Safari blocks these third-party cookies by default.
+  - **CSRF** is covered by the CORS origin check (`app.ts`), which rejects
+    disallowed origins with `403 CORS_ORIGIN_DENIED` before any route runs.
+    Browsers send `Origin` on every cross-site write, and GET routes are
+    read-only. With `strict`, SameSite adds a second layer.
   - **Client** (`client/src/auth/session.ts`): on
     `401 TOKEN_MISSING/EXPIRED/INVALID` it runs one `/refresh` (single-flight,
     with a device-wide lock) and retries once.

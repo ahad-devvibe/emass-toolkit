@@ -50,6 +50,14 @@ export const envSchema = z
       .string()
       .default("http://localhost:5173")
       .describe("Frontend origin used to build links in emails"),
+    // "none" when the client is on another site than the API (e.g. a portal
+    // domain calling api.example.com): the auth cookies are then sent cross-site
+    // (always Secure). "strict" when both share a registrable domain
+    COOKIE_SAME_SITE: z
+      .enum(["strict", "lax", "none"], {
+        error: "COOKIE_SAME_SITE must be one of strict, lax, none",
+      })
+      .default("strict"),
     // TODO(auth-otp-signup): unused since OTP signup, remove later
     SET_PASSWORD_TTL_HOURS: z.coerce.number().int().positive().default(48),
     SET_PASSWORD_REMINDER_HOURS: z.coerce.number().int().positive().default(24),

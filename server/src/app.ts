@@ -14,7 +14,10 @@ if (env.TRUST_PROXY > 0) app.set("trust proxy", env.TRUST_PROXY);
 
 app.use(pinoHttp({ logger }));
 
-// Hosted frontends that call the API directly (no proxy in front of them)
+// Hosted frontends that call the API directly (no proxy in front of them).
+// This check is also the CSRF defence when COOKIE_SAME_SITE=none: browsers
+// send Origin on every cross-site write, so a page from any other origin is
+// refused here before a route runs (and every GET route is read-only)
 const ALLOWED_ORIGINS = new Set([
   "https://demo.galaxitron.com",
   "https://emass-toolkit.vercel.app",
