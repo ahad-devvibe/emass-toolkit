@@ -23,17 +23,17 @@ export function AuthCard({ title, description, descriptionClassName, eyebrow, ch
   const brandSize = largeBrand ? "w-[200px]" : "w-[176px]"
 
   return (
-    <div className={cn("mx-auto my-auto w-full py-10 lg:py-6 short:py-4 compact:py-3", wide ? "max-w-[680px] xl:max-w-[760px]" : "max-w-[589px]")}>
+    <div className={cn("mx-auto my-auto w-full py-10 lg:py-6 short:py-4 compact:py-3", wide ? "max-w-[620px] xl:max-w-[680px]" : "max-w-[589px]")}>
       <div className={cn("hidden justify-center xl:flex", largeBrand ? "mb-8 short:mb-6 compact:mb-4" : "mb-4 short:mb-3 compact:mb-2")}>
         <img src="/brand/emass-logo-color.svg" alt="EMASS, a Nanoveu business" width={193} height={77} className={cn("h-auto dark:hidden", brandSize)} />
         <img src="/brand/emass-logo-white.svg" alt="EMASS, a Nanoveu business" width={434} height={175} className={cn("hidden h-auto dark:block", brandSize)} />
       </div>
-      <div className={cn("mb-8 space-y-2 short:mb-6 short:space-y-1.5 compact:mb-4 tiny:mb-3", introLeft ? "px-6 text-left sm:px-9 compact:sm:px-7" : "text-center")}>
+      <div className={cn("space-y-2 short:space-y-1.5", wide ? "mb-5 short:mb-4 compact:mb-3 tiny:mb-2" : "mb-8 short:mb-6 compact:mb-4 tiny:mb-3", introLeft ? "px-6 text-left sm:px-9 compact:sm:px-7" : "text-center")}>
         {eyebrow && <p className="text-xs font-semibold tracking-[0.24em] text-primary">{eyebrow}</p>}
         <h2 className="font-display text-[28px] font-bold leading-tight text-[#0f3678] sm:text-[32px] short:sm:text-[28px] compact:sm:text-[26px] dark:text-white">{title}</h2>
         {description && <p className={cn("text-base text-[#0d72b9] sm:text-lg short:sm:text-base tiny:hidden dark:text-[#7cc6f8]", descriptionClassName)}>{description}</p>}
       </div>
-      <div className={cn("rounded-[35px] bg-white p-6 shadow-[0_4px_5.6px_rgba(57,196,237,0.25)] sm:p-9 short:sm:p-7 compact:sm:px-7 compact:sm:py-6 tiny:sm:py-5 dark:bg-[#0b1f40]/85 dark:shadow-[0_4px_18px_rgba(57,196,237,0.18)] dark:ring-1 dark:ring-[#4aa8ff]/20 dark:backdrop-blur-sm", roomy && "sm:py-12 short:sm:py-8 compact:sm:py-7", formSkin)}>{children}</div>
+      <div className={cn("rounded-[35px] bg-white p-6 shadow-[0_4px_5.6px_rgba(57,196,237,0.25)] sm:p-9 short:sm:p-7 compact:sm:px-7 compact:sm:py-6 tiny:sm:py-5 dark:bg-[#0b1f40]/85 dark:shadow-[0_4px_18px_rgba(57,196,237,0.18)] dark:ring-1 dark:ring-[#4aa8ff]/20 dark:backdrop-blur-sm", roomy && "sm:py-12 short:sm:py-8 compact:sm:py-7", wide && "sm:px-8 sm:py-7 short:sm:py-6 compact:sm:py-5", formSkin)}>{children}</div>
       {footer && <div className={cn("text-center text-sm", roomy || dividerFooter ? "mt-8 text-muted-foreground short:mt-7 compact:mt-5 tiny:mt-4" : "mt-6 text-[#0d72b9] short:mt-4 compact:mt-3 tiny:mt-2 dark:text-[#9fd3f7]")}>{footer}</div>}
     </div>
   )

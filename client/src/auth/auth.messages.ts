@@ -10,7 +10,7 @@ const messages: Record<string, string> = {
   OTP_EXPIRED: "That code has expired. Send a new one and try again.",
   OTP_ATTEMPTS_EXCEEDED: "Too many attempts with that code. Send a new one.",
   EMAIL_TAKEN: "An account with this email already exists. Sign in instead.",
-  DOMAIN_BLOCKED: "We are unable to create an account for you right now. Contact: support@nanoveu.com for user profile creation.",
+  DOMAIN_BLOCKED: "We are unable to create an account for you right now. Contact: info@nanoveu.com for user profile creation.",
   CAPTCHA_INVALID: "The characters didn't match. Try the new image.",
   CAPTCHA_EXPIRED: "The image expired. Try the new one.",
   CAPTCHA_REQUIRED: "Reload the image and enter the characters shown.",

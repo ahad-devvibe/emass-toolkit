@@ -5,7 +5,7 @@ import {
   type FormEvent,
   type SetStateAction,
 } from "react";
-import { CircleHelp, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { authApi } from "@/auth/auth.api";
 import { authErrorMessage, errorCode } from "@/auth/auth.messages";
@@ -20,12 +20,6 @@ import { OtpCodeForm } from "@/components/common/OtpCodeForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { ApiRequestError } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { CountryCombobox } from "./components/CountryCombobox";
@@ -211,6 +205,7 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
       wide
       title="Request Access"
       description="Tell us a little about you and your project."
+      descriptionClassName="text-sm text-muted-foreground sm:text-base dark:text-muted-foreground"
       dividerFooter
       footer={
         <span className="flex items-center gap-3">
@@ -241,7 +236,7 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
         className="@container space-y-3 short:space-y-2.5 compact:space-y-2 tiny:space-y-1.5"
       >
         {formError && <FormAlert>{formError}</FormAlert>}
-        <div className="grid items-start gap-3 @[36rem]:grid-cols-3">
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-2">
           <FormField
             id="firstName"
             label="First name"
@@ -272,58 +267,21 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
               onChange={(event) => update("lastName")(event.target.value)}
             />
           </FormField>
+        </div>
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-2">
           <FormField
             id="email"
-            label="Email"
+            label="Work email"
             required
             error={errors.email}
-            labelAside={
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label="Email domain access policy"
-                      />
-                    }
-                  >
-                    <CircleHelp />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Custom email domains get instant access. Free email
-                    addresses are added to the approval list.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            }
           >
             <Input
               {...fieldA11y("email", errors.email)}
               type="email"
               autoComplete="email"
-              placeholder="johndoe@example.com"
+              placeholder="jane.doe@yourcompany.com"
               value={form.email}
               onChange={(event) => update("email")(event.target.value)}
-            />
-          </FormField>
-        </div>
-        <div className="grid items-start gap-3 @[36rem]:grid-cols-3">
-          <FormField
-            id="companyName"
-            label="Company"
-            required
-            error={errors.companyName}
-          >
-            <Input
-              {...fieldA11y("companyName", errors.companyName)}
-              autoComplete="organization"
-              maxLength={120}
-              placeholder="Your company name"
-              value={form.companyName}
-              onChange={(event) => update("companyName")(event.target.value)}
             />
           </FormField>
           <FormField
@@ -338,9 +296,26 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
               inputMode="url"
               autoComplete="url"
               maxLength={255}
-              placeholder="https://yourcompany.com"
+              placeholder="yourcompany.com"
               value={form.website}
               onChange={(event) => update("website")(event.target.value)}
+            />
+          </FormField>
+        </div>
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-2">
+          <FormField
+            id="companyName"
+            label="Company"
+            required
+            error={errors.companyName}
+          >
+            <Input
+              {...fieldA11y("companyName", errors.companyName)}
+              autoComplete="organization"
+              maxLength={120}
+              placeholder="Your company name"
+              value={form.companyName}
+              onChange={(event) => update("companyName")(event.target.value)}
             />
           </FormField>
           <FormField
@@ -359,7 +334,7 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
             />
           </FormField>
         </div>
-        <div className="grid items-start gap-3 @[36rem]:grid-cols-3">
+        <div className="grid items-start gap-3 @[36rem]:grid-cols-[2fr_3fr]">
           <FormField
             id="country"
             label="Country"
@@ -376,7 +351,6 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
           </FormField>
           <FormField
             id="useCase"
-            className="@[36rem]:col-span-2"
             label="What will you use EMASS for?"
             required
             error={errors.useCase}
@@ -462,7 +436,7 @@ function SignupForm({ form, setForm, onCodeSent }: SignupFormProps) {
           disabled={submitting}
         >
           {submitting && <Loader2 className="animate-spin" />}
-          {submitting ? "Sending code…" : "Continue"}
+          {submitting ? "Sending code…" : "Request Access"}
         </Button>
         <LegalNotice action="requesting access" />
       </form>

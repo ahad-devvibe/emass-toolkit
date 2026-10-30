@@ -55,7 +55,7 @@ const invalidCode = () => new ApiError(400, "Invalid OTP", "OTP_INVALID");
 const domainBlocked = () =>
   new ApiError(
     403,
-    "We are unable to create an account for you right now. Contact: support@nanoveu.com for user profile creation.",
+    "We are unable to create an account for you right now. Contact: info@nanoveu.com for user profile creation.",
     "DOMAIN_BLOCKED",
   );
 
