@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { NotesEditor } from "@/pages/ReleaseEditor/components/NotesEditor"
 
 type EditNotesDialogProps = {
@@ -28,10 +28,9 @@ export function EditNotesDialog({ open, onOpenChange, version, notes, onSave }: 
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!saving) onOpenChange(next) }}>
-      <DialogContent className="sm:max-w-3xl" showCloseButton={!saving}>
+      <DialogContent className="sm:max-w-3xl" showCloseButton={!saving} aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Edit notes for v{version}</DialogTitle>
-          <DialogDescription>Customers see the change right away, and it's logged in the activity.</DialogDescription>
         </DialogHeader>
         <NotesEditor value={draft} onChange={setDraft} />
         <DialogFooter>

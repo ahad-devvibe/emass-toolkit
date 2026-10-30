@@ -6,10 +6,10 @@ const job = (overrides: Partial<PublishJob>): PublishJob => ({ phase: "copying",
 
 describe("publishLabel", () => {
   it("describes each phase", () => {
-    expect(publishLabel(job({}))).toBe("Copying file 3 of 3 · 64% overall")
-    expect(publishLabel(job({ filesDone: 0, percent: 0 }))).toBe("Copying file 1 of 3 · 0% overall")
+    expect(publishLabel(job({}))).toBe("File 3 of 3 · 64%")
+    expect(publishLabel(job({ filesDone: 0, percent: 0 }))).toBe("File 1 of 3 · 0%")
     // Between the last copy and finalizing the count never runs past the total
-    expect(publishLabel(job({ filesDone: 3, percent: 100 }))).toBe("Copying file 3 of 3 · 100% overall")
+    expect(publishLabel(job({ filesDone: 3, percent: 100 }))).toBe("File 3 of 3 · 100%")
     expect(publishLabel(job({ phase: "finalizing" }))).toBe("Finishing up…")
     expect(publishLabel(job({ phase: "done" }))).toBe("Published")
     expect(publishLabel(job({ phase: "failed", error: { code: "COPY_FAILED", message: "Unable to copy file" } }))).toBe("Unable to copy file")

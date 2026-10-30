@@ -15,6 +15,7 @@ import {
 } from "../hubspot/hubspot.service.js";
 import { downloadLabel } from "../hubspot/hubspot.utils.js";
 import { assertLicenseAccepted } from "../licenses/license.service.js";
+import { versionOf } from "../releases/releases.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
 
 // Same visibility as the catalog: current and older shipped releases of
@@ -32,7 +33,7 @@ export interface Downloader {
 type DownloadedFile = Pick<
   ReleaseFile,
   "id" | "releaseId" | "originalName" | "objectKey"
-> & { release: { version: string; product: { name: string } } };
+> & { release: { version: string | null; product: { name: string } } };
 
 const fileSelect = {
   id: true,
@@ -59,7 +60,8 @@ async function recordDownload(
     const now = new Date();
     const label = downloadLabel({
       productName: file.release.product.name,
-      version: file.release.version,
+      // Customers only get shipped files, which always have a version
+      version: versionOf(file.release),
       fileName: file.originalName,
     });
     // The row and the user's totals move together; O(1) however many downloads

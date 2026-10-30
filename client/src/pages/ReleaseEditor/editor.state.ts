@@ -1,9 +1,9 @@
 import { ApiRequestError } from "@/lib/api/http"
-import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
+import type { FileKind, OperatingSystem } from "@/pages/Catalog/catalog.types"
 import { highestShipped } from "@/pages/Releases/releases.errors"
 import type { FileMapping, FileMappingChange, ReleaseFileItem, ReleaseSummary } from "@/pages/Releases/releases.model"
 import type { ReleaseStatus } from "@/pages/Releases/releases.types"
-import { parseSemver } from "@/pages/Releases/version.utils"
+import { parseSemver, releaseTitle } from "@/pages/Releases/version.utils"
 import { forRelease, hasConflicts, hasFailures, hasUnfinished, isBusy, overall, type PlatformHolder, type QueueState } from "@/features/uploads/uploads.state"
 
 // Pure rules behind the release editor, kept out of the components so they're testable
@@ -16,6 +16,23 @@ export function versionProblem(input: string): string | null {
   return null
 }
 
+/** A draft may be saved without a version (it's needed to submit), but not with a malformed one. */
+export const draftVersionProblem = (input: string): string | null => (input.trim() ? versionProblem(input) : null)
+
+/** One file's say on the version: its type, and the versions found in its name or contents. */
+export type VersionSource = { kind: FileKind | null; versions: string[] }
+
+/**
+ * The version the SDK files agree on. Docs never count (a guide's own
+ * version says nothing about the build), and an SDK without a version
+ * doesn't object. Exactly one version → `detected`; `candidates` lists
+ * them all, for suggestions when they disagree.
+ */
+export function versionFromSdks(sources: VersionSource[]): { detected: string | null; candidates: string[] } {
+  const candidates = [...new Set(sources.filter((source) => source.kind === "sdk").flatMap((source) => source.versions))]
+  return { detected: candidates.length === 1 ? candidates[0] : null, candidates }
+}
+
 /** The server's version errors, worded for the field. */
 export function serverVersionProblem(error: unknown): string | null {
   const shipped = highestShipped(error)
@@ -25,20 +42,25 @@ export function serverVersionProblem(error: unknown): string | null {
   return null
 }
 
-export type EditorForm = { version: string; notes: string }
+export type EditorForm = { productId: string; version: string; notes: string }
+
+/** Save draft's fields: an empty version is sent as null ("no version yet"). */
+export type FieldChanges = { productId?: string; version?: string | null; releaseNotes?: string }
 
 /** Only what changed, so Save draft never rewrites untouched fields. */
-export function changedFields(saved: { version: string; releaseNotes: string }, form: EditorForm): { version?: string; releaseNotes?: string } {
-  const changes: { version?: string; releaseNotes?: string } = {}
-  const version = form.version.trim()
+export function changedFields(saved: { product: { id: string }; version: string | null; releaseNotes: string }, form: EditorForm): FieldChanges {
+  const changes: FieldChanges = {}
+  if (form.productId !== saved.product.id) changes.productId = form.productId
+  const version = form.version.trim() || null
   if (version !== saved.version) changes.version = version
   if (form.notes !== saved.releaseNotes) changes.releaseNotes = form.notes
   return changes
 }
 
-/** What the save bar says is unsaved: "version · notes · 2 file types". */
-export function unsavedSummary(fields: { version?: string; releaseNotes?: string }, fileChanges: number): string {
+/** What the save bar says is unsaved: "product · version · notes · 2 file types". */
+export function unsavedSummary(fields: FieldChanges, fileChanges: number): string {
   const parts: string[] = []
+  if (fields.productId !== undefined) parts.push("product")
   if (fields.version !== undefined) parts.push("version")
   if (fields.releaseNotes !== undefined) parts.push("notes")
   if (fileChanges > 0) parts.push(`${fileChanges} file ${fileChanges === 1 ? "type" : "types"}`)
@@ -167,7 +189,19 @@ export function draftsToContinue(releases: ReleaseSummary[], uploads: QueueState
   const unlisted: DraftToContinue[] = [...active]
     .filter((id) => !listedIds.has(id))
     .map((id) => ({ id, label: uploads.items.find((item) => item.releaseId === id)?.releaseLabel || "Draft", status: null, updatedAt: null, uploads: uploadsText(uploads, id) }))
-  const known: DraftToContinue[] = listed.map((release) => ({ id: release.id, label: `${release.product.name} v${release.version}`, status: release.status, updatedAt: release.updatedAt, uploads: uploadsText(uploads, release.id) }))
+  const known: DraftToContinue[] = listed.map((release) => ({ id: release.id, label: `${releaseTitle(release)}`, status: release.status, updatedAt: release.updatedAt, uploads: uploadsText(uploads, release.id) }))
   // Uploading ones first: that's what someone coming back is looking for
   return [...unlisted, ...known.filter((draft) => draft.uploads), ...known.filter((draft) => !draft.uploads)].slice(0, limit)
+}
+
+type ProductItem = { value: string; label: string }
+
+/**
+ * Product dropdown items. The release's own product is always there, so the
+ * field shows its name (never its id) before the list loads, and when it's
+ * no longer in the active list.
+ */
+export function productOptions(products: { id: string; name: string }[] | null, current: { id: string; name: string }): ProductItem[] {
+  const items = (products ?? []).map((product) => ({ value: product.id, label: product.name }))
+  return items.some((item) => item.value === current.id) ? items : [{ value: current.id, label: current.name }, ...items]
 }

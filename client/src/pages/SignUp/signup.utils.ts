@@ -1,6 +1,6 @@
 // Same rule as the server's normalizeWebsite (server/src/schemas/auth.schema.ts)
 export const WEBSITE_MAX = 255
-export const WEBSITE_MESSAGE = "Enter a website like acme.com"
+export const WEBSITE_MESSAGE = "Enter a website like yourcompany.com"
 
 /**
  * A website as people type it ("acme.com", "www.acme.com/en") as a full

@@ -170,7 +170,7 @@ export async function createUploadSession(
     input.contentType && CONTENT_TYPE.test(input.contentType)
       ? input.contentType.toLowerCase()
       : FALLBACK_CONTENT_TYPE;
-  const key = stagedKey(release.productId, releaseId, randomUUID(), input.name);
+  const key = stagedKey(randomUUID(), input.name);
   const bucket = getStorageBuckets().staging;
   const storageUploadId = await getStorageDriver().createUpload({
     bucket,

@@ -70,10 +70,8 @@ describe("safeName", () => {
 });
 
 describe("stagedKey", () => {
-  it("builds staged/{productId}/{releaseId}/{uuid}/{safeName}", () => {
-    expect(stagedKey("p1", "r1", "u1", "../My SDK.zip")).toBe(
-      "staged/p1/r1/u1/My-SDK.zip",
-    );
+  it("builds staged/{uuid}/{safeName}, with no product or release", () => {
+    expect(stagedKey("u1", "../My SDK.zip")).toBe("staged/u1/My-SDK.zip");
   });
 });
 
@@ -110,19 +108,30 @@ describe("chunkStream", () => {
 
 describe("releasedKey", () => {
   it("maps a staged key to releases/{productId}/{version}, keeping uuid and name", () => {
+    expect(releasedKey("staged/uuid-7/emass-core.msi", "prod-1", "2.5.0")).toBe(
+      "releases/prod-1/2.5.0/uuid-7/emass-core.msi",
+    );
+  });
+
+  it("groups an older-format key by the release's current product, not the one in its path", () => {
     expect(
-      releasedKey("staged/prod-1/rel-9/uuid-7/emass-core.msi", "2.5.0"),
-    ).toBe("releases/prod-1/2.5.0/uuid-7/emass-core.msi");
+      releasedKey(
+        "staged/old-prod/rel-9/uuid-7/emass-core.msi",
+        "prod-2",
+        "2.5.0",
+      ),
+    ).toBe("releases/prod-2/2.5.0/uuid-7/emass-core.msi");
   });
 
   it("rejects anything that is not a staged key", () => {
     for (const key of [
       "releases/p/1.0.0/u/a.zip",
+      "staged/a.zip",
       "staged/p/r/a.zip",
       "staged/p/r/u/nested/a.zip",
       "",
     ]) {
-      expect(() => releasedKey(key, "1.0.0"), key).toThrowError(
+      expect(() => releasedKey(key, "p", "1.0.0"), key).toThrowError(
         expect.objectContaining({ code: "INVALID_OBJECT_KEY" }),
       );
     }

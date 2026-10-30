@@ -27,7 +27,17 @@ transition is recorded in an append-only history. API: `/api/releases`,
   - Delete is allowed for DRAFT and CHANGES_REQUESTED; it removes the staged
     objects and the review history. We chose to keep it that wide.
   - Versions are strict semver, unique per product, and must be newer than
-    anything ever shipped.
+    the highest **shipped** version of that product (PUBLISHED, ARCHIVED or
+    ROLLED_BACK). Drafts and reviews don't count, so a draft may be lower
+    than another draft. It's checked on create, on a version or product
+    change, at submit and again at publish.
+  - **A draft may have no version yet** (`Release.version` and its parts are
+    nullable). Submit refuses it with `VERSION_REQUIRED`, so everything in
+    review or shipped has one. Several versionless drafts of one product can
+    exist (Postgres allows many NULLs in the unique index).
+  - **The product can change while it's a draft** (`PATCH { productId }`): the
+    new product must be active, and the version (if any) is re-checked
+    against it. Uploads in flight are unaffected.
 - **Upload path:** each file is streamed through our API (busboy → OCI
   multipart) as soon as it's dropped, two at a time.
   - **Why not browser-to-OCI write PARs:** they lose the trusted
@@ -36,6 +46,21 @@ transition is recorded in an append-only history. API: `/api/releases`,
   - Multipart, not raw-body, was a product decision.
 - **The draft is the release row,** created on the first drop. Files are
   saved as their upload finishes, so a refresh loses nothing.
+- **Editor (new and edit pages), files first (2026-10-30):** the dropzone is
+  at the top and always enabled; product and version come after.
+  - **Version from the SDK files:** the client reads versions from SDK file
+    names (`versionsInName`, the same rule as the server's `versionsInText`)
+    and, once uploaded, from each SDK file's `detectedVersions`.
+    Documentation files never count.
+  - **When the SDK files agree on one version,** it's used when the draft is
+    created (or saved at once on an existing draft) and the field is
+    **locked**: only the files can change it. Removing the disagreeing SDKs,
+    or changing a file's type away from SDK, unlocks it.
+  - **No version, or SDKs that disagree:** the field stays editable, with the
+    files' versions offered as suggestions.
+  - **A detected version the server refuses** (taken, not newer than
+    shipped) isn't applied: the field stays editable with the server's
+    message, and the files upload anyway (the draft starts without a version).
 - **Type and platform are draft edits:** uploads never wait for them, and an
   undetected file uploads *unmapped* (`kind` null).
   - Mappings are saved together with **Save draft**, in one `PATCH`. The
@@ -52,8 +77,14 @@ transition is recorded in an append-only history. API: `/api/releases`,
   - Docs only warn.
   - Submit judges every file again and needs `confirmWarnings` for warnings.
   - Details, rules and measurements: `docs/releases/file-checks.md`.
-- **Storage keys:** `staged/{productId}/{releaseId}/{uuid}/{safeName}` →
+- **Storage keys:** `staged/{uuid}/{safeName}` →
   `releases/{productId}/{version}/{uuid}/{safeName}`.
+  - Staged keys carry no product or release, so a draft can change product,
+    or get its version, after its files are uploaded. Publish files them under
+    the release's product and version at that moment (`releasedKey`).
+  - Drafts uploaded before 2026-10-30 keep their older
+    `staged/{productId}/{releaseId}/{uuid}/{safeName}` keys; `releasedKey`
+    accepts both and uses the release's current product either way.
   - The random uuid is reused on publish, so retries are idempotent.
   - `safeName` strips path tricks; the original name is kept separately.
   - Reads always use the stored `objectKey`.
@@ -89,6 +120,32 @@ transition is recorded in an append-only history. API: `/api/releases`,
   lists and rules need.
 - **Notes editor:** Markdown with a toolbar, shortcuts and formatted paste
   (turndown, lazy-loaded), instead of a WYSIWYG editor.
+
+## Purging test releases
+
+`npm run releases:purge` (`scripts/purge-releases.ts`) deletes shipped
+releases for good, for cleaning up after testing:
+- their objects in storage (a key under `releases/` goes to the release bucket,
+  any other key to the staging bucket);
+- the release itself, with its files, events and upload sessions;
+- its `Download` and `ActivityLog` rows.
+
+```
+npm run releases:purge -- --product "EMASS Core SDK" [--version 1.2.3] [--include-archived]
+npm run releases:purge -- --all --execute
+```
+
+- **A dry run unless `--execute`.** It lists each version, its object keys and
+  buckets, its download count, and any version it would restore.
+- **Which releases:** `PUBLISHED` by default; `--include-archived` adds
+  `ARCHIVED` and `ROLLED_BACK`. `--product` takes a name or an id. Either it or
+  `--all` is required.
+- **Restoring:** when a `PUBLISHED` release is removed, the newest `ARCHIVED`
+  version that stays is published again, with no release event.
+- **Objects go first.** If any object fails to delete, that release stays
+  and the run exits 1, so a re-run retries it.
+- **It can't be undone.** It emails no one, and download totals already in
+  HubSpot are not reduced.
 
 ## Assumptions
 

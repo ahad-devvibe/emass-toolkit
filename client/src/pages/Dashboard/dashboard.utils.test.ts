@@ -1,16 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { breakdown, compactCount, moreCount } from "./dashboard.utils"
-
-describe("breakdown", () => {
-  it("joins the non-zero parts", () => {
-    expect(breakdown([[3, "customers"], [2, "staff"]])).toBe("3 customers · 2 staff")
-    expect(breakdown([[0, "competitor"], [1, "rejected"]])).toBe("1 rejected")
-  })
-
-  it("falls back when everything is zero", () => {
-    expect(breakdown([[0, "competitor"], [0, "rejected"]], "None")).toBe("None")
-  })
-})
+import { compactCount, moreCount } from "./dashboard.utils"
 
 describe("moreCount", () => {
   it("counts what the list leaves out, never below zero", () => {

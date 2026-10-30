@@ -6,6 +6,7 @@ import { fieldA11y } from "@/components/common/form.utils"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import type { ReleaseDetail } from "@/pages/Releases/releases.model"
+import { versionLabel } from "@/pages/Releases/version.utils"
 
 const REASON_MAX = 2000
 const MESSAGE_MAX = 1000
@@ -26,7 +27,7 @@ function Counter({ length, max }: { length: number; max: number }) {
 
 /** What happens to customers, by state: published (restore or nothing left) or archived (just withdrawn). */
 function Outcome({ release }: { release: ReleaseDetail }) {
-  const version = <span className="font-mono">v{release.version}</span>
+  const version = <span className="font-mono">{versionLabel(release.version)}</span>
   const { restoreTarget, currentPublished } = release.review
   if (release.status === "archived") {
     return <p>Customers can no longer download {version}.{currentPublished && <> The published version (<span className="font-mono">v{currentPublished.version}</span>) is unchanged.</>}</p>
@@ -50,11 +51,11 @@ export function RollbackDialog({ open, onOpenChange, release, onConfirm }: Rollb
       onOpenChange={onOpenChange}
       tone="destructive"
       icon={RotateCcw}
-      title={`Roll back v${release.version}?`}
+      title={`Roll back ${versionLabel(release.version)}?`}
       description={
         <div className="space-y-2">
           <Outcome release={release} />
-          <p className="text-xs">Customers who downloaded <span className="font-mono">v{release.version}</span> will be emailed.</p>
+          <p className="text-xs">Customers who downloaded <span className="font-mono">{versionLabel(release.version)}</span> will be emailed.</p>
         </div>
       }
       confirmLabel="Roll back"

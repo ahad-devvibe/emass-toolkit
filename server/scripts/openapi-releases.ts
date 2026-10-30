@@ -92,7 +92,10 @@ const fileCheckItem = (codes: string[]) => ({
         fileId: { type: "string" },
         fileName: { type: "string" },
         releaseId: { type: "string" },
-        version: { type: "string" },
+        version: {
+          type: ["string", "null"],
+          description: "null for a draft that has no version yet",
+        },
         status,
         sameRelease: { type: "boolean" },
       },
@@ -160,7 +163,11 @@ const summary = {
       type: "object",
       properties: { id: { type: "string" }, name: { type: "string" } },
     },
-    version: { type: "string" },
+    version: {
+      type: ["string", "null"],
+      description:
+        "null while a draft has no version yet; every release in review or shipped has one",
+    },
     status,
     createdBy: actor,
     createdAt: { type: "string", format: "date-time" },
@@ -605,7 +612,7 @@ export const releasePaths = {
       security: cookie,
       requestBody: jsonBody(
         createReleaseSchema,
-        "Product, semver version and optional Markdown notes",
+        "Product, plus an optional semver version and Markdown notes. Without a version the draft is created anyway, so files can upload first; the version is set later and required to submit",
       ),
       responses: {
         201: { ...releaseResponse("Draft created") },
@@ -674,21 +681,25 @@ export const releasePaths = {
       operationId: "saveReleaseDraft",
       tags: ["Releases"],
       summary:
-        "Save draft: version, notes and file type/platform mappings (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "Save draft: product, version, notes and file type/platform mappings (creating DEV; DRAFT or CHANGES_REQUESTED)",
       description:
-        "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved.",
+        "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved. productId moves the draft to another active product (staged files don't move; publish groups them by the release's product and version); a version is then checked against that product. version: null clears the version.",
       security: cookie,
       parameters: [idParam],
       requestBody: jsonBody(
         updateReleaseSchema,
-        "Any of version, releaseNotes and files",
+        "Any of productId, version (null clears it), releaseNotes and files",
       ),
       responses: {
         200: releaseResponse("Saved"),
         400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
         401: unauthorized,
         403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
-        404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
+        404: notFound([
+          "RELEASE_NOT_FOUND",
+          "FILE_NOT_FOUND",
+          "PRODUCT_NOT_FOUND",
+        ]),
         409: errorResponse(
           "Conflict",
           [
@@ -765,7 +776,12 @@ export const releasePaths = {
         200: releaseResponse("In review"),
         400: errorResponse(
           "Not ready",
-          ["NO_FILES", "FILE_TYPE_MISSING", "SDK_PLATFORM_MISSING"],
+          [
+            "NO_FILES",
+            "FILE_TYPE_MISSING",
+            "SDK_PLATFORM_MISSING",
+            "VERSION_REQUIRED",
+          ],
           400,
         ),
         401: unauthorized,
@@ -879,7 +895,12 @@ export const releasePaths = {
         ),
         400: errorResponse(
           "Not ready",
-          ["NO_FILES", "FILE_TYPE_MISSING", "SDK_PLATFORM_MISSING"],
+          [
+            "NO_FILES",
+            "FILE_TYPE_MISSING",
+            "SDK_PLATFORM_MISSING",
+            "VERSION_REQUIRED",
+          ],
           400,
         ),
         401: unauthorized,

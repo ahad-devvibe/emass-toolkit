@@ -67,8 +67,19 @@ export function useResource<T>(key: string | null, load: (signal: AbortSignal) =
   }
 }
 
+// The last product list, shown at once on the next page while it reloads;
+// otherwise each editor mount waits for it, which can take seconds behind uploads
+let lastProducts: ProductOption[] | undefined
+subscribeSession((event) => {
+  if (event.type === "signed-out") lastProducts = undefined
+})
+
 export function useProducts(): Resource<ProductOption[]> {
-  return useResource("products", () => productsApi.list())
+  const resource = useResource("products", () => productsApi.list(), { initial: lastProducts })
+  useEffect(() => {
+    if (resource.data) lastProducts = resource.data
+  }, [resource.data])
+  return resource
 }
 
 /** `initial` (the release as just created) skips the loader; it's used only if it's the same release. */

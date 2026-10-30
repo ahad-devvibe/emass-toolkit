@@ -14,7 +14,8 @@ export interface ContentMatch {
   fileId: string;
   fileName: string;
   releaseId: string;
-  version: string;
+  /** Null for a draft that has no version yet. */
+  version: string | null;
   status: ReleaseStatus;
   sameRelease: boolean;
 }
@@ -63,7 +64,8 @@ export interface FileVerdict {
 }
 
 export interface FileFacts {
-  releaseVersion: string;
+  /** Null while the draft has no version: version rules wait until it has one. */
+  releaseVersion: string | null;
   inspection: {
     format: Inspection["format"];
     /** Stored files keep only the versions, so `field` may be missing. */
@@ -110,14 +112,16 @@ export function evaluateFile(facts: FileFacts): FileVerdict {
       code: "SAME_CONTENT",
       message: match.sameRelease
         ? `Already in this release as "${match.fileName}".`
-        : `Identical to "${match.fileName}" in v${match.version}.`,
+        : `Identical to "${match.fileName}" in ${match.version ? `v${match.version}` : "a draft without a version"}.`,
       match,
     });
   }
 
   const claims = versionClaims(inspection.versions);
+  // No release version yet: nothing to compare with. Submit judges every
+  // file again once the draft has one
   for (const [version, fields] of claims) {
-    if (version === expected) continue;
+    if (expected === null || version === expected) continue;
     const where = fields.length > 0 ? ` (${fields.join(", ")})` : "";
     const says = `says version ${version}${where}`;
     if (!installer) {

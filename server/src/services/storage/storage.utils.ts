@@ -61,30 +61,35 @@ export async function* chunkStream(
   if (pendingBytes > 0) yield Buffer.concat(pending, pendingBytes);
 }
 
-/** staged/{productId}/{releaseId}/{uuid}/{safeName} */
-export function stagedKey(
-  productId: string,
-  releaseId: string,
-  uuid: string,
-  fileName: string,
-): string {
-  return `staged/${productId}/${releaseId}/${uuid}/${safeName(fileName)}`;
+/**
+ * staged/{uuid}/{safeName}: no product or release in the path, so a draft can
+ * change product (or get its version) after its files are uploaded. Publish
+ * groups them by the release's product and version.
+ */
+export function stagedKey(uuid: string, fileName: string): string {
+  return `staged/${uuid}/${safeName(fileName)}`;
 }
 
-const STAGED_KEY = /^staged\/([^/]+)\/[^/]+\/([^/]+)\/([^/]+)$/;
+// staged/{uuid}/{name}, or the older staged/{productId}/{releaseId}/{uuid}/{name}
+const STAGED_KEY = /^staged\/(?:[^/]+\/[^/]+\/)?([^/]+)\/([^/]+)$/;
 
 /**
  * Where a staged file goes on publish:
- * releases/{productId}/{version}/{uuid}/{safeName}. It reuses the staged
- * uuid and name, so a retried publish writes the same key instead of a new
- * one. Throws on anything that isn't a staged key (a bug, never user input).
+ * releases/{productId}/{version}/{uuid}/{safeName}, from the release's
+ * product and version at that moment. It reuses the staged uuid and name, so
+ * a retried publish writes the same key instead of a new one. Throws on
+ * anything that isn't a staged key (a bug, never user input).
  */
-export function releasedKey(stagedObjectKey: string, version: string): string {
+export function releasedKey(
+  stagedObjectKey: string,
+  productId: string,
+  version: string,
+): string {
   const match = STAGED_KEY.exec(stagedObjectKey);
   if (!match) {
     throw new ApiError(500, "Not a staged object key", "INVALID_OBJECT_KEY");
   }
-  const [, productId, uuid, name] = match;
+  const [, uuid, name] = match;
   return `releases/${productId}/${version}/${uuid}/${name}`;
 }
 

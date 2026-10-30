@@ -10,13 +10,14 @@ import { cn } from "@/lib/utils"
 import { ProductIcon } from "@/pages/Releases/product-meta"
 import { relativeTime } from "@/pages/Releases/releases.utils"
 import type { Dashboard } from "./dashboard.api"
-import { breakdown, compactCount, moreCount } from "./dashboard.utils"
+import { compactCount, moreCount } from "./dashboard.utils"
 import { useDashboard } from "./useDashboard"
+import { versionLabel } from "@/pages/Releases/version.utils"
 
-// value and detail are null while the first load is in flight; format defaults to the full number
-type StatProps = { label: string; value: number | null; detail: string | null; Icon: LucideIcon; to?: string; tone?: "default" | "amber"; format?: (value: number) => string }
+// value is null while the first load is in flight; format defaults to the full number
+type StatProps = { label: string; value: number | null; Icon: LucideIcon; to?: string; tone?: "default" | "amber"; format?: (value: number) => string }
 
-function Stat({ label, value, detail, Icon, to, tone = "default", format }: StatProps) {
+function Stat({ label, value, Icon, to, tone = "default", format }: StatProps) {
   const exact = value?.toLocaleString()
   const shown = value !== null && format ? format(value) : exact
   const body = (
@@ -26,7 +27,6 @@ function Stat({ label, value, detail, Icon, to, tone = "default", format }: Stat
         <span className={cn("grid size-8 place-items-center rounded-lg bg-secondary text-primary", tone === "amber" && "bg-amber-500/10 text-amber-600 dark:text-amber-400")}><Icon aria-hidden className="size-4" /></span>
       </div>
       {value === null ? <Skeleton className="mt-3 mb-1 h-7 w-14" /> : <p className={cn("mt-2 text-3xl font-bold tabular-nums tracking-tight", tone === "amber" && "text-amber-700 dark:text-amber-300")} title={shown !== exact ? exact : undefined}>{shown}</p>}
-      {detail === null ? <Skeleton className="mt-2 h-3 w-28" /> : <p className="mt-1 truncate text-xs text-muted-foreground">{detail}</p>}
     </>
   )
   const frame = "rounded-xl bg-card p-4 ring-1 ring-border"
@@ -96,7 +96,7 @@ function ReleaseQueue({ alerts }: { alerts: Dashboard["releaseAlerts"] | null })
               <Link to={`/releases/${release.id}`} className="flex items-center gap-3 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
                 <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground/70"><ProductIcon productId={release.product.id} className="size-4" /></span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{release.product.name} <span className="font-mono text-muted-foreground">v{release.version}</span></span>
+                  <span className="block truncate text-sm font-medium">{release.product.name} <span className="font-mono text-muted-foreground">{versionLabel(release.version)}</span></span>
                   <span className="block truncate text-xs text-muted-foreground">Submitted by {release.createdBy.name}</span>
                 </span>
                 <Waited at={release.submittedAt} />
@@ -139,11 +139,8 @@ export function DashboardPage() {
   return (
     <AppShell breadcrumb={["Admin", "Dashboard"]}>
       <main aria-busy={refreshing || undefined} className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Accounts and what needs your attention.</p>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}><RefreshCw className={refreshing ? "animate-spin" : undefined} />Refresh</Button>
         </div>
 
@@ -159,11 +156,11 @@ export function DashboardPage() {
         {(data || !error) && (
           <>
             <section aria-label="Totals" aria-busy={!data || undefined} className={statGrid}>
-              <Stat label="Active users" value={data?.users.active ?? null} detail={data ? breakdown([[data.users.activeCustomers, "customers"], [data.users.activeStaff, "staff"]], "No active accounts") : null} Icon={Users} />
-              <Stat label="Pending sign-ups" value={data?.users.pendingApproval ?? null} detail="Waiting for approval" Icon={UserCheck} to="/admin/signups" tone={data && data.users.pendingApproval > 0 ? "amber" : "default"} />
-              <Stat label="Competitors blocked" value={data?.users.blockedCompetitor ?? null} detail="Signed up with a competitor domain" Icon={ShieldX} />
-              <Stat label="Sign-ups rejected" value={data?.users.blockedRejected ?? null} detail="Declined by an admin" Icon={Ban} />
-              <Stat label="Total downloads" value={data?.downloads.total ?? null} detail={data ? `${compactCount(data.downloads.last30Days)} in the last 30 days` : null} Icon={Download} format={compactCount} />
+              <Stat label="Active users" value={data?.users.active ?? null} Icon={Users} />
+              <Stat label="Pending sign-ups" value={data?.users.pendingApproval ?? null} Icon={UserCheck} to="/admin/signups" tone={data && data.users.pendingApproval > 0 ? "amber" : "default"} />
+              <Stat label="Competitors blocked" value={data?.users.blockedCompetitor ?? null} Icon={ShieldX} />
+              <Stat label="Sign-ups rejected" value={data?.users.blockedRejected ?? null} Icon={Ban} />
+              <Stat label="Total downloads" value={data?.downloads.total ?? null} Icon={Download} format={compactCount} />
             </section>
             <div className="grid gap-6 lg:grid-cols-2">
               <ReleaseQueue alerts={data?.releaseAlerts ?? null} />

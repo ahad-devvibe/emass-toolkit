@@ -44,7 +44,8 @@ export type ReleaseEventItem = { id: string; type: ReleaseEventKind; actor: Rele
 export type ReleaseSummary = {
   id: string
   product: { id: string; name: string }
-  version: string
+  /** Null while a draft has none yet; every release in review or shipped has one. */
+  version: string | null
   status: ReleaseStatus
   createdBy: ReleaseActor
   createdAt: string

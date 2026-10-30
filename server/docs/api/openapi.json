@@ -4879,7 +4879,11 @@
                                 }
                               },
                               "version": {
-                                "type": "string"
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "null while a draft has no version yet; every release in review or shipped has one"
                               },
                               "status": {
                                 "type": "string",
@@ -5092,7 +5096,7 @@
           }
         ],
         "requestBody": {
-          "description": "Product, semver version and optional Markdown notes",
+          "description": "Product, plus an optional semver version and Markdown notes. Without a version the draft is created anyway, so files can upload first; the version is set later and required to submit",
           "required": true,
           "content": {
             "application/json": {
@@ -5113,8 +5117,7 @@
                   }
                 },
                 "required": [
-                  "productId",
-                  "version"
+                  "productId"
                 ],
                 "additionalProperties": false
               }
@@ -5164,7 +5167,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -5367,7 +5374,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -5448,7 +5459,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -6046,7 +6061,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -6249,7 +6268,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -6330,7 +6353,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -6580,8 +6607,8 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Save draft: version, notes and file type/platform mappings (creating DEV; DRAFT or CHANGES_REQUESTED)",
-        "description": "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved.",
+        "summary": "Save draft: product, version, notes and file type/platform mappings (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "description": "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved. productId moves the draft to another active product (staged files don't move; publish groups them by the release's product and version); a version is then checked against that product. version: null clears the version.",
         "security": [
           {
             "cookieAuth": []
@@ -6599,14 +6626,20 @@
           }
         ],
         "requestBody": {
-          "description": "Any of version, releaseNotes and files",
+          "description": "Any of productId, version (null clears it), releaseNotes and files",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
+                  "productId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+                  },
                   "version": {
+                    "nullable": true,
                     "type": "string"
                   },
                   "releaseNotes": {
@@ -6698,7 +6731,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -6901,7 +6938,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -6982,7 +7023,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -7252,7 +7297,8 @@
                       "type": "string",
                       "enum": [
                         "RELEASE_NOT_FOUND",
-                        "FILE_NOT_FOUND"
+                        "FILE_NOT_FOUND",
+                        "PRODUCT_NOT_FOUND"
                       ]
                     },
                     "details": {}
@@ -7660,7 +7706,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -7863,7 +7913,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -7944,7 +7998,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -8353,7 +8411,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -8556,7 +8618,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -8637,7 +8703,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -8785,7 +8855,8 @@
                       "enum": [
                         "NO_FILES",
                         "FILE_TYPE_MISSING",
-                        "SDK_PLATFORM_MISSING"
+                        "SDK_PLATFORM_MISSING",
+                        "VERSION_REQUIRED"
                       ]
                     },
                     "details": {}
@@ -9035,7 +9106,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -9238,7 +9313,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -9319,7 +9398,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -9694,7 +9777,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -9897,7 +9984,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -9978,7 +10069,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -10397,7 +10492,11 @@
                               }
                             },
                             "version": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "null while a draft has no version yet; every release in review or shipped has one"
                             },
                             "status": {
                               "type": "string",
@@ -10600,7 +10699,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -10681,7 +10784,11 @@
                                               "type": "string"
                                             },
                                             "version": {
-                                              "type": "string"
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ],
+                                              "description": "null for a draft that has no version yet"
                                             },
                                             "status": {
                                               "type": "string",
@@ -11142,7 +11249,8 @@
                       "enum": [
                         "NO_FILES",
                         "FILE_TYPE_MISSING",
-                        "SDK_PLATFORM_MISSING"
+                        "SDK_PLATFORM_MISSING",
+                        "VERSION_REQUIRED"
                       ]
                     },
                     "details": {}
@@ -13445,7 +13553,11 @@
                                         "type": "string"
                                       },
                                       "version": {
-                                        "type": "string"
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "null for a draft that has no version yet"
                                       },
                                       "status": {
                                         "type": "string",
@@ -13526,7 +13638,11 @@
                                         "type": "string"
                                       },
                                       "version": {
-                                        "type": "string"
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "null for a draft that has no version yet"
                                       },
                                       "status": {
                                         "type": "string",

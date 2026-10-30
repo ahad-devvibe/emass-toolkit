@@ -71,6 +71,10 @@ even from a modified client.
   file size. PDFs follow `startxref` → xref (`/Prev`, `/XRefStm`) → Info and
   XMP. A broken pointer falls back to a scan: the whole file up to 5 MB, else
   the first and last 1 MB.
+- **A draft without a version** skips the version rules (`VERSION_MISMATCH`,
+  `VERSION_EXISTS`, `DOC_VERSION_MISMATCH`): there's nothing to compare with.
+  The content rules still run. Once the draft gets a version, the editor
+  re-checks its files, and submit judges every file again.
 - **A version edit on a draft isn't refused.** The affected files show
   `blockedBy`, and submit decides. A mistyped version doesn't trap the
   developer.

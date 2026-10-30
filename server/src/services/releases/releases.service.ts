@@ -27,6 +27,7 @@ import {
   releaseNotFound,
   translateVersionConflict,
   versionNotNewer,
+  versionRequired,
 } from "./releases.errors.js";
 import {
   actorSelect,
@@ -46,8 +47,11 @@ import {
   formatVersion,
   parseVersion,
   releaseSearchWhere,
+  requiredSemver,
+  semverOf,
   suggestVersions,
   versionBelow,
+  versionOf,
   type Semver,
 } from "./releases.utils.js";
 
@@ -68,12 +72,16 @@ function requireVersion(version: string): Semver {
   return parsed;
 }
 
-const versionColumns = ({ major, minor, patch }: Semver) => ({
-  version: formatVersion({ major, minor, patch }),
-  versionMajor: major,
-  versionMinor: minor,
-  versionPatch: patch,
+const versionColumns = (version: Semver | null) => ({
+  version: version && formatVersion(version),
+  versionMajor: version?.major ?? null,
+  versionMinor: version?.minor ?? null,
+  versionPatch: version?.patch ?? null,
 });
+
+/** A shipped release as a { id, version } reference (shipped ones always have a version). */
+const shippedRef = (row: { id: string; version: string | null } | null) =>
+  row && { id: row.id, version: versionOf(row) };
 
 async function assertActiveProduct(productId: string): Promise<void> {
   const product = await prisma.product.findFirst({
@@ -88,18 +96,17 @@ async function highestVersion(
   productId: string,
   statuses?: ReleaseStatus[],
 ): Promise<Semver | null> {
+  // Drafts without a version yet don't count (NULLs would sort first)
   const row = await db.release.findFirst({
-    where: { productId, ...(statuses && { status: { in: statuses } }) },
+    where: {
+      productId,
+      versionMajor: { not: null },
+      ...(statuses && { status: { in: statuses } }),
+    },
     orderBy: VERSION_ORDER_DESC,
     select: { versionMajor: true, versionMinor: true, versionPatch: true },
   });
-  return row
-    ? {
-        major: row.versionMajor,
-        minor: row.versionMinor,
-        patch: row.versionPatch,
-      }
-    : null;
+  return row && semverOf(row);
 }
 
 export async function assertNewerThanShipped(
@@ -266,26 +273,23 @@ export async function listReleases(
 const versionRef = { id: true, version: true } as const;
 
 /** The newest ARCHIVED release of the product below `release`'s version. */
-function findRestoreTarget(
+async function findRestoreTarget(
   db: Db,
   release: Pick<
     Release,
     "productId" | "versionMajor" | "versionMinor" | "versionPatch"
   >,
 ) {
-  return db.release.findFirst({
+  const row = await db.release.findFirst({
     where: {
       productId: release.productId,
       status: ReleaseStatus.ARCHIVED,
-      ...versionBelow({
-        major: release.versionMajor,
-        minor: release.versionMinor,
-        patch: release.versionPatch,
-      }),
+      ...versionBelow(requiredSemver(release)),
     },
     orderBy: VERSION_ORDER_DESC,
     select: versionRef,
   });
+  return shippedRef(row);
 }
 
 async function reviewContext(
@@ -304,7 +308,10 @@ async function reviewContext(
       where: { productId: release.productId, status: ReleaseStatus.PUBLISHED },
       select: versionRef,
     });
-    return { ...noReviewContext, currentPublished };
+    return {
+      ...noReviewContext,
+      currentPublished: shippedRef(currentPublished),
+    };
   }
   if (release.status === ReleaseStatus.PUBLISHED) {
     return {
@@ -347,14 +354,16 @@ export async function nextVersion(productId: string) {
 
 export interface CreateReleaseInput {
   productId: string;
-  version: string;
+  /** Optional: files can upload to a draft that has no version yet. */
+  version?: string;
   releaseNotes?: string;
 }
 
 export async function createRelease(devId: string, input: CreateReleaseInput) {
-  const version = requireVersion(input.version);
+  const version =
+    input.version === undefined ? null : requireVersion(input.version);
   await assertActiveProduct(input.productId);
-  await assertNewerThanShipped(prisma, input.productId, version);
+  if (version) await assertNewerThanShipped(prisma, input.productId, version);
 
   const release = await withVersionConflicts(() =>
     prisma.$transaction(async (tx) => {
@@ -386,7 +395,10 @@ export interface FileMappingInput {
 }
 
 export interface UpdateReleaseInput {
-  version?: string;
+  /** Moves a draft to another product; storage keys don't depend on it. */
+  productId?: string;
+  /** null clears it: the draft has no version yet. */
+  version?: string | null;
   releaseNotes?: string;
   files?: FileMappingInput[];
 }
@@ -464,10 +476,24 @@ export async function updateRelease(
       if (input.releaseNotes !== undefined) {
         data.releaseNotes = input.releaseNotes;
       }
-      if (input.version !== undefined && input.version !== release.version) {
-        const version = requireVersion(input.version);
-        await assertNewerThanShipped(tx, release.productId, version);
-        Object.assign(data, versionColumns(version));
+      const productId = input.productId ?? release.productId;
+      if (productId !== release.productId) {
+        await assertActiveProduct(productId);
+        data.product = { connect: { id: productId } };
+      }
+      const version =
+        input.version === undefined
+          ? semverOf(release)
+          : input.version === null
+            ? null
+            : requireVersion(input.version);
+      const versionChanged =
+        input.version !== undefined && input.version !== release.version;
+      if (versionChanged) Object.assign(data, versionColumns(version));
+      // A new version, or the same one under another product, must be newer
+      // than what that product shipped (uniqueness is the DB's constraint)
+      if (version && (versionChanged || productId !== release.productId)) {
+        await assertNewerThanShipped(tx, productId, version);
       }
       await tx.release.update({ where: { id }, data });
     }),
@@ -509,11 +535,9 @@ export async function assertReadyForReview(
       "SDK_PLATFORM_MISSING",
     );
   }
-  await assertNewerThanShipped(db, release.productId, {
-    major: release.versionMajor,
-    minor: release.versionMinor,
-    patch: release.versionPatch,
-  });
+  const version = semverOf(release);
+  if (!version) throw versionRequired();
+  await assertNewerThanShipped(db, release.productId, version);
 }
 
 /**
@@ -700,7 +724,7 @@ export async function rollbackRelease(
         where: { productId: found.productId, status: ReleaseStatus.PUBLISHED },
         select: versionRef,
       });
-      return { version: release.version, replacement: current };
+      return { version: versionOf(release), replacement: shippedRef(current) };
     }
 
     // Published: promote the newest older archived version, if there is one;
@@ -717,11 +741,11 @@ export async function rollbackRelease(
           releaseId: target.id,
           type: ReleaseEventType.RESTORED,
           actorId: adminId,
-          note: `Restored after v${release.version} was rolled back`,
+          note: `Restored after v${versionOf(release)} was rolled back`,
         },
       });
     }
-    return { version: release.version, replacement: target };
+    return { version: versionOf(release), replacement: target };
   });
 
   // Emails go out after the commit, without holding up the admin

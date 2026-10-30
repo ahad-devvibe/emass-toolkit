@@ -95,7 +95,7 @@ describe("POST /api/auth/signup", () => {
     });
     expect(bad.status).toBe(400);
     expect(bad.body.details.fieldErrors.website).toEqual([
-      "Enter a website like acme.com",
+      "Enter a website like yourcompany.com",
     ]);
   });
 

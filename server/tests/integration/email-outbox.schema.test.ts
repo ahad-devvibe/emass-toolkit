@@ -68,7 +68,8 @@ describe("EmailOutbox table", () => {
       WHERE tablename = 'EmailOutbox' AND indexname = 'EmailOutbox_due_idx'
     `;
 
-    expect(index?.indexdef).toMatch(/\("priority", "createdAt"\)/);
+    // Postgres quotes only identifiers that need it: priority, "createdAt"
+    expect(index?.indexdef).toMatch(/\(priority, "createdAt"\)/);
     expect(index?.indexdef).toMatch(/WHERE .*PENDING.*SENDING/);
   });
 });

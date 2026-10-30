@@ -27,25 +27,32 @@ const productIdField = z.guid({
       : "Product must be a valid id",
 });
 
+// The version may come later: files can upload to a draft that has none yet
 export const createReleaseSchema = z.object({
   productId: productIdField,
-  version: versionField,
+  version: versionField.optional(),
   releaseNotes: releaseNotesField.optional(),
 });
 
 // Save draft: version, notes and file type/platform mappings in one request
 export const updateReleaseSchema = z
   .object({
-    version: versionField.optional(),
+    productId: productIdField.optional(),
+    // null clears the version (back to "no version yet")
+    version: versionField.nullable().optional(),
     releaseNotes: releaseNotesField.optional(),
     files: fileMappingsSchema.optional(),
   })
   .refine(
     (body) =>
+      body.productId !== undefined ||
       body.version !== undefined ||
       body.releaseNotes !== undefined ||
       body.files !== undefined,
-    { error: "Send a version, release notes or file mappings to update" },
+    {
+      error:
+        "Send a product, version, release notes or file mappings to update",
+    },
   );
 
 // Query string for GET /releases (cursor pagination, filters, search)

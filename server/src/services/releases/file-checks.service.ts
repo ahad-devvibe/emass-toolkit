@@ -38,7 +38,7 @@ import {
   releaseLocked,
   releaseNotFound,
 } from "./releases.errors.js";
-import { EDITABLE_STATUSES } from "./releases.utils.js";
+import { EDITABLE_STATUSES, versionOf } from "./releases.utils.js";
 
 export type FileCheckResult =
   | { status: "NEED_BYTES"; ranges: ByteRange[] }
@@ -133,7 +133,10 @@ async function otherReleasesAt(release: ReleaseRef, versions: string[]) {
     select: { id: true, version: true, status: true },
   });
   for (const other of others) {
-    byVersion.set(other.version, { releaseId: other.id, status: other.status });
+    byVersion.set(versionOf(other), {
+      releaseId: other.id,
+      status: other.status,
+    });
   }
   return byVersion;
 }

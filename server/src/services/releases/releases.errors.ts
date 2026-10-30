@@ -39,6 +39,13 @@ export const versionNotNewer = (highestShipped: string) =>
     { highestShipped },
   );
 
+/** Submit (and publish) need a version; a draft may have none yet. */
+export const versionRequired = () =>
+  ApiError.badRequest(
+    "Set a version before sending this for review",
+    "VERSION_REQUIRED",
+  );
+
 /** The release's files changed while publish was copying them. */
 export const releaseChanged = () =>
   ApiError.conflict(

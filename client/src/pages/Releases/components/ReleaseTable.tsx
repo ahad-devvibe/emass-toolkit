@@ -15,6 +15,7 @@ import type { ProductOption, ReleaseSummary } from "../releases.model"
 import type { ReleaseStatus } from "../releases.types"
 import { relativeTime } from "../releases.utils"
 import { ReleaseStatusBadge } from "./ReleaseStatusBadge"
+import { versionLabel } from "@/pages/Releases/version.utils"
 
 const SEARCH_DEBOUNCE_MS = 200
 
@@ -33,12 +34,12 @@ function ReleaseRow({ release }: { release: ReleaseSummary }) {
           {/* The stretched link makes the whole row clickable without nesting interactive elements */}
           <Link to={`/releases/${release.id}`} className="block truncate text-sm font-medium outline-none after:absolute after:inset-0 focus-visible:underline">
             {release.product.name}
-            <span className="ml-2 font-mono text-muted-foreground sm:hidden">v{release.version}</span>
+            <span className="ml-2 font-mono text-muted-foreground sm:hidden">{versionLabel(release.version)}</span>
           </Link>
           <p className="mt-0.5 truncate text-xs text-muted-foreground sm:hidden">{files} · {created} · {release.createdBy.name}</p>
         </div>
       </div>
-      <span className="hidden font-mono text-sm font-semibold sm:block">v{release.version}</span>
+      <span className="hidden font-mono text-sm font-semibold sm:block">{versionLabel(release.version)}</span>
       <span><ReleaseStatusBadge status={release.status} /></span>
       <span className="hidden text-sm tabular-nums text-muted-foreground sm:block">{files}</span>
       <span className="hidden min-w-0 sm:block">

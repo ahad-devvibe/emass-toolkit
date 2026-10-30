@@ -20,6 +20,7 @@ import { usePublishJob } from "../usePublishJob"
 import { EditNotesDialog } from "./EditNotesDialog"
 import { RollbackDialog } from "./RollbackDialog"
 import { PublishDialog, PublishProgressBar } from "./PublishDialog"
+import { versionLabel } from "@/pages/Releases/version.utils"
 
 const idleHint: Partial<Record<ReleaseStatus, string>> = {
   published: "Live for customers. Only an admin can roll it back.",
@@ -59,7 +60,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
   const publishing = usePublishJob(release.id, {
     enabled: viewer.role === "ADMIN" && release.status === "in_review",
     onSettled: (job: PublishJob) => {
-      if (job.phase === "done") toast.success(`v${release.version} is live`)
+      if (job.phase === "done") toast.success(`${versionLabel(release.version)} is live`)
       else toast.error("Publishing failed", { description: job.error?.message })
       notifyReleasesChanged()
       onStale()
@@ -130,7 +131,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
           {actions.includes("publish") && (
             <Button onClick={() => setDialog("publish")} disabled={busy !== null}>
               {publishRunning ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
-              {publishRunning ? "Publishing…" : `Publish v${release.version}`}
+              {publishRunning ? "Publishing…" : `Publish ${versionLabel(release.version)}`}
             </Button>
           )}
           {actions.includes("reject") && (
@@ -143,7 +144,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
             <Button variant="outline" className="text-destructive hover:text-destructive" onClick={openRollback} disabled={busy !== null}><RotateCcw />Roll back</Button>
           )}
           {actions.includes("submit") && (
-            <Button onClick={() => void run("submit", () => releasesApi.submit(release.id), `v${release.version} sent for review`)} disabled={noFiles || busy !== null}>
+            <Button onClick={() => void run("submit", () => releasesApi.submit(release.id), `${versionLabel(release.version)} sent for review`)} disabled={noFiles || busy !== null}>
               {spinner("submit") ?? <Send />}Submit for review
             </Button>
           )}
@@ -153,7 +154,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
               {spinner("withdraw") ?? <Undo2 />}Withdraw to draft
             </Button>
           )}
-          {actions.includes("delete") && <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => deletion.request({ id: release.id, name: `v${release.version}` })} disabled={busy !== null}><Trash2 />Delete</Button>}
+          {actions.includes("delete") && <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => deletion.request({ id: release.id, name: `${versionLabel(release.version)}` })} disabled={busy !== null}><Trash2 />Delete</Button>}
 
           {publishRunning && dialog !== "publish" && (
             <div className="space-y-1.5 pt-1" aria-live="polite">
@@ -180,7 +181,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
         onOpenChange={(open) => setDialog(open ? "reject" : null)}
         icon={MessageSquareWarning}
         title="Request changes"
-        description={<p>{release.createdBy.name} gets your feedback and can update and resubmit. Nothing is published.</p>}
+        description={<p>{release.createdBy.name} will get your feedback and make the changes.</p>}
         confirmLabel="Send feedback"
         field={{ label: "Feedback", placeholder: "What needs to change before this can be published?", required: true, maxLength: 2000 }}
         onConfirm={(note) => confirm(() => releasesApi.requestChanges(release.id, note), `Sent back to ${release.createdBy.name}`)}
@@ -191,13 +192,13 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
         open={dialog === "rollback"}
         onOpenChange={(open) => setDialog(open ? "rollback" : null)}
         release={release}
-        onConfirm={(input) => confirm(() => releasesApi.rollback(release.id, input), restoreTarget ? `Rolled back to v${restoreTarget.version}` : `v${release.version} rolled back`)}
+        onConfirm={(input) => confirm(() => releasesApi.rollback(release.id, input), restoreTarget ? `Rolled back to v${restoreTarget.version}` : `${versionLabel(release.version)} rolled back`)}
       />
       {dialog === "notes" && (
         <EditNotesDialog
           open
           onOpenChange={(open) => setDialog(open ? "notes" : null)}
-          version={release.version}
+          version={release.version ?? ""}
           notes={release.releaseNotes}
           onSave={(notes) => confirm(() => releasesApi.updateNotes(release.id, notes), "Release notes updated")}
         />
@@ -205,7 +206,7 @@ export function ReleaseActions({ release, viewer, onUpdated, onStale }: ReleaseA
       <SubmitWarningsDialog
         files={warnedFiles}
         onClose={() => setWarnedFiles(null)}
-        onConfirm={() => confirm(() => releasesApi.submit(release.id, { confirmWarnings: true }), `v${release.version} sent for review`)}
+        onConfirm={() => confirm(() => releasesApi.submit(release.id, { confirmWarnings: true }), `${versionLabel(release.version)} sent for review`)}
       />
       {deletion.dialog}
     </section>

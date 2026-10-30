@@ -13,6 +13,7 @@ import {
 } from "../storage/drivers/storage.driver.js";
 import { releasedKey } from "../storage/storage.utils.js";
 import { releaseChanged, releaseNotFound } from "./releases.errors.js";
+import { requiredSemver, versionOf } from "./releases.utils.js";
 import {
   assertNewerThanShipped,
   assertReadyForReview,
@@ -178,10 +179,14 @@ async function runPublish(
   const { staging, release: releaseBucket } = deps.buckets();
   const sizes = files.map((file) => Number(file.sizeBytes));
   const copiedKeys: string[] = [];
+  // In review, so it has a version, and its product can't change any more
+  const version = versionOf(release);
+  const releaseKey = (file: { objectKey: string }) =>
+    releasedKey(file.objectKey, release.productId, version);
 
   try {
     for (const [index, file] of files.entries()) {
-      const toKey = releasedKey(file.objectKey, release.version);
+      const toKey = releaseKey(file);
       await deps.driver.copyObject({
         fromBucket: staging,
         fromKey: file.objectKey,
@@ -216,11 +221,11 @@ async function runPublish(
         }
 
         // Another release of the product may have shipped meanwhile
-        await assertNewerThanShipped(tx, release.productId, {
-          major: release.versionMajor,
-          minor: release.versionMinor,
-          patch: release.versionPatch,
-        });
+        await assertNewerThanShipped(
+          tx,
+          release.productId,
+          requiredSemver(release),
+        );
 
         const previous = await tx.release.findFirst({
           where: {
@@ -239,7 +244,7 @@ async function runPublish(
               releaseId: previous.id,
               type: ReleaseEventType.ARCHIVED,
               actorId: adminId,
-              note: `Replaced by v${release.version}`,
+              note: `Replaced by v${version}`,
             },
           });
         }
@@ -255,7 +260,7 @@ async function runPublish(
         for (const file of files) {
           await tx.releaseFile.update({
             where: { id: file.id },
-            data: { objectKey: releasedKey(file.objectKey, release.version) },
+            data: { objectKey: releaseKey(file) },
           });
         }
         await tx.releaseEvent.create({

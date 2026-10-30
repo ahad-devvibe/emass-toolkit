@@ -1,7 +1,7 @@
 import { osMeta } from "@/pages/Catalog/catalog.meta"
 import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
 import type { ReleaseDetail, ReleaseFileItem } from "@/pages/Releases/releases.model"
-import { parseSemver } from "@/pages/Releases/version.utils"
+import { parseSemver, versionLabel } from "@/pages/Releases/version.utils"
 
 // What an admin checks before publishing, as 4 cards. Pure: the page passes
 // the release under review and the live version it would replace.
@@ -36,14 +36,14 @@ export function bumpKind(from: string, to: string): "major" | "minor" | "patch" 
 
 function versionCard(release: ReleaseDetail): ReviewCard {
   const previous = release.review.currentPublished?.version
-  const bump = previous ? bumpKind(previous, release.version) : null
-  const value = previous ? `v${previous} → v${release.version}` : `v${release.version}`
+  const bump = previous && release.version ? bumpKind(previous, release.version) : null
+  const value = previous ? `v${previous} → ${versionLabel(release.version)}` : `${versionLabel(release.version)}`
   const title = previous ? `Version${bump ? ` · ${bump}` : ""}` : "Version · first release"
   const wrong = release.files.filter((file) => hasIssue(file, ["VERSION_MISMATCH", "VERSION_EXISTS"]))
   if (wrong.length) return { key: "version", title, value, tone: "bad", detail: `${plural(wrong.length, "installer")} ${wrong.length === 1 ? "says" : "say"} another version` }
   const silent = release.files.filter((file) => hasIssue(file, ["DOC_VERSION_MISMATCH", "NO_VERSION"]))
-  if (silent.length) return { key: "version", title, value, tone: "warn", detail: `${plural(silent.length, "file")} ${silent.length === 1 ? "doesn't" : "don't"} mention v${release.version}` }
-  return { key: "version", title, value, tone: "ok", detail: `All files match v${release.version}` }
+  if (silent.length) return { key: "version", title, value, tone: "warn", detail: `${plural(silent.length, "file")} ${silent.length === 1 ? "doesn't" : "don't"} mention ${versionLabel(release.version)}` }
+  return { key: "version", title, value, tone: "ok", detail: `All files match ${versionLabel(release.version)}` }
 }
 
 function checksumCard(release: ReleaseDetail, live: LiveVersion): ReviewCard {

@@ -205,9 +205,11 @@ migration folder per change — delete empty leftovers.
   at boot (dev/test run without cloud access) but `EMAIL_PROVIDER=oci`
   cross-validates its required keys via schema `superRefine`; storage keys are
   enforced lazily by `configs/storage.ts` on first use.
-- Logging: pino JSON to stdout (`LOG_LEVEL`, default `info`; silent under
-  `NODE_ENV=test`). Pipe through `pino-pretty` in dev if desired. `pino-http`
-  logs every request (id, method, url, status, responseTime).
+- Logging: pino JSON lines to stdout (`LOG_LEVEL`, default `info`; silent
+  under `NODE_ENV=test`; pretty only in a terminal outside production). One
+  short line per request (`src/configs/request-logger.ts`), with no headers;
+  polling and preflights at `debug`; secrets redacted. See
+  `docs/operations/logging.md`.
 
 ### Client hosting and CORS
 
@@ -301,8 +303,10 @@ Full decisions in `docs/releases/release-management.md`; deploy steps in
   under `STORAGE_LOCAL_DIR` (dev/tests, no cloud); `oci` uses the OCI SDK and
   is enforced in production at boot. Writes and copies go through `.part` /
   multipart and only appear when complete.
-- **Buckets:** keys always carry a prefix: `staged/{productId}/{releaseId}/{uuid}/{name}`
-  and `releases/{productId}/{version}/{uuid}/{name}`. Dev uses one bucket
+- **Buckets:** keys always carry a prefix: `staged/{uuid}/{name}` (older
+  drafts: `staged/{productId}/{releaseId}/{uuid}/{name}`) and
+  `releases/{productId}/{version}/{uuid}/{name}`, built at publish from the
+  release's product and version. Dev uses one bucket
   (`OCI_BUCKET`); prod sets `OCI_STAGING_BUCKET` and `OCI_RELEASE_BUCKET`. Same
   code path, no environment branch.
 - **Uploads:** `POST /releases/:id/files` is parsed by **busboy** as a stream

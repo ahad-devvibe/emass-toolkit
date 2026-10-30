@@ -435,7 +435,7 @@ describe("signupSchema website", () => {
     const bad = parse("not a site");
     expect(!bad.success && bad.error.issues[0]).toMatchObject({
       path: ["website"],
-      message: "Enter a website like acme.com",
+      message: "Enter a website like yourcompany.com",
     });
     const wrongType = parse(42);
     expect(!wrongType.success && wrongType.error.issues[0].message).toBe(

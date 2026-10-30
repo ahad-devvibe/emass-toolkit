@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { ApiRequestError } from "@/lib/api/http"
 import type { ReleaseFileItem, ReleaseSummary } from "@/pages/Releases/releases.model"
-import { changedFields, changedMappings, draftsToContinue, effectiveMapping, hasDuplicates, mappingProblems, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionProblem } from "./editor.state"
+import { changedFields, changedMappings, draftsToContinue, draftVersionProblem, effectiveMapping, hasDuplicates, mappingProblems, productOptions, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionFromSdks, versionProblem } from "./editor.state"
 import { emptyQueue, queueReducer, type QueueState } from "@/features/uploads/uploads.state"
 
 const file = (id: string, kind: ReleaseFileItem["kind"], os: ReleaseFileItem["os"] = null): ReleaseFileItem => ({ id, name: `${id}.bin`, kind, os, contentType: "application/octet-stream", sizeBytes: 1, sha256: "a", createdAt: "2026-10-22T00:00:00.000Z", format: null, detectedVersions: [], blockedBy: [], warnings: [] })
@@ -35,12 +35,46 @@ describe("serverVersionProblem", () => {
 })
 
 describe("changedFields", () => {
-  const saved = { version: "2.5.0", releaseNotes: "Notes" }
+  const saved = { product: { id: "p1" }, version: "2.5.0", releaseNotes: "Notes" }
+  const form = { productId: "p1", version: "2.5.0", notes: "Notes" }
 
   it("sends only what changed", () => {
-    expect(changedFields(saved, { version: "2.5.0", notes: "Notes" })).toEqual({})
-    expect(changedFields(saved, { version: " 2.6.0 ", notes: "Notes" })).toEqual({ version: "2.6.0" })
-    expect(changedFields(saved, { version: "2.5.0", notes: "" })).toEqual({ releaseNotes: "" })
+    expect(changedFields(saved, form)).toEqual({})
+    expect(changedFields(saved, { ...form, version: " 2.6.0 " })).toEqual({ version: "2.6.0" })
+    expect(changedFields(saved, { ...form, notes: "" })).toEqual({ releaseNotes: "" })
+    expect(changedFields(saved, { ...form, productId: "p2" })).toEqual({ productId: "p2" })
+  })
+
+  it("sends a cleared version as null, and leaves a versionless draft alone", () => {
+    expect(changedFields(saved, { ...form, version: "  " })).toEqual({ version: null })
+    expect(changedFields({ ...saved, version: null }, { ...form, version: "" })).toEqual({})
+  })
+})
+
+describe("draftVersionProblem", () => {
+  it("lets a draft go without a version, never with a malformed one", () => {
+    expect(draftVersionProblem("")).toBeNull()
+    expect(draftVersionProblem("2.5.0")).toBeNull()
+    expect(draftVersionProblem("2.5")).toBe("Use MAJOR.MINOR.PATCH, for example 2.5.0.")
+  })
+})
+
+describe("versionFromSdks", () => {
+  it("takes the one version the SDK files agree on", () => {
+    expect(versionFromSdks([{ kind: "sdk", versions: ["2.3.0"] }, { kind: "sdk", versions: ["2.3.0"] }])).toEqual({ detected: "2.3.0", candidates: ["2.3.0"] })
+  })
+
+  it("ignores docs, and SDKs that don't say", () => {
+    expect(versionFromSdks([{ kind: "documentation", versions: ["1.2.0"] }, { kind: "sdk", versions: [] }]).detected).toBeNull()
+    expect(versionFromSdks([{ kind: "documentation", versions: ["1.2.0"] }, { kind: "sdk", versions: ["2.3.0"] }, { kind: "sdk", versions: [] }]).detected).toBe("2.3.0")
+  })
+
+  it("detects nothing when SDKs disagree, but offers both", () => {
+    expect(versionFromSdks([{ kind: "sdk", versions: ["2.3.0"] }, { kind: "sdk", versions: ["2.4.0"] }])).toEqual({ detected: null, candidates: ["2.3.0", "2.4.0"] })
+  })
+
+  it("leaves files without a type out", () => {
+    expect(versionFromSdks([{ kind: null, versions: ["2.3.0"] }]).detected).toBeNull()
   })
 })
 
@@ -49,6 +83,7 @@ describe("unsavedSummary", () => {
     expect(unsavedSummary({ releaseNotes: "x" }, 0)).toBe("notes")
     expect(unsavedSummary({}, 1)).toBe("1 file type")
     expect(unsavedSummary({ version: "1.0.1", releaseNotes: "" }, 2)).toBe("version · notes · 2 file types")
+    expect(unsavedSummary({ productId: "p2", version: null }, 0)).toBe("product · version")
     expect(unsavedSummary({}, 0)).toBe("")
   })
 })
@@ -147,5 +182,21 @@ describe("draftsToContinue", () => {
   it("keeps it to three", () => {
     const many = ["a", "b", "c", "d"].map((id, index) => summary(id, "draft", `2026-10-0${index + 1}T00:00:00.000Z`))
     expect(draftsToContinue(many, emptyQueue, "dev1")).toHaveLength(3)
+  })
+})
+
+describe("productOptions", () => {
+  const current = { id: "p1", name: "Core SDK" }
+
+  it("shows the release's product before the list loads", () => {
+    expect(productOptions(null, current)).toEqual([{ value: "p1", label: "Core SDK" }])
+  })
+
+  it("uses the loaded list", () => {
+    expect(productOptions([current, { id: "p2", name: "Vision SDK" }], current)).toEqual([{ value: "p1", label: "Core SDK" }, { value: "p2", label: "Vision SDK" }])
+  })
+
+  it("keeps the release's product when it's no longer listed", () => {
+    expect(productOptions([{ id: "p2", name: "Vision SDK" }], current)).toEqual([{ value: "p1", label: "Core SDK" }, { value: "p2", label: "Vision SDK" }])
   })
 })

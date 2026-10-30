@@ -253,11 +253,13 @@ model Release {
   id           String        @id @default(uuid())
   productId    String
   product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
-  version      String
+  // Null while a draft has none yet (files can upload first); required to
+  // submit, so every release in review or shipped has one
+  version      String?
   // Parsed semver parts, for ordering and "newer than shipped" checks
-  versionMajor Int
-  versionMinor Int
-  versionPatch Int
+  versionMajor Int?
+  versionMinor Int?
+  versionPatch Int?
   status       ReleaseStatus @default(DRAFT)
 
   releaseNotes String @default("") @db.Text

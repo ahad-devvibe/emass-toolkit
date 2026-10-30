@@ -391,9 +391,9 @@ describe("POST /api/releases", () => {
       .set(dev.cookie)
       .send({});
     expect(missing.status).toBe(400);
-    expect(missing.body.details.fieldErrors).toMatchObject({
+    // The version may come later, so only the product is required
+    expect(missing.body.details.fieldErrors).toEqual({
       productId: ["Product is required"],
-      version: ["Version is required"],
     });
 
     const wrongType = await request(app)
@@ -544,7 +544,7 @@ describe("PATCH /api/releases/:id", () => {
       .send({});
     expect(res.status).toBe(400);
     expect(res.body.details.formErrors).toEqual([
-      "Send a version, release notes or file mappings to update",
+      "Send a product, version, release notes or file mappings to update",
     ]);
   });
 

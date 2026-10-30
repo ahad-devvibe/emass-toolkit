@@ -40,8 +40,8 @@ export type FileCheckResult =
 
 type ApiFileCheckResult = FileCheckResult extends infer R ? (R extends { warnings: FileIssue[] } ? Omit<R, "warnings"> & { warnings: ApiFileIssue[] } : R) : never
 
-/** Save draft: version, notes and file type/platform mappings, all optional. */
-export type ReleaseUpdate = { version?: string; releaseNotes?: string; files?: FileMappingChange[] }
+/** Save draft: product, version (null clears it), notes and file type/platform mappings, all optional. */
+export type ReleaseUpdate = { productId?: string; version?: string | null; releaseNotes?: string; files?: FileMappingChange[] }
 
 // Staff endpoints; the server enforces roles and creator-only changes
 export const releasesApi = {
@@ -50,7 +50,8 @@ export const releasesApi = {
   /** Staff, any release state: records the click and returns a time-limited link (short for unpublished files). */
   downloadFile: (id: string, fileId: string) => authorizedRequest<{ url: string; expiresAt: string; fileName: string }>(`${releasePath(id)}/files/${encodeURIComponent(fileId)}/download`, { method: "POST" }),
   nextVersion: (productId: string) => authorizedRequest<VersionSuggestion>(`/releases/next-version?${new URLSearchParams({ productId })}`),
-  create: async (input: { productId: string; version: string; releaseNotes?: string }): Promise<ReleaseDetail> => toReleaseDetail(await authorizedRequest<ApiReleaseDetail>("/releases", { method: "POST", body: input })),
+  /** The version may come later: files can upload to a draft that has none yet. */
+  create: async (input: { productId: string; version?: string; releaseNotes?: string }): Promise<ReleaseDetail> => toReleaseDetail(await authorizedRequest<ApiReleaseDetail>("/releases", { method: "POST", body: input })),
   update: async (id: string, { files, ...rest }: ReleaseUpdate): Promise<ReleaseDetail> => {
     const body = { ...rest, ...(files?.length && { files: files.map(toApiFileMapping) }) }
     return toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(releasePath(id), { method: "PATCH", body }))

@@ -78,7 +78,8 @@ export interface TestFile {
 export interface CreateReleaseOptions {
   productId: string;
   createdById: string;
-  version?: string;
+  /** null makes a draft with no version yet. */
+  version?: string | null;
   status?: ReleaseStatus;
   releaseNotes?: string;
   /** Explicit creation time, for ordering tests (rows can share a ms). */
@@ -90,17 +91,19 @@ export interface CreateReleaseOptions {
 
 /** Inserts a release (with a CREATED event and file rows) directly. */
 export async function createRelease(options: CreateReleaseOptions) {
-  const version = options.version ?? "1.0.0";
-  const semver = parseVersion(version);
-  if (!semver) throw new Error(`invalid test version ${version}`);
+  const version = options.version === undefined ? "1.0.0" : options.version;
+  const semver = version === null ? null : parseVersion(version);
+  if (version !== null && !semver) {
+    throw new Error(`invalid test version ${version}`);
+  }
 
   const release = await prisma.release.create({
     data: {
       productId: options.productId,
       version,
-      versionMajor: semver.major,
-      versionMinor: semver.minor,
-      versionPatch: semver.patch,
+      versionMajor: semver?.major ?? null,
+      versionMinor: semver?.minor ?? null,
+      versionPatch: semver?.patch ?? null,
       status: options.status ?? "DRAFT",
       releaseNotes: options.releaseNotes ?? "",
       createdById: options.createdById,
@@ -112,12 +115,7 @@ export async function createRelease(options: CreateReleaseOptions) {
   const { staging } = getStorageBuckets();
   for (const file of options.files ?? []) {
     const name = file.name ?? `${randomUUID().slice(0, 8)}.zip`;
-    const objectKey = stagedKey(
-      options.productId,
-      release.id,
-      randomUUID(),
-      name,
-    );
+    const objectKey = stagedKey(randomUUID(), name);
     if (options.withObjects) {
       await getStorageDriver().putStream({
         bucket: staging,
@@ -149,7 +147,8 @@ export async function createRelease(options: CreateReleaseOptions) {
         format: file.format === undefined ? "OTHER" : file.format,
         // Files uploaded before inspection existed have nothing recorded
         detectedVersions:
-          file.detectedVersions ?? (file.format === null ? [] : [version]),
+          file.detectedVersions ??
+          (file.format === null || version === null ? [] : [version]),
       },
     });
   }

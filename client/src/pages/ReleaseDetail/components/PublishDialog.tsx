@@ -3,10 +3,10 @@ import { CircleAlert, CircleCheck, Loader2, Rocket } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiRequestError } from "@/lib/api/http"
-import { formatBytes } from "@/pages/ProductDetails/release.utils"
 import type { PublishJob, ReleaseDetail } from "@/pages/Releases/releases.model"
 import { cn } from "@/lib/utils"
 import { PUBLISH_INTERRUPTED, publishLabel, publishPercent } from "../publish-progress"
+import { releaseTitle, versionLabel } from "@/pages/Releases/version.utils"
 
 /**
  * Fill = the job's size-weighted percent. OCI only reports a copy as 0 or 100
@@ -26,7 +26,7 @@ export function PublishProgressBar({ job, className }: { job: PublishJob; classN
 type PublishDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  release: Pick<ReleaseDetail, "version" | "product" | "fileCount" | "totalBytes" | "review">
+  release: Pick<ReleaseDetail, "version" | "product" | "review">
   job: PublishJob | null
   interrupted: boolean
   starting: boolean
@@ -53,7 +53,7 @@ export function PublishDialog({ open, onOpenChange, release, job, interrupted, s
     }
   }
 
-  const title = view === "done" ? `v${release.version} is live` : view === "failed" ? "Publishing failed" : view === "progress" ? `Publishing v${release.version}` : `Publish ${release.product.name} v${release.version}?`
+  const title = view === "done" ? `${versionLabel(release.version)} is live` : view === "failed" ? "Publishing failed" : view === "progress" ? `Publishing ${versionLabel(release.version)}` : `Publish ${releaseTitle(release)}?`
   const Icon = view === "done" ? CircleCheck : view === "failed" ? CircleAlert : Rocket
   const tone = view === "done" ? "bg-success/10 text-success" : view === "failed" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
 
@@ -66,13 +66,9 @@ export function PublishDialog({ open, onOpenChange, release, job, interrupted, s
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription render={<div />}>
               {view === "confirm" && (
-                <div className="space-y-2">
-                  <p>Customers can download it as soon as it's published.</p>
-                  {previous && <p><span className="font-mono">v{previous.version}</span> will be archived and stays available under previous versions.</p>}
-                  <p className="text-xs">{release.fileCount} {release.fileCount === 1 ? "file" : "files"} · {formatBytes(release.totalBytes)} will be copied to the release storage.</p>
-                </div>
+                <p>This release will be published and customers can download it right away.</p>
               )}
-              {view === "progress" && <p>The files are being copied to the release storage. You can close this; publishing carries on.</p>}
+              {view === "progress" && <p>You can close this; publishing carries on.</p>}
               {view === "done" && <p>Customers can download it now.{previous && <> <span className="font-mono">v{previous.version}</span> was archived.</>}</p>}
               {view === "failed" && <p>Nothing was published and nothing changed. You can try again.</p>}
             </DialogDescription>

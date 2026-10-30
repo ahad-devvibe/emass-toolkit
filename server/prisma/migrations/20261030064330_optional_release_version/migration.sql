@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Release" ALTER COLUMN "version" DROP NOT NULL,
+ALTER COLUMN "versionMajor" DROP NOT NULL,
+ALTER COLUMN "versionMinor" DROP NOT NULL,
+ALTER COLUMN "versionPatch" DROP NOT NULL;
+

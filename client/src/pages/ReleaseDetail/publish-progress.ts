@@ -9,14 +9,14 @@ export const isPublishRunning = (job: PublishJob | null): job is PublishJob => j
 export const isPublishSettled = (job: PublishJob | null): job is PublishJob => job?.phase === "done" || job?.phase === "failed"
 
 /**
- * "Copying file 3 of 3 · 64% overall", then "Finishing up…", "Published" or
+ * "File 3 of 3 · 64%", then "Finishing up…", "Published" or
  * the error. OCI reports a copy only as 0 or 100 (spike: 1 GiB in ~12 s), so
  * the label names the file in progress rather than a percent within it.
  */
 export function publishLabel(job: PublishJob): string {
   switch (job.phase) {
     case "copying":
-      return `Copying file ${Math.min(job.filesDone + 1, job.filesTotal)} of ${job.filesTotal} · ${job.percent}% overall`
+      return `File ${Math.min(job.filesDone + 1, job.filesTotal)} of ${job.filesTotal} · ${job.percent}%`
     case "finalizing":
       return "Finishing up…"
     case "done":

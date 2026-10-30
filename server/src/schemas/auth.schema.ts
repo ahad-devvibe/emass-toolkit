@@ -76,7 +76,7 @@ const useCaseField = z
   .max(USE_CASE_MAX, `Use case must be at most ${USE_CASE_MAX} characters`);
 
 export const WEBSITE_MAX = 255;
-const WEBSITE_MESSAGE = "Enter a website like acme.com";
+const WEBSITE_MESSAGE = "Enter a website like yourcompany.com";
 
 /**
  * A website as people type it ("acme.com", "www.acme.com/en") as a full

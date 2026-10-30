@@ -31,7 +31,7 @@ type ApiEvent = { id: string; type: ApiEventType; actor: ApiActor; note: string 
 export type ApiReleaseSummary = {
   id: string
   product: { id: string; name: string }
-  version: string
+  version: string | null
   status: ApiStatus
   createdBy: ApiActor
   createdAt: string

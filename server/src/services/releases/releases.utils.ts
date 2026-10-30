@@ -1,10 +1,46 @@
 import { ReleaseStatus, type Prisma, type SdkPlatform } from "@prisma/client";
+import { ApiError } from "../../utils/api-error.utils.js";
 import type { KeysetCursor } from "../../utils/cursor.utils.js";
 
 export interface Semver {
   major: number;
   minor: number;
   patch: number;
+}
+
+interface VersionColumns {
+  versionMajor: number | null;
+  versionMinor: number | null;
+  versionPatch: number | null;
+}
+
+/** A release's parsed version, or null while a draft has none yet. */
+export function semverOf(release: VersionColumns): Semver | null {
+  const { versionMajor, versionMinor, versionPatch } = release;
+  if (versionMajor === null || versionMinor === null || versionPatch === null) {
+    return null;
+  }
+  return { major: versionMajor, minor: versionMinor, patch: versionPatch };
+}
+
+/**
+ * The version of a release that must have one: submit refuses a draft
+ * without, so anything in review or shipped has it. A missing one is a bug.
+ */
+export function versionOf(release: { version: string | null }): string {
+  if (release.version === null) {
+    throw new ApiError(500, "Release has no version", "INTERNAL_ERROR");
+  }
+  return release.version;
+}
+
+/** {@link semverOf} for a release that must have a version. */
+export function requiredSemver(release: VersionColumns): Semver {
+  const semver = semverOf(release);
+  if (!semver) {
+    throw new ApiError(500, "Release has no version", "INTERNAL_ERROR");
+  }
+  return semver;
 }
 
 // Parts are Int columns; the cap keeps them far from overflow
