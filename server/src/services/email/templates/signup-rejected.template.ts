@@ -1,12 +1,9 @@
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
   callout,
-  heading,
-  muted,
   paragraph,
   renderEmailLayout,
-  steps,
-  subheading,
+  SUPPORT_ADDRESS,
 } from "./layout.template.js";
 
 export interface SignupRejectedEmailTemplateInput {
@@ -14,17 +11,6 @@ export interface SignupRejectedEmailTemplateInput {
   /** Optional note from the reviewing admin, shown verbatim (escaped). */
   reason?: string;
 }
-
-const options = [
-  {
-    title: "Sign up with your company email",
-    text: "Requests from company domains are approved automatically.",
-  },
-  {
-    title: "Talk to your Nanoveu contact",
-    text: "If you're already working with EMASS hardware, they can vouch for you and we'll take another look.",
-  },
-];
 
 export function renderSignupRejectedEmail(
   input: SignupRejectedEmailTemplateInput,
@@ -36,29 +22,27 @@ export function renderSignupRejectedEmail(
     subject: "Your EMASS Toolkit access request",
     html: renderEmailLayout({
       title: "Your EMASS Toolkit access request",
-      preheader: "An update on your request for EMASS Toolkit access.",
-      eyebrow: "Access request",
-      hero: {
-        title: "About your access request",
-        subtitle: "An update from the EMASS Toolkit team.",
-      },
+      preheader: "An update on your EMASS Portal access request.",
+      hero: { title: "About your access request" },
       reason:
-        "You're receiving this because you requested access to EMASS Toolkit.",
+        "You're receiving this because you requested access to the EMASS Portal.",
       body: [
-        heading(`Hi ${firstName},`),
         paragraph(
-          "Thanks for your interest in EMASS Toolkit. After reviewing your request, we weren't able to approve access at this time.",
+          `Hi ${firstName}, thanks for your interest in EMASS. We weren't able to approve your access request at this time.`,
         ),
         ...(reason
           ? [
-              muted("A note from our team:"),
-              callout(escapeHtml(reason).replace(/\n/g, "<br>")),
+              callout(
+                "A note from our team",
+                escapeHtml(reason).replace(/\n/g, "<br>"),
+              ),
             ]
           : []),
-        subheading("What you can do"),
-        steps(options),
+        paragraph(
+          `If you have a company email address, you're welcome to sign up with it. For anything else, contact <a href="mailto:${SUPPORT_ADDRESS}" style="color:#0B76BB;">${SUPPORT_ADDRESS}</a>.`,
+        ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Access request\n\nHi ${input.firstName},\n\nThanks for your interest in EMASS Toolkit. After reviewing your request, we weren't able to approve access at this time.${reason ? `\n\nA note from our team:\n${reason}` : ""}\n\nWhat you can do:\n${options.map((option, i) => `${i + 1}. ${option.title}: ${option.text}`).join("\n")}`,
+    text: `About your access request\n\nHi ${input.firstName}, thanks for your interest in EMASS. We weren't able to approve your access request at this time.${reason ? `\n\nA note from our team:\n${reason}` : ""}\n\nIf you have a company email address, you're welcome to sign up with it. For anything else, contact ${SUPPORT_ADDRESS}.`,
   };
 }

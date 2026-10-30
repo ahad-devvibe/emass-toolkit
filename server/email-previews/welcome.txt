@@ -1,0 +1,5 @@
+Welcome, Jane
+
+You can now download EMASS SDKs, drivers and documentation for every release from the portal:
+
+http://localhost:5173/catalog

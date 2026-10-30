@@ -1,0 +1,5 @@
+Hi Jane, we've withdrawn EMASS Core SDK v1.4.0, which you downloaded. Please stop using it and download v1.3.2 instead.
+
+A note from the EMASS team: A driver issue affects some Windows machines.
+
+Get v1.3.2: http://localhost:5173/catalog

@@ -158,7 +158,7 @@ export function DashboardPage() {
             <section aria-label="Totals" aria-busy={!data || undefined} className={statGrid}>
               <Stat label="Active users" value={data?.users.active ?? null} Icon={Users} />
               <Stat label="Pending sign-ups" value={data?.users.pendingApproval ?? null} Icon={UserCheck} to="/admin/signups" tone={data && data.users.pendingApproval > 0 ? "amber" : "default"} />
-              <Stat label="Competitors blocked" value={data?.users.blockedCompetitor ?? null} Icon={ShieldX} />
+              <Stat label="Auto Blocked" value={data?.users.blockedCompetitor ?? null} Icon={ShieldX} />
               <Stat label="Sign-ups rejected" value={data?.users.blockedRejected ?? null} Icon={Ban} />
               <Stat label="Total downloads" value={data?.downloads.total ?? null} Icon={Download} format={compactCount} />
             </section>

@@ -8,7 +8,7 @@ import { renderMfaLoginEmail } from "../../src/services/email/templates/mfa-logi
 import { renderWelcomeEmail } from "../../src/services/email/templates/welcome.template.js";
 import { renderSignupRejectedEmail } from "../../src/services/email/templates/signup-rejected.template.js";
 import { renderReleaseWithdrawnEmail } from "../../src/services/email/templates/release-withdrawn.template.js";
-import { EMAIL_TAGLINE } from "../../src/services/email/templates/layout.template.js";
+import { emailAssetUrl } from "../../src/services/email/templates/layout.template.js";
 
 describe("renderOtpVerificationEmail", () => {
   it("renders styled HTML and a matching plain-text fallback", () => {
@@ -20,24 +20,22 @@ describe("renderOtpVerificationEmail", () => {
     expect(email.subject).toBe("Your EMASS Toolkit verification code");
     expect(email.html).toContain("<!doctype html>");
     expect(email.html).toContain('role="presentation"');
-    expect(email.html).toContain("background-color:#EEF4FB");
-    expect(email.html).toContain("EMASS Toolkit");
-    expect(email.html).toContain("letter-spacing:10px");
+    expect(email.html).toContain("Confirm your email");
     expect(email.html).toContain(">123456</td>");
     expect(email.html).toMatch(/This code expires in 10\s+minutes\./);
-    expect(email.html).toMatch(/never share this code/);
+    expect(email.html).toMatch(/never share this code/i);
     expect(email.text).toContain("123456");
     expect(email.text).toMatch(/This code\s+expires in 10\s+minutes\./);
-    expect(email.text).toMatch(/never\s+share this code/);
+    expect(email.text).toMatch(/never\s+share this code/i);
   });
 
-  it("ships no external assets", () => {
+  it("loads no stylesheets or scripts", () => {
     const email = renderOtpVerificationEmail({
       code: "123456",
       expiresInMinutes: 10,
     });
 
-    expect(email.html).not.toMatch(/<link\b|<script\b|<img\b/i);
+    expect(email.html).not.toMatch(/<link\b|<script\b/i);
   });
 
   it("escapes dynamic HTML values", () => {
@@ -65,7 +63,7 @@ describe("renderPasswordResetEmail", () => {
     expect(email.html).toContain("<!doctype html>");
     expect(email.html).toContain(`href="${url}"`);
     expect(email.html).toContain("Choose a new password");
-    expect(email.html).toContain("in 30 minutes");
+    expect(email.html).toContain("expires in 30 minutes");
     expect(email.html).toContain("Your password won't change");
     expect(email.text).toContain(url);
     expect(email.text).toContain("expires in 30 minutes and works once");
@@ -167,8 +165,7 @@ describe("renderWelcomeEmail", () => {
     expect(email.subject).toBe("Welcome to EMASS Toolkit");
     expect(email.html).toContain("Welcome, Jane");
     expect(email.html).toContain('href="https://portal.example.com/catalog"');
-    expect(email.html).toMatch(/SHA-256/);
-    expect(email.html).not.toMatch(/<link\b|<script\b|<img\b/i);
+    expect(email.html).toContain("Browse releases");
     expect(email.text).toContain("https://portal.example.com/catalog");
     expect(email.text).toContain("Welcome, Jane");
   });
@@ -190,8 +187,8 @@ describe("renderSignupRejectedEmail", () => {
     expect(email.subject).toBe("Your EMASS Toolkit access request");
     expect(email.html).toContain("Hi Jane,");
     expect(email.html).toContain("company email");
+    expect(email.html).toContain("info@nanoveu.com");
     expect(email.html).not.toContain("A note from our team");
-    expect(email.html).not.toMatch(/<link\b|<script\b|<img\b/i);
     expect(email.text).not.toContain("A note from our team");
   });
 
@@ -225,7 +222,9 @@ describe("renderReleaseWithdrawnEmail", () => {
     expect(email.html).toContain("<strong>v1.0.0</strong> instead");
     expect(email.html).toContain("Get v1.0.0");
     expect(email.html).toContain("https://portal.example/catalog/p-1");
-    expect(email.text).toContain("Please download v1.0.0 instead.");
+    expect(email.text).toContain(
+      "Please stop using it and download v1.0.0 instead.",
+    );
     expect(email.html).not.toContain("A note from the EMASS team");
   });
 
@@ -279,32 +278,20 @@ describe("shared layout", () => {
     renderSignupRejectedEmail({ firstName: "Jane" }),
   ];
 
-  it("gives every email the brand header band with a solid fallback", () => {
+  it("gives every email the auth-panel header, with a solid navy fallback", () => {
     for (const email of all) {
       expect(email.html).toContain('bgcolor="#0F3678"');
-      expect(email.html).toContain("linear-gradient(135deg, #0F3678");
-      expect(email.html).toContain(EMAIL_TAGLINE);
+      expect(email.html).toContain(emailAssetUrl("header.jpg"));
+      expect(email.html).toContain(emailAssetUrl("emass-logo-white.png"));
       expect(email.html).toContain("You&#39;re receiving this because");
-      expect(email.html).not.toMatch(/<(link|script|img)[\s>]/i);
+      expect(email.html).not.toMatch(/<(link|script)[\s>]/i);
       expect(email.text.length).toBeGreaterThan(80);
     }
   });
 
-  it("welcome includes both checksum commands, escaped", () => {
-    const email = renderWelcomeEmail({
-      firstName: "Jane",
-      catalogUrl: "https://x.example",
-    });
-    expect(email.html).toContain("shasum -a 256 &lt;file&gt;");
-    expect(email.html).toContain("certutil -hashfile &lt;file&gt; SHA256");
-    expect(email.text).toContain("shasum -a 256 <file>");
-  });
-
-  it("pending approval shows where the request stands", () => {
-    const email = renderPendingApprovalEmail({ firstName: "Jane" });
-    for (const step of ["Request submitted", "Team review", "Sign in"]) {
-      expect(email.html).toContain(step);
-      expect(email.text).toContain(step);
-    }
+  it("serves the header images from the portal origin", () => {
+    expect(emailAssetUrl("header.jpg")).toMatch(
+      /^https?:\/\/[^/]+\/email\/header\.jpg$/,
+    );
   });
 });

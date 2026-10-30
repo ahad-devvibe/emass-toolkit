@@ -1,58 +1,39 @@
-import type { RenderedEmail } from "../email.utils.js";
+import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
-  callout,
   paragraph,
   renderEmailLayout,
   securityNote,
-  subheading,
-  timeline,
 } from "./layout.template.js";
 
 export interface PendingApprovalEmailTemplateInput {
   firstName: string;
 }
 
+// Personal-domain signups wait for an admin; this confirms the request arrived
 export function renderPendingApprovalEmail(
   input: PendingApprovalEmailTemplateInput,
 ): RenderedEmail {
+  const firstName = escapeHtml(input.firstName);
+
   return {
     subject: "Your EMASS Toolkit signup is pending review",
     html: renderEmailLayout({
       title: "Your EMASS Toolkit signup is pending review",
-      preheader: "Our team is reviewing your request. No action needed.",
-      eyebrow: "Request received",
-      hero: {
-        title: `Thanks, ${input.firstName}. We're on it.`,
-        subtitle: "Your request for EMASS Toolkit access is with our team.",
-      },
+      preheader:
+        "We've received your request and will email you once it's reviewed.",
+      hero: { title: "We've received your request" },
       reason:
-        "You're receiving this because you requested access to EMASS Toolkit.",
+        "You're receiving this because you requested access to the EMASS Portal.",
       body: [
         paragraph(
-          "Because you registered with a personal email address, our team reviews each request by hand. There's nothing you need to do right now.",
+          `Thanks, ${firstName}. Our team reviews each request by hand, usually within one business day.`,
         ),
-        subheading("Where things stand"),
-        timeline([
-          { label: "Request submitted", state: "done" },
-          {
-            label: "Team review",
-            note: "Usually within one business day.",
-            state: "current",
-          },
-          {
-            label: "Sign in",
-            note: "Once approved, we'll email you and you can sign in with the password you just set.",
-            state: "next",
-          },
-        ]),
-        callout(
-          "<strong>Tip:</strong> signing up with your company email address skips the review and gets you access right away.",
+        paragraph(
+          "We'll email you once it's approved, and you can then sign in with the password you just set.",
         ),
-        securityNote(
-          "If you did not sign up for EMASS Toolkit, you can safely ignore this email.",
-        ),
+        securityNote("If you didn't sign up, you can ignore this email."),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Request received\n\nThanks, ${input.firstName}.\n\nBecause you registered with a personal email address, our team reviews each request by hand. There's nothing you need to do right now.\n\nWhere things stand:\n[x] Request submitted\n[ ] Team review (usually within one business day)\n[ ] Sign in (we'll email you once approved; use the password you just set)\n\nTip: signing up with your company email address skips the review.\n\nIf you did not sign up, you can safely ignore this email.`,
+    text: `We've received your request\n\nThanks, ${input.firstName}. Our team reviews each request by hand, usually within one business day.\n\nWe'll email you once it's approved, and you can then sign in with the password you just set.\n\nIf you didn't sign up, you can ignore this email.`,
   };
 }

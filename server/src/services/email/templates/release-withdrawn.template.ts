@@ -2,8 +2,6 @@ import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
   button,
   callout,
-  heading,
-  linkFallback,
   paragraph,
   renderEmailLayout,
 } from "./layout.template.js";
@@ -36,11 +34,11 @@ export function renderReleaseWithdrawnEmail(
   const subject = `${input.productName} v${input.withdrawnVersion} has been withdrawn`;
 
   const next = replacement
-    ? `Please download <strong>v${replacement}</strong> instead.`
-    : "We'll let you know when a new version is available.";
+    ? `Please stop using it and download <strong>v${replacement}</strong> instead.`
+    : "Please stop using it. We'll let you know when a new version is available.";
   const nextText = input.replacementVersion
-    ? `Please download v${input.replacementVersion} instead.`
-    : "We'll let you know when a new version is available.";
+    ? `Please stop using it and download v${input.replacementVersion} instead.`
+    : "Please stop using it. We'll let you know when a new version is available.";
   const action = replacement ? `Get v${replacement}` : "Open the EMASS portal";
 
   return {
@@ -48,33 +46,21 @@ export function renderReleaseWithdrawnEmail(
     html: renderEmailLayout({
       title: subject,
       preheader: `${input.productName} v${input.withdrawnVersion} is no longer available. ${nextText}`,
-      eyebrow: "Release update",
-      hero: {
-        title: `${product} v${withdrawn} has been withdrawn`,
-        subtitle: "Please stop using this version.",
-      },
+      hero: { title: subject },
       reason:
-        "You're receiving this because you downloaded this release from the EMASS portal.",
+        "You're receiving this because you downloaded this release from the EMASS Portal.",
       body: [
-        heading(`Hi ${firstName},`),
         paragraph(
-          `You downloaded <strong>${product} v${withdrawn}</strong> from the EMASS portal. We've withdrawn this version, so please stop using it. ${next}`,
+          `Hi ${firstName}, we've withdrawn <strong>${product} v${withdrawn}</strong>, which you downloaded. ${next}`,
         ),
         ...(message
-          ? [
-              callout(
-                `<strong>A note from the EMASS team:</strong><br>${escapeHtml(message)}`,
-              ),
-            ]
+          ? [callout("A note from the EMASS team", escapeHtml(message))]
           : []),
         button(url, action),
-        linkFallback(url),
       ].join("\n"),
     }),
     text: [
-      `Hi ${input.firstName},`,
-      "",
-      `You downloaded ${input.productName} v${input.withdrawnVersion} from the EMASS portal. We've withdrawn this version, so please stop using it. ${nextText}`,
+      `Hi ${input.firstName}, we've withdrawn ${input.productName} v${input.withdrawnVersion}, which you downloaded. ${nextText}`,
       ...(message ? ["", `A note from the EMASS team: ${message}`] : []),
       "",
       `${input.replacementVersion ? `Get v${input.replacementVersion}` : "Open the EMASS portal"}: ${input.url}`,

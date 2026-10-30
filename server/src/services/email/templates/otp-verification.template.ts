@@ -1,7 +1,6 @@
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
 import {
   codeBlock,
-  infoTable,
   paragraph,
   renderEmailLayout,
   securityNote,
@@ -26,27 +25,20 @@ export function renderOtpVerificationEmail(
     html: renderEmailLayout({
       title: "Your EMASS Toolkit verification code",
       preheader: `Your verification code expires in ${input.expiresInMinutes} minutes.`,
-      eyebrow: "Verification",
       hero: {
         title: "Confirm your email",
-        subtitle: "One quick step to finish creating your account.",
+        subtitle: "Use this code to finish signing up.",
       },
       reason:
-        "You're receiving this because this address was used to sign up for EMASS Toolkit.",
+        "You're receiving this because this address was used to sign up for the EMASS Portal.",
       body: [
-        paragraph(
-          "Enter this code on the sign-up page, then choose your password.",
-        ),
+        paragraph("Enter this code on the sign-up page:"),
         codeBlock(code, `This code expires in ${expiry} minutes.`),
-        infoTable([
-          ["Valid for", `${expiry} minutes`],
-          ["Use", "Once"],
-        ]),
         securityNote(
-          "For your security, never share this code. If you did not sign up, you can safely ignore this email; no account is created without it.",
+          "Never share this code. If you didn't sign up, you can ignore this email.",
         ),
       ].join("\n"),
     }),
-    text: `EMASS Toolkit · Verification\n\nConfirm your email\n\nEnter this code on the sign-up page, then choose your password:\n\n    ${input.code}\n\nThis code expires in ${input.expiresInMinutes} minutes. It works once.\n\nFor your security, never share this code. If you did not sign up, you can safely ignore this email; no account is created without it.`,
+    text: `Confirm your email\n\nEnter this code on the sign-up page:\n\n    ${input.code}\n\nThis code expires in ${input.expiresInMinutes} minutes.\n\nNever share this code. If you didn't sign up, you can ignore this email.`,
   };
 }

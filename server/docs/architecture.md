@@ -235,7 +235,13 @@ migration folder per change — delete empty leftovers.
       is the defence. It refuses any `Origin` not allowed with 403 before a
       route runs; browsers always send `Origin` on cross-site writes, and every
       GET route is read-only. Keep both true.
-- Set `APP_BASE_URL` to the client's origin so email links point at it.
+- Set `APP_BASE_URL` to the client's origin so email links point at it. Email
+  headers also load their images from there (`/email/header.jpg`,
+  `/email/emass-logo-white.png` in `client/public/email/`): a JPEG and PNG,
+  since email clients drop SVG and CSS masks. `header.jpg` bakes the auth
+  panel's gradient and chip photo; rebuild it with
+  `python scripts/email-assets/build_header.py`. Preview every email with
+  `npm run email:preview`.
 
 ### 8a. LAN development hosting
 

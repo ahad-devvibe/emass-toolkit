@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +7,7 @@ import { renderMfaLoginEmail } from "../src/services/email/templates/mfa-login.t
 import { renderOtpVerificationEmail } from "../src/services/email/templates/otp-verification.template.js";
 import { renderPasswordResetEmail } from "../src/services/email/templates/password-reset.template.js";
 import { renderPendingApprovalEmail } from "../src/services/email/templates/pending-approval.template.js";
+import { renderReleaseWithdrawnEmail } from "../src/services/email/templates/release-withdrawn.template.js";
 import { renderSetPasswordReminderEmail } from "../src/services/email/templates/set-password-reminder.template.js";
 import { renderSetPasswordEmail } from "../src/services/email/templates/set-password.template.js";
 import { renderSignupRejectedEmail } from "../src/services/email/templates/signup-rejected.template.js";
@@ -68,6 +70,17 @@ const previews: [name: string, email: RenderedEmail][] = [
   [
     "otp-verification",
     renderOtpVerificationEmail({ code: "337201", expiresInMinutes: 10 }),
+  ],
+  [
+    "release-withdrawn",
+    renderReleaseWithdrawnEmail({
+      firstName: "Jane",
+      productName: "EMASS Core SDK",
+      withdrawnVersion: "1.4.0",
+      replacementVersion: "1.3.2",
+      url: "http://localhost:5173/catalog",
+      customerMessage: "A driver issue affects some Windows machines.",
+    }),
   ],
 ];
 
