@@ -236,7 +236,8 @@ migration folder per change — delete empty leftovers.
       route runs; browsers always send `Origin` on cross-site writes, and every
       GET route is read-only. Keep both true.
 - Set `APP_BASE_URL` to the client's origin so email links point at it. Email
-  headers also load their images from there (`/email/header.jpg`,
+  headers load their images from `EMAIL_ASSET_BASE_URL` (a public site; mail
+  providers can't reach localhost), or from `APP_BASE_URL` when it's unset (`/email/header.jpg`,
   `/email/emass-logo-white.png` in `client/public/email/`): a JPEG and PNG,
   since email clients drop SVG and CSS masks. `header.jpg` bakes the auth
   panel's gradient and chip photo; rebuild it with

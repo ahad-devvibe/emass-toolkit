@@ -25,12 +25,27 @@ const mono =
 export const SUPPORT_ADDRESS = "info@nanoveu.com";
 
 /**
+ * Where the header images are served from. Mail providers fetch them from
+ * their own servers, so this must be public: EMAIL_ASSET_BASE_URL when set
+ * (e.g. in dev, where APP_BASE_URL is localhost), else APP_BASE_URL.
+ */
+export function assetBase(config: {
+  APP_BASE_URL: string;
+  EMAIL_ASSET_BASE_URL?: string;
+}): string {
+  return (config.EMAIL_ASSET_BASE_URL?.trim() || config.APP_BASE_URL).replace(
+    /\/+$/,
+    "",
+  );
+}
+
+/**
  * Header images live with the portal's static files (client/public/email/,
  * built by scripts/email-assets/build_header.py): the auth panel's navy
  * gradient and chip photo, and the white EMASS logo.
  */
 export function emailAssetUrl(file: string): string {
-  return `${env.APP_BASE_URL.replace(/\/+$/, "")}/email/${file}`;
+  return `${assetBase(env)}/email/${file}`;
 }
 
 export interface EmailLayoutInput {

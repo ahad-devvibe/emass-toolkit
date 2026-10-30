@@ -50,6 +50,12 @@ export const envSchema = z
       .string()
       .default("http://localhost:5173")
       .describe("Frontend origin used to build links in emails"),
+    EMAIL_ASSET_BASE_URL: z
+      .string()
+      .optional()
+      .describe(
+        "Public origin that serves /email/ header images; defaults to APP_BASE_URL",
+      ),
     // "none" when the client is on another site than the API (e.g. a portal
     // domain calling api.example.com): the auth cookies are then sent cross-site
     // (always Secure). "strict" when both share a registrable domain

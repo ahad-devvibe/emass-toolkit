@@ -8,7 +8,10 @@ import { renderMfaLoginEmail } from "../../src/services/email/templates/mfa-logi
 import { renderWelcomeEmail } from "../../src/services/email/templates/welcome.template.js";
 import { renderSignupRejectedEmail } from "../../src/services/email/templates/signup-rejected.template.js";
 import { renderReleaseWithdrawnEmail } from "../../src/services/email/templates/release-withdrawn.template.js";
-import { emailAssetUrl } from "../../src/services/email/templates/layout.template.js";
+import {
+  assetBase,
+  emailAssetUrl,
+} from "../../src/services/email/templates/layout.template.js";
 
 describe("renderOtpVerificationEmail", () => {
   it("renders styled HTML and a matching plain-text fallback", () => {
@@ -287,6 +290,24 @@ describe("shared layout", () => {
       expect(email.html).not.toMatch(/<(link|script)[\s>]/i);
       expect(email.text.length).toBeGreaterThan(80);
     }
+  });
+
+  it("takes images from EMAIL_ASSET_BASE_URL when set, else APP_BASE_URL", () => {
+    expect(
+      assetBase({
+        APP_BASE_URL: "http://localhost:5173",
+        EMAIL_ASSET_BASE_URL: "https://cdn.example.com/",
+      }),
+    ).toBe("https://cdn.example.com");
+    expect(assetBase({ APP_BASE_URL: "https://portal.example.com/" })).toBe(
+      "https://portal.example.com",
+    );
+    expect(
+      assetBase({
+        APP_BASE_URL: "https://portal.example.com",
+        EMAIL_ASSET_BASE_URL: " ",
+      }),
+    ).toBe("https://portal.example.com");
   });
 
   it("serves the header images from the portal origin", () => {
