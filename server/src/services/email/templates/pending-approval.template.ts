@@ -26,14 +26,14 @@ export function renderPendingApprovalEmail(
         "You're receiving this because you requested access to the EMASS Portal.",
       body: [
         paragraph(
-          `Thanks, ${firstName}. Our team reviews each request by hand, usually within one business day.`,
+          `Thanks, ${firstName}. Your request is being reviewed, which usually takes one business day.`,
         ),
         paragraph(
-          "We'll email you once it's approved, and you can then sign in with the password you just set.",
+          "We'll email you once it's approved, and you can then sign in with your credentials.",
         ),
         securityNote("If you didn't sign up, you can ignore this email."),
       ].join("\n"),
     }),
-    text: `We've received your request\n\nThanks, ${input.firstName}. Our team reviews each request by hand, usually within one business day.\n\nWe'll email you once it's approved, and you can then sign in with the password you just set.\n\nIf you didn't sign up, you can ignore this email.`,
+    text: `We've received your request\n\nThanks, ${input.firstName}. Your request is being reviewed, which usually takes one business day.\n\nWe'll email you once it's approved, and you can then sign in with the password you just set.\n\nIf you didn't sign up, you can ignore this email.`,
   };
 }

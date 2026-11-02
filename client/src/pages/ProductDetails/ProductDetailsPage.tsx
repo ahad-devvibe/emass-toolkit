@@ -133,7 +133,8 @@ function ProductView({ product }: { product: Product }) {
             <Button size="sm" variant="outline" onClick={() => selectVersion(latest.version)}>Go to v{latest.version}</Button>
           </div>
         )}
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start">
+        {/* grid-cols-1 below lg: an auto column would grow to fit a long URL in the notes and widen the page */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start">
           <div className="space-y-4">
             <ReleaseFiles files={release.files} version={release} downloadingId={downloadingId} onDownload={download} onCopy={copy} />
             {release.releaseNotes && <ReleaseNotes notes={release.releaseNotes} open={notesOpen} onOpenChange={setNotesOpen} />}

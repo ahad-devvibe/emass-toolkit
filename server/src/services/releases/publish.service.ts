@@ -12,6 +12,8 @@ import {
   type StorageDriver,
 } from "../storage/drivers/storage.driver.js";
 import { releasedKey } from "../storage/storage.utils.js";
+import { enqueueReleaseAnnouncement } from "../email/email-outbox.service.js";
+import { emailWorker } from "../email/email-worker.js";
 import { releaseChanged, releaseNotFound } from "./releases.errors.js";
 import { requiredSemver, versionOf } from "./releases.utils.js";
 import {
@@ -263,11 +265,30 @@ async function runPublish(
             data: { objectKey: releaseKey(file) },
           });
         }
-        await tx.releaseEvent.create({
+        const published = await tx.releaseEvent.create({
           data: {
             releaseId: release.id,
             type: ReleaseEventType.PUBLISHED,
             actorId: adminId,
+          },
+          select: { id: true },
+        });
+
+        // Announced to everyone who downloaded the product before, queued
+        // with the publish so both happen or neither does
+        const product = await tx.product.findUniqueOrThrow({
+          where: { id: release.productId },
+          select: { name: true },
+        });
+        const base = env.APP_BASE_URL.replace(/\/+$/, "");
+        await enqueueReleaseAnnouncement(tx, {
+          batchId: published.id,
+          productId: release.productId,
+          releaseId: release.id,
+          payload: {
+            productName: product.name,
+            version,
+            url: `${base}/catalog/${release.productId}`,
           },
         });
       },
@@ -295,6 +316,7 @@ async function runPublish(
   job.phase = "done";
   job.percent = 100;
   finish(job, deps);
+  emailWorker.kick();
 
   // Published: the staged copies are no longer needed (and never served)
   const removed = await Promise.allSettled(

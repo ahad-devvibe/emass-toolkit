@@ -108,13 +108,20 @@ transition is recorded in an append-only history. API: `/api/releases`,
     - an **internal reason** (required), stored on the `ROLLED_BACK` event;
     - an optional **message to customers** (at most 1,000 characters), used
       only in the email and not stored.
-  - **Emails after the commit** (`rollback-notify.service.ts`): every distinct
-    ACTIVE user with a `Download` of that release (customers only) gets one
-    "withdrawn" email. It points to the restored version or, for an archived
-    rollback, the current published one; with neither, it says a new version
-    will follow. Failures are logged per recipient. The outcome is recorded as
-    a `CUSTOMERS_NOTIFIED` event ("Emailed N customers… (M failed)") in the
-    release's Activity.
+  - **Emails through the outbox** (`docs/operations/email-outbox.md`): the
+    rollback transaction queues one "withdrawn" email for every distinct
+    ACTIVE user with a `Download` of that release (customers only), and the
+    worker sends them after the commit, paced and retried. Each points to
+    the restored version or, for an archived rollback, the current published
+    one; with neither, it says a new version will follow. When the batch is
+    done, a `CUSTOMERS_NOTIFIED` event ("Emailed N customers… (M failed)",
+    or "No customers had downloaded vX.") appears in the release's Activity.
+- **Announcements on publish:** the publish's final transaction queues a
+  "vX is available" email for every ACTIVE customer who downloaded **any
+  other release of the product**, once each, sent by the same worker after
+  rollback notices. A finished batch records `CUSTOMERS_NOTIFIED`
+  ("Announced vX to N customers… (M failed)"); with nobody to tell, nothing
+  is recorded. There's no opt-out yet.
 - **History lives on events,** not on the release: review feedback (each
   round) and rollback reasons are event notes. The release keeps only what
   lists and rules need.
@@ -174,7 +181,7 @@ npm run releases:purge -- --all --execute
   `BrowserRouter` has no `useBlocker`. Tab close is warned.
 - **Deferred:**
   - customer downloads (catalog API, ~60 s PARs, the `Download` log);
-  - emails to downloaders on rollback;
-  - notifications (submit, changes requested, published);
+  - staff notifications (submit, changes requested);
+  - opting out of release announcements;
   - product and resource CRUD;
   - HubSpot download properties.

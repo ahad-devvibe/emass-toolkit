@@ -157,30 +157,44 @@ export async function createRelease(options: CreateReleaseOptions) {
 }
 
 /**
- * Every file the local driver holds under a release's staging prefix,
- * including leftover `.part` files, so tests can prove nothing leaked.
+ * Every file the local driver holds for a release's uploads, including
+ * leftover `.part` files, so tests can prove nothing leaked. Keys are
+ * staged/{uuid}/{name} with no release in them, so the release's file rows
+ * and upload sessions say which folders to look in.
  */
-export async function stagedFilesFor(
-  productId: string,
-  releaseId: string,
-): Promise<string[]> {
+export async function stagedFilesFor(releaseId: string): Promise<string[]> {
   const { staging } = getStorageBuckets();
-  const dir = path.resolve(
-    env.STORAGE_LOCAL_DIR,
-    staging,
-    "staged",
-    productId,
-    releaseId,
+  const [files, sessions] = await Promise.all([
+    prisma.releaseFile.findMany({
+      where: { releaseId },
+      select: { objectKey: true },
+    }),
+    prisma.uploadSession.findMany({
+      where: { releaseId },
+      select: { objectKey: true },
+    }),
+  ]);
+  const folders = new Set(
+    [...files, ...sessions]
+      .map((row) => row.objectKey)
+      .filter((key) => key.startsWith("staged/"))
+      .map((key) => path.posix.dirname(key)),
   );
-  try {
-    const entries = await readdir(dir, {
-      recursive: true,
-      withFileTypes: true,
-    });
-    return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
-  } catch {
-    return [];
+  const names: string[] = [];
+  for (const folder of folders) {
+    try {
+      const entries = await readdir(
+        path.resolve(env.STORAGE_LOCAL_DIR, staging, folder),
+        { withFileTypes: true },
+      );
+      names.push(
+        ...entries.filter((entry) => entry.isFile()).map((entry) => entry.name),
+      );
+    } catch {
+      // Folder already gone: nothing left there
+    }
   }
+  return names.sort();
 }
 
 /** True when the local storage driver holds `key` in the staging bucket. */

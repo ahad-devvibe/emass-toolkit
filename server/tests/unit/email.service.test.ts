@@ -90,6 +90,32 @@ describe("createOciEmailSender", () => {
     errorLog.mockRestore();
   });
 
+  it("marks throttling and server errors retryable, other 4xx not", async () => {
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const failWith = (statusCode: number) =>
+      createOciEmailSender(
+        async () => ({
+          submitEmail: vi
+            .fn()
+            .mockRejectedValue(Object.assign(new Error("x"), { statusCode })),
+        }),
+        () => config,
+      );
+
+    for (const [status, retryable] of [
+      [429, true],
+      [503, true],
+      [400, false],
+    ] as const) {
+      await expect(
+        failWith(status).sendOtpEmail("user@example.com", "123456"),
+      ).rejects.toMatchObject({
+        code: "EMAIL_SEND_FAILED",
+        details: { retryable, providerStatus: status },
+      });
+    }
+  });
+
   it("translates OCI failures without exposing provider details", async () => {
     const providerError = new Error("private OCI provider details");
     const client: EmailDeliveryClient = {
@@ -110,6 +136,10 @@ describe("createOciEmailSender", () => {
         502,
         "Unable to send verification email",
         "EMAIL_SEND_FAILED",
+        {
+          retryable: true,
+          providerStatus: undefined,
+        },
       ),
     );
     expect(errorLog).toHaveBeenCalledOnce();
@@ -192,6 +222,10 @@ describe("createOciEmailSender", () => {
         502,
         "Unable to send password reset email",
         "EMAIL_SEND_FAILED",
+        {
+          retryable: true,
+          providerStatus: undefined,
+        },
       ),
     );
     expect(errorLog).toHaveBeenCalledOnce();

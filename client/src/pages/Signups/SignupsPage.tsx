@@ -169,8 +169,10 @@ export function SignupsPage() {
               <Input type="search" aria-label="Search sign-up requests" placeholder="Search by name or email" maxLength={100} className="h-9 pl-8" value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
           </div>
-          {/* As tall as its rows; capped by main on md+, then only the rows scroll. While loading, the skeleton is clipped with a fade */}
-          <div ref={scroller} className={cn("min-h-0 overscroll-contain", skeleton ? "overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]" : "overflow-y-auto")}>
+          {/* As tall as its rows; capped by main on md+, then only the rows scroll. Phones scroll the page instead: a scroll box
+              there has nothing to scroll, and overscroll-contain would stop touch scrolls from reaching the page. While loading,
+              the skeleton is clipped with a fade */}
+          <div ref={scroller} className={cn("min-h-0", skeleton ? "overflow-hidden [mask-image:linear-gradient(to_bottom,black_75%,transparent)]" : "md:overflow-y-auto md:overscroll-contain")}>
           {skeleton ? (
             <LoadingRows />
           ) : status === "error" ? (

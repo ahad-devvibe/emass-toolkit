@@ -281,7 +281,12 @@ export function StaffShell({
           actions={actions}
           logoClassName="md:hidden"
         >
-          {breadcrumb.length > 0 && <Breadcrumb parts={breadcrumb} />}
+          {/* Phones show the logo in the bar instead; the page title says where you are */}
+          {breadcrumb.length > 0 && (
+            <div className="hidden min-w-0 md:block">
+              <Breadcrumb parts={breadcrumb} />
+            </div>
+          )}
         </AppHeader>
         {children}
       </div>

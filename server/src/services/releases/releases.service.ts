@@ -13,9 +13,13 @@ import type { SubmitReleaseInput } from "../../schemas/releases.schema.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { decodeCursor, encodeCursor } from "../../utils/cursor.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
-import { emailService, type EmailSender } from "../email/email.service.js";
+import { env } from "../../configs/env.js";
+import {
+  completeBatchIfDone,
+  enqueueRollbackNotices,
+} from "../email/email-outbox.service.js";
+import { emailWorker } from "../email/email-worker.js";
 import { releaseFileVerdicts } from "./file-checks.service.js";
-import { startRollbackNotifications } from "./rollback-notify.service.js";
 import {
   duplicatePlatform,
   fileNotFound,
@@ -683,17 +687,16 @@ export async function requestChanges(
  * ADMIN: pull a published release and put the newest older archived release
  * back in its place, in one transaction under the product lock. Nothing is
  * copied or deleted: both releases' files stay in the release bucket.
- * Emailing the bad build's downloaders waits for download tracking.
+ * Everyone who downloaded it is emailed through the outbox.
  */
 export async function rollbackRelease(
   adminId: string,
   id: string,
   { reason, customerMessage }: { reason: string; customerMessage?: string },
-  sender: EmailSender = emailService,
 ) {
   const found = await prisma.release.findUnique({
     where: { id },
-    select: { productId: true },
+    select: { productId: true, product: { select: { name: true } } },
   });
   if (!found) throw releaseNotFound();
 
@@ -709,58 +712,83 @@ export async function rollbackRelease(
       where: { id },
       data: { status: ReleaseStatus.ROLLED_BACK },
     });
-    await tx.releaseEvent.create({
+    const event = await tx.releaseEvent.create({
       data: {
         releaseId: id,
         type: ReleaseEventType.ROLLED_BACK,
         actorId: adminId,
         note: reason,
       },
+      select: { id: true },
     });
 
+    let replacement: { id: string; version: string } | null;
     if (release.status === ReleaseStatus.ARCHIVED) {
       // Withdrawn only; the published release is untouched
       const current = await tx.release.findFirst({
         where: { productId: found.productId, status: ReleaseStatus.PUBLISHED },
         select: versionRef,
       });
-      return { version: versionOf(release), replacement: shippedRef(current) };
+      replacement = shippedRef(current);
+    } else {
+      // Published: promote the newest older archived version, if there is
+      // one; otherwise the product simply has no published release
+      replacement = await restorePrevious(tx, release, adminId);
     }
 
-    // Published: promote the newest older archived version, if there is one;
-    // otherwise the product simply has no published release
-    const target = await findRestoreTarget(tx, release);
-    if (target) {
-      // The restored release keeps its original publishedAt; the event dates the restore
-      await tx.release.update({
-        where: { id: target.id },
-        data: { status: ReleaseStatus.PUBLISHED },
-      });
-      await tx.releaseEvent.create({
-        data: {
-          releaseId: target.id,
-          type: ReleaseEventType.RESTORED,
-          actorId: adminId,
-          note: `Restored after v${versionOf(release)} was rolled back`,
-        },
-      });
-    }
-    return { version: versionOf(release), replacement: target };
+    // Everyone who downloaded it is emailed through the outbox, queued with
+    // the rollback so both happen or neither does. The internal reason never
+    // goes out, only the customer message
+    const base = env.APP_BASE_URL.replace(/\/+$/, "");
+    await enqueueRollbackNotices(tx, {
+      batchId: event.id,
+      releaseId: id,
+      payload: {
+        productName: found.product.name,
+        withdrawnVersion: versionOf(release),
+        replacementVersion: replacement?.version ?? null,
+        url: replacement
+          ? `${base}/catalog/${found.productId}`
+          : `${base}/catalog`,
+        customerMessage,
+      },
+    });
+    return { batchId: event.id };
   });
 
-  // Emails go out after the commit, without holding up the admin
-  startRollbackNotifications(
-    {
-      releaseId: id,
-      productId: found.productId,
-      withdrawnVersion: outcome.version,
-      replacementVersion: outcome.replacement?.version ?? null,
-      customerMessage,
-      actorId: adminId,
-    },
-    sender,
-  );
+  // Sends after the commit, without holding up the admin; with nobody to
+  // email, this just records that
+  await completeBatchIfDone(outcome.batchId);
+  emailWorker.kick();
   return getRelease(id);
+}
+
+/** Promotes the newest ARCHIVED release below the rolled-back one, if any. */
+async function restorePrevious(
+  tx: Db,
+  release: Pick<
+    Release,
+    "productId" | "version" | "versionMajor" | "versionMinor" | "versionPatch"
+  >,
+  adminId: string,
+) {
+  const target = await findRestoreTarget(tx, release);
+  if (target) {
+    // The restored release keeps its original publishedAt; the event dates the restore
+    await tx.release.update({
+      where: { id: target.id },
+      data: { status: ReleaseStatus.PUBLISHED },
+    });
+    await tx.releaseEvent.create({
+      data: {
+        releaseId: target.id,
+        type: ReleaseEventType.RESTORED,
+        actorId: adminId,
+        note: `Restored after v${versionOf(release)} was rolled back`,
+      },
+    });
+  }
+  return target;
 }
 
 /**

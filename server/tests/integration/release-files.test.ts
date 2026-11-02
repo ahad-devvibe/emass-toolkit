@@ -102,9 +102,7 @@ describe("uploading a file (create, parts, complete)", () => {
     });
     const [row] = await fileRows(release.id);
     expect(row.objectKey).toMatch(
-      new RegExp(
-        `^staged/${release.productId}/${release.id}/[0-9a-f-]{36}/emass-core-2\\.5\\.0\\.msi$`,
-      ),
+      new RegExp(`^staged/[0-9a-f-]{36}/emass-core-2\\.5\\.0\\.msi$`),
     );
     expect((await storedBytes(row.objectKey)).equals(body)).toBe(true);
   });
@@ -170,7 +168,7 @@ describe("uploading a file (create, parts, complete)", () => {
       expect(res.body.details.fieldErrors).toMatchObject(fieldErrors);
     }
     expect(await fileRows(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("stores an upload without a kind as unmapped", async () => {
@@ -200,7 +198,7 @@ describe("uploading a file (create, parts, complete)", () => {
     expect(empty.status).toBe(400);
     expect(empty.body.code).toBe("VALIDATION_ERROR");
     expect(await fileRows(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   describe("size cap", () => {
@@ -222,7 +220,7 @@ describe("uploading a file (create, parts, complete)", () => {
       expect(res.status).toBe(413);
       expect(res.body.code).toBe("FILE_TOO_LARGE");
       expect(await fileRows(release.id)).toEqual([]);
-      expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+      expect(await stagedFilesFor(release.id)).toEqual([]);
     });
   });
 
@@ -247,9 +245,7 @@ describe("uploading a file (create, parts, complete)", () => {
     });
     const rows = await fileRows(release.id);
     expect(rows.map((row) => row.originalName)).toEqual(["one.deb"]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([
-      "one.deb",
-    ]);
+    expect(await stagedFilesFor(release.id)).toEqual(["one.deb"]);
   });
 
   it("replaces a file: new row and object in, old ones out", async () => {
@@ -335,7 +331,7 @@ describe("uploading a file (create, parts, complete)", () => {
 
     expect(res.status).toBe(500);
     expect(await fileRows(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("refuses to complete an upload after the release was submitted", async () => {
@@ -362,7 +358,7 @@ describe("uploading a file (create, parts, complete)", () => {
     expect(res.body.code).toBe("RELEASE_LOCKED");
     const rows = await fileRows(release.id);
     expect(rows.map((row) => row.platform)).toEqual(["MACOS"]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 });
 
@@ -528,7 +524,7 @@ describe("file rules on upload, read and submit", () => {
       message: 'Identical to "emass-win.exe" in v2.4.0.',
     });
     expect(await fileRows(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("blocks an installer that says another version, after reading it from storage", async () => {
@@ -549,7 +545,7 @@ describe("file rules on upload, read and submit", () => {
         expected: "2.6.0",
       }),
     ]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("requires the SHA-256 the browser computed", async () => {
@@ -563,7 +559,7 @@ describe("file rules on upload, read and submit", () => {
 
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toContain("SHA-256 is required");
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("refuses bytes that don't match the declared SHA-256", async () => {
@@ -579,7 +575,7 @@ describe("file rules on upload, read and submit", () => {
     expect(res.status).toBe(422);
     expect(res.body.code).toBe("CHECKSUM_MISMATCH");
     expect(await fileRows(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("stores what inspection found when the declared SHA-256 matches", async () => {

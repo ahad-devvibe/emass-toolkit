@@ -78,8 +78,9 @@ The original spec is `tasks/auth.md`.
   - `set-password.service.ts` and its three controllers (the routes are
     unmounted, so `/auth/set-password*` and `/auth/resend-set-password` now
     404);
-  - the reminder job in `scheduler.service.ts`, off through
-    `SET_PASSWORD_REMINDERS_ENABLED = false`;
+  - `sendDueSetPasswordReminders` in `set-password.service.ts`. Nothing runs
+    it: the `node-cron` scheduler that did was removed on 2026-11-02, since
+    that was its only job;
   - the set-password and reminder email templates;
   - the `SET_PASSWORD_*` env vars;
   - the `setPasswordSchema` / `resendSetPasswordSchema` schemas;

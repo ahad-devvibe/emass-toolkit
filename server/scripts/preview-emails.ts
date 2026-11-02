@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RenderedEmail } from "../src/services/email/email.utils.js";
@@ -7,6 +7,7 @@ import { renderMfaLoginEmail } from "../src/services/email/templates/mfa-login.t
 import { renderOtpVerificationEmail } from "../src/services/email/templates/otp-verification.template.js";
 import { renderPasswordResetEmail } from "../src/services/email/templates/password-reset.template.js";
 import { renderPendingApprovalEmail } from "../src/services/email/templates/pending-approval.template.js";
+import { renderReleaseAnnouncedEmail } from "../src/services/email/templates/release-announced.template.js";
 import { renderReleaseWithdrawnEmail } from "../src/services/email/templates/release-withdrawn.template.js";
 import { renderSetPasswordReminderEmail } from "../src/services/email/templates/set-password-reminder.template.js";
 import { renderSetPasswordEmail } from "../src/services/email/templates/set-password.template.js";
@@ -15,13 +16,13 @@ import { renderWelcomeEmail } from "../src/services/email/templates/welcome.temp
 
 // Renders every transactional email with sample data into .tmp/ (gitignored)
 // so the templates can be reviewed in a browser without sending anything.
+// The npm script sets EMAIL_ASSET_BASE_URL=. and the header images are copied
+// next to the HTML, so the previews open straight from disk.
 //   npm run email:preview
-const OUT_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  ".tmp",
-  "email-previews",
-);
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const OUT_DIR = join(SCRIPT_DIR, "..", ".tmp", "email-previews");
+const ASSETS_DIR = join(SCRIPT_DIR, "..", "..", "client", "public", "email");
+const ASSETS = ["header.jpg", "emass-logo-white.png"];
 
 const setPasswordUrl =
   "http://localhost:5173/set-password?token=sample-token-123";
@@ -82,9 +83,21 @@ const previews: [name: string, email: RenderedEmail][] = [
       customerMessage: "A driver issue affects some Windows machines.",
     }),
   ],
+  [
+    "release-announced",
+    renderReleaseAnnouncedEmail({
+      firstName: "Jane",
+      productName: "EMASS Core SDK",
+      version: "1.5.0",
+      url: "http://localhost:5173/catalog",
+    }),
+  ],
 ];
 
-mkdirSync(OUT_DIR, { recursive: true });
+mkdirSync(join(OUT_DIR, "email"), { recursive: true });
+for (const file of ASSETS) {
+  copyFileSync(join(ASSETS_DIR, file), join(OUT_DIR, "email", file));
+}
 for (const [name, email] of previews) {
   writeFileSync(join(OUT_DIR, `${name}.html`), email.html);
   writeFileSync(join(OUT_DIR, `${name}.txt`), email.text);

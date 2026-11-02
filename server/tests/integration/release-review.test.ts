@@ -5,7 +5,7 @@ import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { resetDb } from "../helpers/resetDb.js";
 import { emailService } from "../../src/services/email/email.service.js";
-import { rollbackNotificationsSettled } from "../../src/services/releases/rollback-notify.service.js";
+import { emailWorker } from "../../src/services/email/email-worker.js";
 import { createUser, uniqueEmail } from "../helpers/auth.js";
 import {
   createAdmin,
@@ -27,9 +27,10 @@ beforeAll(async () => {
   customer = await createCustomer();
 });
 
-// Rollback emails run after the response; finish them before the next test
-// (and the next file's resetDb) so their writes never land elsewhere
-afterEach(rollbackNotificationsSettled);
+// Rollback emails are sent by the outbox worker after the response; finish
+// them before the next test (and the next file's resetDb) so their writes
+// never land elsewhere
+afterEach(() => emailWorker.settled());
 
 /** A product with releases at the given versions and statuses. */
 async function productWith(...releases: [string, ReleaseStatus][]) {
@@ -197,7 +198,7 @@ describe("POST /api/releases/:id/rollback", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe("ROLLED_BACK");
     expect(await statusOf(previous.id)).toBe("PUBLISHED");
-    await rollbackNotificationsSettled();
+    await emailWorker.settled();
     const events = await eventsOf(current.id);
     expect(events.at(-2)).toEqual({
       type: "ROLLED_BACK",

@@ -25,7 +25,7 @@ export function ReviewCards({ release }: { release: ReleaseDetail }) {
   const live: LiveVersion = current ? { version: current.version, files: previous.data?.files ?? null, unavailable: Boolean(previous.error) } : null
 
   return (
-    <section aria-label="Review checks" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section aria-label="Review checks" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {reviewCards(release, live).map((card) => {
         const Icon = cardIcon[card.key]
         const ToneIcon = toneIcon[card.tone]
@@ -41,7 +41,7 @@ export function ReviewCards({ release }: { release: ReleaseDetail }) {
                 </span>
               )}
             </p>
-            <p className={cn("mt-1 flex items-start gap-1.5 text-xs", style.text)}><ToneIcon aria-hidden className="mt-px size-3.5 shrink-0" /><span>{card.detail}</span></p>
+            <p className={cn("mt-1 flex items-start gap-1.5 text-xs", style.text)}><ToneIcon aria-hidden className="mt-px size-3.5 shrink-0" /><span className="min-w-0 [overflow-wrap:anywhere]">{card.detail}</span></p>
           </div>
         )
       })}

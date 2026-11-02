@@ -220,7 +220,7 @@ describe("staged object keys", () => {
       name: "emass-sdk.zip",
     });
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     const session = await prisma.uploadSession.findFirstOrThrow({
       where: { releaseId: release.id },
     });

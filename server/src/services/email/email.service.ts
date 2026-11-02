@@ -14,6 +14,11 @@ import {
 } from "../../configs/email.js";
 import { logger } from "../../configs/logger.js";
 import { ApiError } from "../../utils/api-error.utils.js";
+import { isRetryableStatus, type SendFailureDetails } from "./email.utils.js";
+import {
+  renderReleaseAnnouncedEmail,
+  type ReleaseAnnouncedEmailTemplateInput,
+} from "./templates/release-announced.template.js";
 import {
   renderOtpVerificationEmail,
   type RenderedEmail,
@@ -76,7 +81,18 @@ export interface EmailSender {
     firstName: string,
     release: ReleaseWithdrawnEmail,
   ): Promise<void>;
+  sendReleaseAnnouncedEmail(
+    email: string,
+    firstName: string,
+    release: ReleaseAnnouncedEmail,
+  ): Promise<void>;
 }
+
+/** Everything about the new release except who it's addressed to. */
+export type ReleaseAnnouncedEmail = Omit<
+  ReleaseAnnouncedEmailTemplateInput,
+  "firstName"
+>;
 
 export interface EmailDeliveryClient {
   submitEmail(
@@ -146,7 +162,14 @@ export function createOciEmailSender(
     } catch (error) {
       clientPromise = undefined;
       logger.error({ email, err: error }, "OCI email delivery failed");
-      throw new ApiError(502, errorMessage, "EMAIL_SEND_FAILED");
+      // The bulk worker reads these to choose retry or give up
+      const status = (error as { statusCode?: unknown }).statusCode;
+      const providerStatus = typeof status === "number" ? status : undefined;
+      const details: SendFailureDetails = {
+        retryable: isRetryableStatus(providerStatus),
+        providerStatus,
+      };
+      throw new ApiError(502, errorMessage, "EMAIL_SEND_FAILED", details);
     }
   }
 
@@ -244,6 +267,11 @@ export function createOciEmailSender(
       const template = renderReleaseWithdrawnEmail({ firstName, ...release });
       await submit(email, template, "Unable to send release withdrawn email");
     },
+
+    async sendReleaseAnnouncedEmail(email, firstName, release): Promise<void> {
+      const template = renderReleaseAnnouncedEmail({ firstName, ...release });
+      await submit(email, template, "Unable to send release announcement");
+    },
   };
 }
 
@@ -329,6 +357,13 @@ export function createConsoleEmailSender(): EmailSender {
       logger.info(
         { email, firstName, ...release },
         "console email sender: release withdrawn email",
+      );
+    },
+
+    async sendReleaseAnnouncedEmail(email, firstName, release): Promise<void> {
+      logger.info(
+        { email, firstName, ...release },
+        "console email sender: release announcement",
       );
     },
   };

@@ -346,10 +346,10 @@ Full decisions in `docs/releases/release-management.md`; deploy steps in
 - **Gate G1 — migration** (blocking): splice is in `prisma/schema.prisma`, no
   migration run. Recommended: wipe 18 legacy Held migrations → one clean `init`
   migration → `npm run test:migrate`, then unblock the auth integration suites.
-- **Release module downloads**: customer catalog API, ~60 s object PARs on
-  the release bucket, the `Download` log, and rollback emails to
-  downloaders. Release management itself (drafts, uploads, review, publish,
-  rollback) is built; see §12.
+- **Bulk email**: rollback notices and new-release announcements go through
+  the `EmailOutbox` table and an in-process worker (paced, retried, daily
+  cap); see `docs/operations/email-outbox.md`. Still open: opting out of
+  announcements, an admin "retry failed" action, and a retention purge.
 - **Rate limiting** on auth endpoints before production exposure.
 - **Removing the hidden set-password flow** (code marked
   `TODO(auth-otp-signup)`, plus the `SetPasswordToken` table) once the OTP

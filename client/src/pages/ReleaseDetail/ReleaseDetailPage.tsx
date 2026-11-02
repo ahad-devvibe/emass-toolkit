@@ -29,7 +29,7 @@ function Callout({ tone, icon, title, children }: { tone: "amber" | "info" | "da
   return (
     <div role="note" className={cn("flex gap-3 rounded-xl border px-4 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0", styles[tone])}>
       {icon}
-      <div className="min-w-0 flex-1"><p className="font-medium">{title}</p>{children && <div className="mt-0.5 whitespace-pre-line text-foreground/80">{children}</div>}</div>
+      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]"><p className="font-medium">{title}</p>{children && <div className="mt-0.5 whitespace-pre-line text-foreground/80">{children}</div>}</div>
     </div>
   )
 }
@@ -123,7 +123,8 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
         )}
         {release.status === "rolled_back" && rolledBack && <Callout tone="danger" icon={<RotateCcw />} title={`Rolled back by ${rolledBack.actor.name}`}>{rolledBack.note}</Callout>}
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+        {/* grid-cols-1 below lg: an auto column would grow to fit a long file name and widen the page */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <div className="space-y-4">
             {files.length > 0 && <ReleaseFiles files={files} version={{ version: release.version ?? "", released: release.publishedAt ?? undefined }} downloadingId={downloadingId} onDownload={download} onCopy={copy} />}
             {unmapped.length > 0 && (

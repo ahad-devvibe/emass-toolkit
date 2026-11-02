@@ -84,6 +84,21 @@ export const envSchema = z
       })
       .optional(),
     EMAIL_FROM_NAME: z.string().optional(),
+    // Bulk mail (rollback notices, release announcements) goes out through
+    // the outbox at this pace, and stops for the day at the cap so sign-in
+    // codes always have quota left. Free-trial OCI tenancies allow 10/min
+    // and 200/day; paid ones far more
+    EMAIL_BULK_PER_MINUTE: z.coerce
+      .number({ error: "EMAIL_BULK_PER_MINUTE must be 1 to 60000" })
+      .int({ error: "EMAIL_BULK_PER_MINUTE must be 1 to 60000" })
+      .min(1, { error: "EMAIL_BULK_PER_MINUTE must be 1 to 60000" })
+      .max(60_000, { error: "EMAIL_BULK_PER_MINUTE must be 1 to 60000" })
+      .default(10),
+    EMAIL_BULK_DAILY_CAP: z.coerce
+      .number({ error: "EMAIL_BULK_DAILY_CAP must be a positive integer" })
+      .int({ error: "EMAIL_BULK_DAILY_CAP must be a positive integer" })
+      .positive({ error: "EMAIL_BULK_DAILY_CAP must be a positive integer" })
+      .default(150),
 
     // shared OCI auth (email-oci + storage)
     OCI_REGION: z.string().optional(),

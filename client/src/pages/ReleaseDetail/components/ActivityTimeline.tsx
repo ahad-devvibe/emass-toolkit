@@ -40,7 +40,7 @@ function EventNote({ note }: { note: string }) {
 
   return (
     <div className="mt-1.5 rounded-lg bg-muted/60 px-3 py-2 text-xs">
-      <p ref={ref} className={cn("whitespace-pre-line break-words text-foreground/80", !expanded && "line-clamp-4")}>{note}</p>
+      <p ref={ref} className={cn("whitespace-pre-line text-foreground/80 [overflow-wrap:anywhere]", !expanded && "line-clamp-4")}>{note}</p>
       {(clamped || expanded) && (
         <button type="button" className="mt-1 font-medium text-primary hover:underline" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? "Show less" : "Show more"}</button>
       )}

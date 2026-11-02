@@ -23,5 +23,6 @@ const components: Components = {
 }
 
 export function Markdown({ children }: { children: string }) {
-  return <div className="text-sm text-muted-foreground"><ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{children}</ReactMarkdown></div>
+  // Long URLs and file names break instead of widening the page; code blocks keep their own sideways scroll
+  return <div className="text-sm text-muted-foreground [overflow-wrap:anywhere]"><ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>{children}</ReactMarkdown></div>
 }

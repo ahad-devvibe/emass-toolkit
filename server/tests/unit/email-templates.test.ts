@@ -8,6 +8,7 @@ import { renderMfaLoginEmail } from "../../src/services/email/templates/mfa-logi
 import { renderWelcomeEmail } from "../../src/services/email/templates/welcome.template.js";
 import { renderSignupRejectedEmail } from "../../src/services/email/templates/signup-rejected.template.js";
 import { renderReleaseWithdrawnEmail } from "../../src/services/email/templates/release-withdrawn.template.js";
+import { renderReleaseAnnouncedEmail } from "../../src/services/email/templates/release-announced.template.js";
 import {
   assetBase,
   emailAssetUrl,
@@ -137,7 +138,7 @@ describe("renderPendingApprovalEmail", () => {
 
     expect(email.subject).toBe("Your EMASS Toolkit signup is pending review");
     expect(email.html).toContain("Thanks, Sam");
-    expect(email.html).toMatch(/reviews each request/i);
+    expect(email.html).toMatch(/request is being reviewed/i);
     expect(email.text).toContain("Sam");
   });
 
@@ -254,6 +255,35 @@ describe("renderReleaseWithdrawnEmail", () => {
     expect(email.text).toContain(
       "A note from the EMASS team: Use <b>v1.0.0</b> & reflash",
     );
+  });
+});
+
+describe("renderReleaseAnnouncedEmail", () => {
+  it("names the product and version with a link", () => {
+    const email = renderReleaseAnnouncedEmail({
+      firstName: "Ada",
+      productName: "EMASS Core SDK",
+      version: "2.0.0",
+      url: "https://portal.example/catalog/p-1",
+    });
+
+    expect(email.subject).toBe("EMASS Core SDK v2.0.0 is available");
+    expect(email.html).toContain("Hi Ada,");
+    expect(email.html).toContain("View release");
+    expect(email.html).toContain('href="https://portal.example/catalog/p-1"');
+    expect(email.text).toContain("https://portal.example/catalog/p-1");
+  });
+
+  it("escapes dynamic values", () => {
+    const email = renderReleaseAnnouncedEmail({
+      firstName: "<b>",
+      productName: "<script>",
+      version: "2.0.0",
+      url: "https://x.example/?a=1&b=2",
+    });
+    expect(email.html).toContain("Hi &lt;b&gt;,");
+    expect(email.html).not.toContain("<script>");
+    expect(email.html).toContain("a=1&amp;b=2");
   });
 });
 

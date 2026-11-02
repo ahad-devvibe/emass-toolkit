@@ -8,6 +8,8 @@ import { env } from "../../src/configs/env.js";
 import { logger } from "../../src/configs/logger.js";
 import { prisma } from "../../src/configs/prisma.js";
 import { getStorageBuckets } from "../../src/configs/storage.js";
+import { emailWorker } from "../../src/services/email/email-worker.js";
+import { emailService } from "../../src/services/email/email.service.js";
 import { resetPublishJobs } from "../../src/services/releases/publish.service.js";
 import {
   getStorageDriver,
@@ -37,7 +39,9 @@ beforeAll(async () => {
   customer = await createCustomer();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Announcements are sent after the publish; finish them first
+  await emailWorker.settled();
   vi.restoreAllMocks();
   resetPublishJobs();
 });
@@ -136,7 +140,8 @@ describe("POST /api/releases/:id/publish", () => {
     const published = await filesOf(release.id);
     for (const [index, file] of published.entries()) {
       const before = staged[index];
-      const uuid = before.objectKey.split("/")[3];
+      // staged/{uuid}/{name}
+      const uuid = before.objectKey.split("/")[1];
       expect(file.objectKey).toBe(
         `releases/${release.productId}/1.0.0/${uuid}/${before.originalName}`,
       );
@@ -155,6 +160,44 @@ describe("POST /api/releases/:id/publish", () => {
       where: { releaseId: release.id, type: "PUBLISHED" },
     });
     expect(event?.actorId).toBe(admin.id);
+  });
+
+  it("announces the new version to everyone who downloaded the product", async () => {
+    const announce = vi
+      .spyOn(emailService, "sendReleaseAnnouncedEmail")
+      .mockResolvedValue();
+    const product = await createProduct();
+    const previous = await createRelease({
+      productId: product.id,
+      createdById: dev.id,
+      version: "1.0.0",
+      status: "PUBLISHED",
+    });
+    await prisma.download.createMany({
+      data: [
+        { userId: customer.id, releaseId: previous.id },
+        { userId: customer.id, releaseId: previous.id },
+      ],
+    });
+    const next = await inReview({ productId: product.id, version: "1.1.0" });
+
+    await publish(next.id).expect(202);
+    await waitForJob(next.id);
+    await vi.waitFor(() => expect(announce).toHaveBeenCalledTimes(1));
+    await emailWorker.settled();
+
+    expect(announce.mock.calls[0][2]).toEqual({
+      productName: product.name,
+      version: "1.1.0",
+      url: expect.stringMatching(new RegExp(`/catalog/${product.id}$`)),
+    });
+    const notified = await prisma.releaseEvent.findFirst({
+      where: { releaseId: next.id, type: "CUSTOMERS_NOTIFIED" },
+    });
+    expect(notified).toMatchObject({
+      actorId: admin.id,
+      note: "Announced v1.1.0 to 1 customer.",
+    });
   });
 
   it("archives the product's previously published release", async () => {

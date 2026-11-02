@@ -306,7 +306,7 @@ describe("POST /api/releases/:id/uploads/:uploadId/complete", () => {
     expect(res.status).toBe(422);
     expect(res.body.code).toBe("CHECKSUM_MISMATCH");
     expect(await sessions(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("deletes a blocked file and ends its session", async () => {
@@ -323,7 +323,7 @@ describe("POST /api/releases/:id/uploads/:uploadId/complete", () => {
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("FILE_BLOCKED");
     expect(await sessions(release.id)).toEqual([]);
-    expect(await stagedFilesFor(release.productId, release.id)).toEqual([]);
+    expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
   it("says the upload is gone when it is completed twice", async () => {

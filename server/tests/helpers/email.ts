@@ -1,5 +1,6 @@
 import type {
   EmailSender,
+  ReleaseAnnouncedEmail,
   ReleaseWithdrawnEmail,
 } from "../../src/services/email/email.service.js";
 
@@ -13,7 +14,8 @@ export interface RecordedEmail {
     | "mfaLogin"
     | "welcome"
     | "signupRejected"
-    | "releaseWithdrawn";
+    | "releaseWithdrawn"
+    | "releaseAnnounced";
   email: string;
   code?: string;
   url?: string;
@@ -22,7 +24,7 @@ export interface RecordedEmail {
   expiresInMinutes?: number;
   hoursLeft?: number;
   reason?: string;
-  release?: ReleaseWithdrawnEmail;
+  release?: ReleaseWithdrawnEmail | ReleaseAnnouncedEmail;
 }
 
 export interface MockEmailSender extends EmailSender {
@@ -91,6 +93,9 @@ export function createMockEmailSender(): MockEmailSender {
     },
     async sendReleaseWithdrawnEmail(email, firstName, release) {
       sent.push({ kind: "releaseWithdrawn", email, firstName, release });
+    },
+    async sendReleaseAnnouncedEmail(email, firstName, release) {
+      sent.push({ kind: "releaseAnnounced", email, firstName, release });
     },
   };
 }
