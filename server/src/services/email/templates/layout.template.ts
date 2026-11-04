@@ -22,7 +22,7 @@ const font =
 const mono =
   "'JetBrains Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace";
 
-export const SUPPORT_ADDRESS = "info@nanoveu.com";
+export const SUPPORT_ADDRESS = "help.emass@nanoveu.com";
 
 /**
  * The public folder the header images are served from. Mail providers fetch

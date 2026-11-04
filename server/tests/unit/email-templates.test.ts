@@ -191,7 +191,7 @@ describe("renderSignupRejectedEmail", () => {
     expect(email.subject).toBe("Your EMASS Toolkit access request");
     expect(email.html).toContain("Hi Jane,");
     expect(email.html).toContain("company email");
-    expect(email.html).toContain("info@nanoveu.com");
+    expect(email.html).toContain("help.emass@nanoveu.com");
     expect(email.html).not.toContain("A note from our team");
     expect(email.text).not.toContain("A note from our team");
   });
