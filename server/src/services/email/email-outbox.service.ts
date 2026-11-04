@@ -76,7 +76,9 @@ function enqueue(
            jsonb_build_object('firstName', u."firstName") || ${JSON.stringify(payload)}::jsonb,
            ${now}, ${now}
     FROM "User" u
-    WHERE u."status" = 'ACTIVE'::"UserStatus" AND EXISTS (${audience})
+    WHERE u."status" = 'ACTIVE'::"UserStatus"
+      AND u."role" = 'CUSTOMER'::"UserRole"
+      AND EXISTS (${audience})
     ON CONFLICT ("batchId", "toEmail") DO NOTHING`;
 }
 
@@ -139,6 +141,7 @@ export async function claimDue(limit: number): Promise<OutboxRow[]> {
       WHERE "status" IN ('PENDING', 'SENDING')
         AND "nextAttemptAt" <= ${now}
         AND ("lockedUntil" IS NULL OR "lockedUntil" < ${now})
+        AND "attempts" < ${MAX_ATTEMPTS}
       ORDER BY "priority", "createdAt"
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -152,6 +155,24 @@ export async function claimDue(limit: number): Promise<OutboxRow[]> {
         a.createdAt.getTime() - b.createdAt.getTime(),
     )
     .map((row) => ({ ...row, leaseEnd }));
+}
+
+/**
+ * Fails rows whose last attempt never finished (the send hung or the process
+ * died) and whose lease has run out: without this they'd be re-claimed
+ * forever. Returns the batches touched, so their summaries can be written.
+ */
+export async function failExhausted(): Promise<string[]> {
+  const now = utc(new Date());
+  const rows = await prisma.$queryRaw<{ batchId: string }[]>`
+    UPDATE "EmailOutbox"
+    SET "status" = 'FAILED', "lockedUntil" = NULL,
+        "lastError" = ${`Gave up after ${MAX_ATTEMPTS} attempts`}
+    WHERE "status" = 'SENDING'
+      AND "lockedUntil" < ${now}
+      AND "attempts" >= ${MAX_ATTEMPTS}
+    RETURNING "batchId"`;
+  return [...new Set(rows.map((row) => row.batchId))];
 }
 
 // Every mark is conditional on the lease this worker took: if it ran out and

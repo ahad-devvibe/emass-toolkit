@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { PublishJob } from "@/pages/Releases/releases.model"
-import { isPublishRunning, isPublishSettled, publishLabel, publishPercent } from "./publish-progress"
+import { dialogJob, isPublishRunning, isPublishSettled, publishLabel, publishPercent } from "./publish-progress"
 
 const job = (overrides: Partial<PublishJob>): PublishJob => ({ phase: "copying", filesTotal: 3, filesDone: 2, percent: 64, error: null, startedAt: "", finishedAt: null, ...overrides })
 
@@ -35,5 +35,23 @@ describe("running / settled", () => {
     expect(isPublishSettled(job({ phase: "failed" }))).toBe(true)
     expect(isPublishSettled(job({}))).toBe(false)
     expect(isPublishSettled(null)).toBe(false)
+  })
+})
+
+describe("dialogJob", () => {
+  it("keeps a finished job on screen after the panel clears it", () => {
+    const done = job({ phase: "done" })
+    const failed = job({ phase: "failed" })
+    expect(dialogJob(null, done)).toBe(done)
+    expect(dialogJob(null, failed)).toBe(failed)
+    // The live job always wins
+    const running = job({})
+    expect(dialogJob(running, done)).toBe(running)
+  })
+
+  it("never keeps a running job, so an interruption still shows", () => {
+    expect(dialogJob(null, job({}))).toBeNull()
+    expect(dialogJob(null, job({ phase: "finalizing" }))).toBeNull()
+    expect(dialogJob(null, null)).toBeNull()
   })
 })

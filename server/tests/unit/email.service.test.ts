@@ -4,6 +4,8 @@ import { logger } from "../../src/configs/logger.js";
 import {
   createConsoleEmailSender,
   createOciEmailSender,
+  ociEmailClientConfiguration,
+  SEND_TIMEOUT_MS,
   type EmailDeliveryClient,
 } from "../../src/services/email/email.service.js";
 import type { EmailConfig } from "../../src/configs/email.js";
@@ -114,6 +116,31 @@ describe("createOciEmailSender", () => {
         details: { retryable, providerStatus: status },
       });
     }
+  });
+
+  it("gives each OCI call 30 s, then treats it as retryable", async () => {
+    const breaker = ociEmailClientConfiguration().circuitBreaker;
+    expect(breaker?.circuit.options.timeout).toBe(SEND_TIMEOUT_MS);
+    expect(SEND_TIMEOUT_MS).toBe(30_000);
+
+    // A breaker timeout carries no HTTP status
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const sender = createOciEmailSender(
+      async () => ({
+        submitEmail: vi.fn().mockRejectedValue(
+          Object.assign(new Error("Timed out after 30000ms"), {
+            code: "ETIMEDOUT",
+          }),
+        ),
+      }),
+      () => config,
+    );
+    await expect(
+      sender.sendOtpEmail("user@example.com", "123456"),
+    ).rejects.toMatchObject({
+      code: "EMAIL_SEND_FAILED",
+      details: { retryable: true },
+    });
   });
 
   it("translates OCI failures without exposing provider details", async () => {

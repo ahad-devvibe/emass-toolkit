@@ -110,14 +110,15 @@ transition is recorded in an append-only history. API: `/api/releases`,
       only in the email and not stored.
   - **Emails through the outbox** (`docs/operations/email-outbox.md`): the
     rollback transaction queues one "withdrawn" email for every distinct
-    ACTIVE user with a `Download` of that release (customers only), and the
+    ACTIVE user with a `Download` of that release (role CUSTOMER only, checked in the
+    query), and the
     worker sends them after the commit, paced and retried. Each points to
     the restored version or, for an archived rollback, the current published
     one; with neither, it says a new version will follow. When the batch is
     done, a `CUSTOMERS_NOTIFIED` event ("Emailed N customers… (M failed)",
     or "No customers had downloaded vX.") appears in the release's Activity.
 - **Announcements on publish:** the publish's final transaction queues a
-  "vX is available" email for every ACTIVE customer who downloaded **any
+  "vX is available" email for every ACTIVE customer (role CUSTOMER) who downloaded **any
   other release of the product**, once each, sent by the same worker after
   rollback notices. A finished batch records `CUSTOMERS_NOTIFIED`
   ("Announced vX to N customers… (M failed)"); with nobody to tell, nothing

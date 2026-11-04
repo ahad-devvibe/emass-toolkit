@@ -14,6 +14,10 @@ isolation between users. Built by materializing the auth, email and storage
 feature code directly into `src/` — the starter-kit scaffold/overlay model was
 retired (see §13).
 
+Delivery documents live at the repo root: `docs/development-document.md`
+(what was built, how it works, how it was developed and deployed) and
+`docs/user-guide.md` (how to use the portal, per role).
+
 | Layer       | Technology                                                                                     |
 | ----------- | ---------------------------------------------------------------------------------------------- |
 | Runtime     | Node.js 22, ESM (`"type": "module"`)                                                           |

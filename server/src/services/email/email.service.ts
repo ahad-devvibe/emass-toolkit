@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto";
 import { EmailDPClient } from "oci-emaildataplane";
 import type * as emaildataplane from "oci-emaildataplane";
 import {
+  CircuitBreaker,
   ConfigFileAuthenticationDetailsProvider,
   InstancePrincipalsAuthenticationDetailsProviderBuilder,
   NoRetryConfigurationDetails,
 } from "oci-common";
-import type { AuthenticationDetailsProvider } from "oci-common";
+import type {
+  AuthenticationDetailsProvider,
+  ClientConfiguration,
+} from "oci-common";
 import {
   getEmailConfig,
   getEmailProvider,
@@ -102,6 +106,23 @@ export interface EmailDeliveryClient {
 
 type ClientFactory = (config: EmailConfig) => Promise<EmailDeliveryClient>;
 
+/**
+ * Longest wait for one SubmitEmail call. The SDK's default circuit breaker
+ * waits up to an hour, which would stall bulk mail and shutdown on a hung
+ * connection. A timed-out call has no HTTP status, so it's retryable.
+ */
+export const SEND_TIMEOUT_MS = 30_000;
+
+/** OCI's default circuit breaker with our send timeout; nothing else changes. */
+export function ociEmailClientConfiguration(): ClientConfiguration {
+  return {
+    circuitBreaker: new CircuitBreaker({
+      ...CircuitBreaker.defaultConfiguration,
+      timeout: SEND_TIMEOUT_MS,
+    }),
+  };
+}
+
 async function createOciClient(
   config: EmailConfig,
 ): Promise<EmailDeliveryClient> {
@@ -117,7 +138,10 @@ async function createOciClient(
     );
   }
 
-  const client = new EmailDPClient({ authenticationDetailsProvider });
+  const client = new EmailDPClient(
+    { authenticationDetailsProvider },
+    ociEmailClientConfiguration(),
+  );
   client.regionId = config.region;
   return client;
 }

@@ -6,6 +6,7 @@ import { ApiError } from "../../utils/api-error.utils.js";
 import {
   claimDue,
   completeBatchIfDone,
+  failExhausted,
   LEASE_MS,
   markFailed,
   markRetry,
@@ -129,6 +130,9 @@ export async function drainOutbox(
       return;
     }
 
+    for (const batchId of await failExhausted()) {
+      await completeBatchIfDone(batchId);
+    }
     const rows = await claimDue(size);
     if (rows.length === 0) return;
 

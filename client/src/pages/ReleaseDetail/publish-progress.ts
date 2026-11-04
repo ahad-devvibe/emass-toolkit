@@ -9,6 +9,15 @@ export const isPublishRunning = (job: PublishJob | null): job is PublishJob => j
 export const isPublishSettled = (job: PublishJob | null): job is PublishJob => job?.phase === "done" || job?.phase === "failed"
 
 /**
+ * The job an open publish dialog shows. The uploads panel clears a finished
+ * job after a few seconds; the dialog keeps showing its outcome ("is live",
+ * "failed") instead of falling back to the Publish button. A running job is
+ * never kept, so an interrupted one still shows as interrupted.
+ */
+export const dialogJob = (live: PublishJob | null, last: PublishJob | null): PublishJob | null =>
+  live ?? (isPublishSettled(last) ? last : null)
+
+/**
  * "File 3 of 3 · 64%", then "Finishing up…", "Published" or
  * the error. OCI reports a copy only as 0 or 100 (spike: 1 GiB in ~12 s), so
  * the label names the file in progress rather than a percent within it.

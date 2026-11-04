@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ApiRequestError } from "@/lib/api/http"
 import type { PublishJob, ReleaseDetail } from "@/pages/Releases/releases.model"
 import { cn } from "@/lib/utils"
-import { PUBLISH_INTERRUPTED, publishLabel, publishPercent } from "../publish-progress"
+import { dialogJob, PUBLISH_INTERRUPTED, publishLabel, publishPercent } from "../publish-progress"
 import { releaseTitle, versionLabel } from "@/pages/Releases/version.utils"
 
 /**
@@ -38,9 +38,14 @@ type PublishDialogProps = {
  * then live (or the error, with Try again). Closing never cancels anything:
  * the job keeps running and the page shows its progress inline.
  */
-export function PublishDialog({ open, onOpenChange, release, job, interrupted, starting, onStart }: PublishDialogProps) {
+export function PublishDialog({ open, onOpenChange, release, job: liveJob, interrupted, starting, onStart }: PublishDialogProps) {
   // Up-front refusals (not in review, files unmapped, version already shipped)
   const [startError, setStartError] = useState<string | null>(null)
+  // The last job seen while open, so a cleared finished job keeps its outcome on screen
+  const [lastJob, setLastJob] = useState<PublishJob | null>(null)
+  if (open && liveJob && liveJob !== lastJob) setLastJob(liveJob)
+  if (!open && lastJob) setLastJob(null)
+  const job = open ? dialogJob(liveJob, lastJob) : liveJob
   const view = !job ? "confirm" : job.phase === "copying" || job.phase === "finalizing" ? "progress" : job.phase
   const previous = release.review.currentPublished
 

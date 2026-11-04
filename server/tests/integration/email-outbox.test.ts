@@ -242,6 +242,44 @@ describe("release announcements", () => {
   });
 });
 
+describe("recipients", () => {
+  it("emails customers only, never staff who downloaded as customers", async () => {
+    const older = await release("1.0.0", "ARCHIVED");
+    const withdrawn = await release("1.1.0", "ROLLED_BACK", older.productId);
+    const fresh = await release("2.0.0", "PUBLISHED", older.productId);
+    const customer = await downloader(withdrawn.id);
+    // Downloaded while a customer, promoted to staff since
+    const promoted = await downloader(withdrawn.id);
+    await prisma.user.update({
+      where: { id: promoted.id },
+      data: { role: "DEV" },
+    });
+
+    const rollback = await rollbackBatch(withdrawn.id);
+    const event = await causeEvent(fresh.id, ReleaseEventType.PUBLISHED);
+    const announced = await enqueueReleaseAnnouncement(prisma, {
+      batchId: event.id,
+      productId: older.productId,
+      releaseId: fresh.id,
+      payload: { productName: "EMASS Core SDK", version: "2.0.0", url: "u" },
+    });
+
+    expect(rollback.queued).toBe(1);
+    expect(announced).toBe(1);
+    expect((await rows(rollback.batchId)).map((row) => row.toEmail)).toEqual([
+      customer.email,
+    ]);
+    expect((await rows(event.id)).map((row) => row.toEmail)).toEqual([
+      customer.email,
+    ]);
+    // Leave nothing due for later tests
+    await prisma.emailOutbox.updateMany({
+      where: { status: "PENDING" },
+      data: { status: "FAILED" },
+    });
+  });
+});
+
 describe("failures, retries and limits", () => {
   it("retries a throttled send later, then sends it", async () => {
     const { withdrawn } = spySends();
@@ -331,7 +369,7 @@ describe("failures, retries and limits", () => {
     expect((await rows(batchId)).every((row) => row.status === "SENT")).toBe(
       true,
     );
-  });
+  }, 15_000); // 12 sign-ups with password hashing take ~5 s
 
   it("takes over a row whose worker died mid-send", async () => {
     const { withdrawn } = spySends();
@@ -352,6 +390,37 @@ describe("failures, retries and limits", () => {
     expect(withdrawn).toHaveBeenCalledTimes(1);
     expect(await rows(batchId)).toMatchObject([
       { status: "SENT", attempts: 2 },
+    ]);
+  });
+
+  it("gives up on a row whose last attempt never finished", async () => {
+    const { withdrawn } = spySends();
+    const current = await release("1.1.0", "ROLLED_BACK");
+    await downloader(current.id);
+    const { batchId } = await rollbackBatch(current.id);
+    // Its fifth send hung or the process died, and the lease ran out
+    await prisma.emailOutbox.updateMany({
+      where: { batchId },
+      data: {
+        status: "SENDING",
+        attempts: MAX_ATTEMPTS,
+        lockedUntil: new Date(Date.now() - 1000),
+      },
+    });
+
+    await drainOutbox();
+
+    expect(withdrawn).not.toHaveBeenCalled();
+    expect(await rows(batchId)).toMatchObject([
+      {
+        status: "FAILED",
+        attempts: MAX_ATTEMPTS,
+        lockedUntil: null,
+        lastError: `Gave up after ${MAX_ATTEMPTS} attempts`,
+      },
+    ]);
+    expect(await summary(current.id)).toMatchObject([
+      { note: "Emailed 0 customers who downloaded v1.1.0 (1 failed)." },
     ]);
   });
 

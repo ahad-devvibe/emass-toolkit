@@ -10,8 +10,8 @@ one-person emails don't: they stay direct and instant.
 
 | Event | Who gets it | Template | Priority |
 |---|---|---|---|
-| **Rollback** of a release | every ACTIVE customer who downloaded **that** release | "vX has been withdrawn" | first (0) |
-| **Publish** of a release | every ACTIVE customer who downloaded **any other release of the product** | "vX is available" | after rollbacks (10) |
+| **Rollback** of a release | every ACTIVE customer (role CUSTOMER) who downloaded **that** release | "vX has been withdrawn" | first (0) |
+| **Publish** of a release | every ACTIVE customer (role CUSTOMER) who downloaded **any other release of the product** | "vX is available" | after rollbacks (10) |
 
 There's no opt-out from announcements yet.
 
@@ -61,6 +61,17 @@ lease runs out.
   worker re-claimed the row, the late result is ignored.
 - **Claims are sized to the lease:** each claim takes no more rows than can
   be sent in 80% of the 5-minute lease at the configured pace.
+- **Each OCI call times out after 30 s** (`SEND_TIMEOUT_MS`,
+  `email.service.ts`). The SDK's default circuit breaker would wait up to an
+  hour, stalling bulk mail and shutdown on a hung connection. A timeout has no
+  HTTP status, so it's retried like a network error. Direct emails (sign-in
+  codes, welcome) share the client and the limit; a normal call takes well
+  under a second, and nginx already ends a request after 60 s.
+- **Rows out of attempts are given up at claim time:** a row whose fifth
+  attempt never finished (the send hung or the process died) is marked
+  `FAILED` with "Gave up after 5 attempts" once its lease runs out, and its
+  batch summary is written. Claims never take a row with 5 attempts used, so
+  such a row can't loop.
 
 ## Deploying
 - **Postgres 13 or newer:** queueing uses `gen_random_uuid()`. Check with
@@ -71,7 +82,9 @@ lease runs out.
   send, but at 10/min it may be waiting up to 6 s for its next slot. If it's
   killed first, nothing is lost: its claimed rows are sent after the restart,
   once their lease (≤5 min) runs out, each using one attempt. Set
-  `kill_timeout` to about 10000 on the VM for a clean stop.
+  `kill_timeout` to about 15000 on the VM for a clean stop: it covers the
+  pace wait plus a normal send. (A send can take up to the 30 s timeout; if
+  pm2 kills the process during one, the same recovery applies.)
 
 ## Settings (`server/.env`)
 | Variable | Default | Meaning |
