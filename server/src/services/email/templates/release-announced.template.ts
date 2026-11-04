@@ -1,10 +1,5 @@
 import { escapeHtml, type RenderedEmail } from "../email.utils.js";
-import {
-  button,
-  linkFallback,
-  paragraph,
-  renderEmailLayout,
-} from "./layout.template.js";
+import { button, paragraph, renderEmailLayout } from "./layout.template.js";
 
 export interface ReleaseAnnouncedEmailTemplateInput {
   firstName: string;
@@ -23,24 +18,28 @@ export function renderReleaseAnnouncedEmail(
   const product = escapeHtml(input.productName);
   const version = escapeHtml(input.version);
   const url = escapeHtml(input.url);
-  const subject = `${input.productName} v${input.version} is available`;
+  const subject = `${input.productName} v${input.version} is now available`;
+  const action = `Download v${version}`;
 
   return {
     subject,
     html: renderEmailLayout({
       title: subject,
-      preheader: `A new version of ${input.productName} is ready to download.`,
+      preheader: `We've released a new version of ${input.productName}.`,
       hero: { title: subject },
       reason:
         "You're receiving this because you downloaded this product from the EMASS Portal.",
       body: [
         paragraph(
-          `Hi ${firstName}, <strong>${product} v${version}</strong> is ready to download from the EMASS Portal.`,
+          `Hi ${firstName}, we've released a new version of <strong>${product}</strong>. Version <strong>${version}</strong> is now available to download from the EMASS Portal.`,
         ),
-        button(url, "View release"),
-        linkFallback(url),
+        button(url, action),
       ].join("\n"),
     }),
-    text: `Hi ${input.firstName}, ${input.productName} v${input.version} is ready to download from the EMASS Portal:\n\n${input.url}`,
+    text: [
+      `Hi ${input.firstName}, we've released a new version of ${input.productName}. Version ${input.version} is now available to download from the EMASS Portal.`,
+      "",
+      `Download v${input.version}: ${input.url}`,
+    ].join("\n"),
   };
 }

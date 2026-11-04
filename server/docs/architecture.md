@@ -239,14 +239,21 @@ migration folder per change — delete empty leftovers.
       is the defence. It refuses any `Origin` not allowed with 403 before a
       route runs; browsers always send `Origin` on cross-site writes, and every
       GET route is read-only. Keep both true.
-- Set `APP_BASE_URL` to the client's origin so email links point at it. Email
-  headers load their images from `EMAIL_ASSET_BASE_URL` (a public site; mail
-  providers can't reach localhost), or from `APP_BASE_URL` when it's unset (`/email/header.jpg`,
-  `/email/emass-logo-white.png` in `client/public/email/`): a JPEG and PNG,
-  since email clients drop SVG and CSS masks. `header.jpg` bakes the auth
-  panel's gradient and chip photo; rebuild it with
-  `python scripts/email-assets/build_header.py`. Preview every email with
-  `npm run email:preview`.
+- Set `APP_BASE_URL` to the client's origin so email links point at it.
+- **Email header images** are two fixed names, `header.jpg` and
+  `emass-logo-white.png` (a JPEG and PNG, since email clients drop SVG and
+  CSS masks). Emails load them from the folder in `EMAIL_ASSET_BASE_URL`.
+  - **Production:** a public OCI bucket in a separate tenancy, e.g.
+    `https://objectstorage.<region>.oraclecloud.com/n/<ns>/b/<bucket>/o/email`.
+    Our own buckets stay private, and a PAR would expire and break old emails.
+    Upload with `Content-Type` `image/jpeg` / `image/png`, and never delete or
+    rename the objects: every email already sent points at them.
+  - **Unset:** `APP_BASE_URL/email` (the client's `public/email/`), fine in dev only.
+  - If the logo doesn't load, its alt text shows white on the navy header.
+  - Sources live in `client/public/email/`. `header.jpg` bakes the auth panel's
+    gradient and chip photo; rebuild it with
+    `python scripts/email-assets/build_header.py`. Preview every email with
+    `npm run email:preview`.
 
 ### 8a. LAN development hosting
 

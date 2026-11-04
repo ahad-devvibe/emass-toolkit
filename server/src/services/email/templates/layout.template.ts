@@ -25,27 +25,28 @@ const mono =
 export const SUPPORT_ADDRESS = "info@nanoveu.com";
 
 /**
- * Where the header images are served from. Mail providers fetch them from
- * their own servers, so this must be public: EMAIL_ASSET_BASE_URL when set
- * (e.g. in dev, where APP_BASE_URL is localhost), else APP_BASE_URL.
+ * The public folder the header images are served from. Mail providers fetch
+ * them from their own servers, so it must be reachable from the internet:
+ * EMAIL_ASSET_BASE_URL (in production a public OCI bucket folder, e.g.
+ * …/n/<ns>/b/<bucket>/o/email), else the client's /email folder, which is
+ * fine in dev only.
  */
 export function assetBase(config: {
   APP_BASE_URL: string;
   EMAIL_ASSET_BASE_URL?: string;
 }): string {
-  return (config.EMAIL_ASSET_BASE_URL?.trim() || config.APP_BASE_URL).replace(
-    /\/+$/,
-    "",
-  );
+  const configured = config.EMAIL_ASSET_BASE_URL?.trim();
+  const base = configured || `${config.APP_BASE_URL.replace(/\/+$/, "")}/email`;
+  return base.replace(/\/+$/, "");
 }
 
 /**
- * Header images live with the portal's static files (client/public/email/,
- * built by scripts/email-assets/build_header.py): the auth panel's navy
- * gradient and chip photo, and the white EMASS logo.
+ * The header images, by their fixed names: the auth panel's navy gradient and
+ * chip photo (header.jpg, built by scripts/email-assets/build_header.py) and
+ * the white EMASS logo (emass-logo-white.png). Sources: client/public/email/.
  */
 export function emailAssetUrl(file: string): string {
-  return `${assetBase(env)}/email/${file}`;
+  return `${assetBase(env)}/${file}`;
 }
 
 export interface EmailLayoutInput {
@@ -136,8 +137,8 @@ export function renderEmailLayout(input: EmailLayoutInput): string {
         <td align="center" style="padding:32px 12px;">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px; border-collapse:separate; background-color:${color.card}; border:1px solid ${color.border}; border-radius:16px;">
             <tr>
-              <td bgcolor="${color.navy}" background="${header}" style="background-color:${color.navy}; background-image:url('${header}'); background-size:cover; background-position:center; border-radius:15px 15px 0 0; padding:28px 32px 32px;">
-                <img src="${logo}" width="132" height="53" alt="EMASS, a Nanoveu business" style="display:block; width:132px; height:auto; border:0; outline:none; text-decoration:none;">
+              <td bgcolor="${color.navy}" background="${header}" style="background-color:${color.navy}; background-image:url('${header}'); background-size:cover; background-position:center; border-radius:15px 15px 0 0; padding:28px 32px 32px; color:#ffffff;">
+                <img src="${logo}" width="132" height="53" alt="EMASS, a Nanoveu business" style="display:block; width:132px; height:auto; border:0; outline:none; text-decoration:none; color:#ffffff; font-family:${font}; font-size:16px; font-weight:700; line-height:1.3;">
                 <h1 style="margin:36px 0 0; color:#ffffff; font-family:${font}; font-size:26px; line-height:1.25; font-weight:700; letter-spacing:-0.3px;">${heroTitle}</h1>
                 ${heroSubtitle ? `<p style="margin:8px 0 0; color:#DCEBFF; font-family:${font}; font-size:15px; line-height:1.55;">${heroSubtitle}</p>` : ""}
                 <div style="width:40px; height:3px; margin:18px 0 0; border-radius:2px; background-color:${color.sky}; font-size:0; line-height:0;">&nbsp;</div>

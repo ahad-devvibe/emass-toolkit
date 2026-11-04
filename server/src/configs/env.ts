@@ -54,7 +54,7 @@ export const envSchema = z
       .string()
       .optional()
       .describe(
-        "Public origin that serves /email/ header images; defaults to APP_BASE_URL",
+        "Public folder URL holding header.jpg and emass-logo-white.png (e.g. a public OCI bucket .../o/email); defaults to APP_BASE_URL/email",
       ),
     // "none" when the client is on another site than the API (e.g. a portal
     // domain calling api.example.com): the auth cookies are then sent cross-site

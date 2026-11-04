@@ -267,9 +267,19 @@ describe("renderReleaseAnnouncedEmail", () => {
       url: "https://portal.example/catalog/p-1",
     });
 
-    expect(email.subject).toBe("EMASS Core SDK v2.0.0 is available");
+    expect(email.subject).toBe("EMASS Core SDK v2.0.0 is now available");
     expect(email.html).toContain("Hi Ada,");
-    expect(email.html).toContain("View release");
+    expect(email.html).toContain(
+      "we've released a new version of <strong>EMASS Core SDK</strong>",
+    );
+    expect(email.html).toContain("Download v2.0.0");
+    expect(email.html).not.toContain("Button not working");
+    expect(email.text).toContain(
+      "Version 2.0.0 is now available to download from the EMASS Portal.",
+    );
+    expect(email.text).toContain(
+      "Download v2.0.0: https://portal.example/catalog/p-1",
+    );
     expect(email.html).toContain('href="https://portal.example/catalog/p-1"');
     expect(email.text).toContain("https://portal.example/catalog/p-1");
   });
@@ -322,27 +332,38 @@ describe("shared layout", () => {
     }
   });
 
-  it("takes images from EMAIL_ASSET_BASE_URL when set, else APP_BASE_URL", () => {
+  it("takes images from the EMAIL_ASSET_BASE_URL folder, else APP_BASE_URL/email", () => {
+    const bucket =
+      "https://objectstorage.ap-sydney-1.oraclecloud.com/n/ns/b/brand/o/email";
     expect(
       assetBase({
         APP_BASE_URL: "http://localhost:5173",
-        EMAIL_ASSET_BASE_URL: "https://cdn.example.com/",
+        EMAIL_ASSET_BASE_URL: `${bucket}/`,
       }),
-    ).toBe("https://cdn.example.com");
+    ).toBe(bucket);
     expect(assetBase({ APP_BASE_URL: "https://portal.example.com/" })).toBe(
-      "https://portal.example.com",
+      "https://portal.example.com/email",
     );
     expect(
       assetBase({
         APP_BASE_URL: "https://portal.example.com",
         EMAIL_ASSET_BASE_URL: " ",
       }),
-    ).toBe("https://portal.example.com");
+    ).toBe("https://portal.example.com/email");
   });
 
-  it("serves the header images from the portal origin", () => {
+  it("appends the fixed file names to that folder", () => {
     expect(emailAssetUrl("header.jpg")).toMatch(
       /^https?:\/\/[^/]+\/email\/header\.jpg$/,
     );
+  });
+
+  it("shows the logo's alt text in white when the image doesn't load", () => {
+    const html = renderWelcomeEmail({
+      firstName: "Jane",
+      catalogUrl: "https://x.example",
+    }).html;
+    const logo = html.match(/<img [^>]*alt="EMASS, a Nanoveu business"[^>]*>/);
+    expect(logo?.[0]).toContain("color:#ffffff");
   });
 });

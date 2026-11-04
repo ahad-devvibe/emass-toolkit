@@ -17,7 +17,7 @@
     "seed:products": "tsx scripts/seed-products.ts",
     "seed:users": "tsx scripts/seed-users.ts",
     "bench:signups": "tsx scripts/benchmark/seed-signups.ts",
-    "email:preview": "dotenv -v EMAIL_ASSET_BASE_URL=. -- tsx scripts/preview-emails.ts",
+    "email:preview": "dotenv -v EMAIL_ASSET_BASE_URL=./email -- tsx scripts/preview-emails.ts",
     "hubspot:setup": "tsx scripts/setup-hubspot.ts",
     "hubspot:resync": "tsx scripts/hubspot-resync.ts",
     "releases:purge": "tsx scripts/purge-releases.ts",
