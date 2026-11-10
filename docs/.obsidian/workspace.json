@@ -20,8 +20,21 @@
               "icon": "lucide-file",
               "title": "user-guide"
             }
+          },
+          {
+            "id": "3e77ba3125106135",
+            "type": "leaf",
+            "state": {
+              "type": "release-notes",
+              "state": {
+                "currentVersion": "1.15.0"
+              },
+              "icon": "lucide-book-up",
+              "title": "Release Notes 1.15.0"
+            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -83,8 +96,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "right": {
     "id": "e6566375355150e5",
@@ -189,7 +201,7 @@
       "bases:Create new base": false
     }
   },
-  "active": "b227a028fb99fc62",
+  "active": "3e77ba3125106135",
   "lastOpenFiles": [
     "development-guide.md",
     "development-document.md",

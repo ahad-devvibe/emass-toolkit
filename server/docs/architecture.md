@@ -247,7 +247,9 @@ migration folder per change — delete empty leftovers.
     `https://objectstorage.<region>.oraclecloud.com/n/<ns>/b/<bucket>/o/email`.
     Our own buckets stay private, and a PAR would expire and break old emails.
     Upload with `Content-Type` `image/jpeg` / `image/png`, and never delete or
-    rename the objects: every email already sent points at them.
+    rename the objects: every email already sent points at them. A copy of
+    `docs/email-assets-README.md` sits beside them as `email/README.md`, so
+    whoever finds the folder knows what it's for.
   - **Unset:** `APP_BASE_URL/email` (the client's `public/email/`), fine in dev only.
   - If the logo doesn't load, its alt text shows white on the navy header.
   - Sources live in `client/public/email/`. `header.jpg` bakes the auth panel's
