@@ -19,7 +19,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { canCreateRelease } from "@/pages/Releases/release-permissions";
-import { useReleaseCounts } from "@/pages/Releases/useReleaseQueries";
 import {
   loadBadgeTotal,
   usePendingSignups,
@@ -51,9 +50,6 @@ type NavEntry = {
 function useNavEntries(user: SessionUser): NavEntry[] {
   const { pathname } = useLocation();
   const isAdmin = user.role === "ADMIN";
-  // What waits for this person (admins: reviews; devs: their releases sent back),
-  // refetched on every route change
-  const waiting = useReleaseCounts(true)?.needsYou ?? 0;
   const { badgeTotal } = usePendingSignups();
 
   // Load the sign-up queue once per admin session so the badge is accurate on any page
@@ -78,9 +74,6 @@ function useNavEntries(user: SessionUser): NavEntry[] {
       Icon: Layers,
       // /releases/new has its own item for devs
       active: pathname.startsWith("/releases") && pathname !== "/releases/new",
-      // Admins review submissions; devs act on changes requested on their own releases
-      count: waiting,
-      countNoun: isAdmin ? "in review" : "need changes",
     },
     // Only devs create releases (the server enforces it too)
     ...(canCreateRelease(user.role)

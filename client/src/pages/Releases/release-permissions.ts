@@ -1,37 +1,30 @@
 import type { UserRole } from "@/auth/auth.types"
 import type { ReleaseSummary } from "./releases.model"
 
-export type ReleaseAction = "edit" | "submit" | "withdraw" | "delete" | "publish" | "reject" | "rollback" | "editNotes"
+export type ReleaseAction = "edit" | "delete" | "publish" | "rollback" | "editNotes"
 
 type Viewer = { id: string; role: UserRole }
 
-// UI hint only: the server enforces the same rules (only the creating DEV
-// changes a release; ADMIN reviews and publishes but never edits)
-export function releaseActions(viewer: Viewer, release: Pick<ReleaseSummary, "status" | "createdBy">): ReleaseAction[] {
-  if (viewer.role === "ADMIN") {
-    if (release.status === "in_review") return ["publish", "reject"]
-    if (release.status === "published") return ["editNotes", "rollback"]
-    // Older versions customers can still download can be withdrawn too
-    if (release.status === "archived") return ["rollback"]
-    return []
-  }
-  if (viewer.role !== "DEV" || viewer.id !== release.createdBy.id) return []
+// UI hint only: the server enforces the same rules (any DEV manages any
+// release; ADMIN can only read them)
+export function releaseActions(viewer: Viewer, release: Pick<ReleaseSummary, "status">): ReleaseAction[] {
+  if (viewer.role !== "DEV") return []
   switch (release.status) {
     case "draft":
-    case "changes_requested":
-      return ["edit", "submit", "delete"]
-    case "in_review":
-      return ["withdraw"]
+      return ["publish", "edit", "delete"]
     // Published: only the notes can still change
     case "published":
-      return ["editNotes"]
+      return ["editNotes", "rollback"]
+    // Older versions customers can still download can be withdrawn too
+    case "archived":
+      return ["rollback"]
     default:
       return []
   }
 }
 
-/** True when the viewer may change the release (the creating DEV, while it's editable). */
-export function canEditRelease(viewer: Viewer, release: Pick<ReleaseSummary, "status" | "createdBy">): boolean {
+/** True when the viewer may change the release (any DEV, while it's a draft). */
+export function canEditRelease(viewer: Viewer, release: Pick<ReleaseSummary, "status">): boolean {
   return releaseActions(viewer, release).includes("edit")
 }
 

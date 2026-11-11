@@ -3,6 +3,8 @@ import { CircleAlert, CircleCheck, Loader2, Rocket } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ApiRequestError } from "@/lib/api/http"
+import { releasesApi } from "@/pages/Releases/releases.api"
+import { uploadsInProgress, type OpenUpload } from "@/pages/Releases/releases.errors"
 import type { PublishJob, ReleaseDetail } from "@/pages/Releases/releases.model"
 import { cn } from "@/lib/utils"
 import { dialogJob, PUBLISH_INTERRUPTED, publishLabel, publishPercent } from "../publish-progress"
@@ -26,21 +28,28 @@ export function PublishProgressBar({ job, className }: { job: PublishJob; classN
 type PublishDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  release: Pick<ReleaseDetail, "version" | "product" | "review">
+  release: Pick<ReleaseDetail, "id" | "version" | "product" | "review" | "files">
   job: PublishJob | null
   interrupted: boolean
   starting: boolean
-  onStart: () => Promise<void>
+  onStart: (input: { confirmWarnings?: boolean }) => Promise<void>
+  /** The server refused: what's on the page may be out of date. */
+  onRefused: () => void
 }
 
 /**
- * Confirm, then follow the server's publish job: copying files, finishing,
- * then live (or the error, with Try again). Closing never cancels anything:
- * the job keeps running and the page shows its progress inline.
+ * Confirm (listing any file warnings, which publishing accepts), then follow
+ * the server's publish job: copying files, finishing, then live (or the
+ * error, with Try again). Closing never cancels anything: the job keeps
+ * running and the page shows its progress inline.
  */
-export function PublishDialog({ open, onOpenChange, release, job: liveJob, interrupted, starting, onStart }: PublishDialogProps) {
-  // Up-front refusals (not in review, files unmapped, version already shipped)
+export function PublishDialog({ open, onOpenChange, release, job: liveJob, interrupted, starting, onStart, onRefused }: PublishDialogProps) {
+  // Up-front refusals (not a draft, files unmapped or blocked, version already shipped)
   const [startError, setStartError] = useState<string | null>(null)
+  // Uploads the server says are still open: publishing would ship without them
+  const [openUploads, setOpenUploads] = useState<OpenUpload[]>([])
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  if (!open && openUploads.length > 0) setOpenUploads([])
   // The last job seen while open, so a cleared finished job keeps its outcome on screen
   const [lastJob, setLastJob] = useState<PublishJob | null>(null)
   if (open && liveJob && liveJob !== lastJob) setLastJob(liveJob)
@@ -48,13 +57,32 @@ export function PublishDialog({ open, onOpenChange, release, job: liveJob, inter
   const job = open ? dialogJob(liveJob, lastJob) : liveJob
   const view = !job ? "confirm" : job.phase === "copying" || job.phase === "finalizing" ? "progress" : job.phase
   const previous = release.review.currentPublished
+  const warned = release.files.filter((file) => file.warnings.length > 0)
 
   async function start() {
     setStartError(null)
+    setOpenUploads([])
     try {
-      await onStart()
+      // Accepts every warning the server finds, including any newer than this page
+      await onStart(warned.length > 0 ? { confirmWarnings: true } : {})
     } catch (error) {
-      setStartError(error instanceof ApiRequestError ? error.message : "Couldn't start publishing. Try again.")
+      const uploads = uploadsInProgress(error)
+      if (uploads) setOpenUploads(uploads)
+      else setStartError(error instanceof ApiRequestError ? error.message : "Couldn't start publishing. Try again.")
+      if (error instanceof ApiRequestError) onRefused()
+    }
+  }
+
+  async function cancelUpload(uploadId: string) {
+    setCancelling(uploadId)
+    setStartError(null)
+    try {
+      await releasesApi.uploads.abort(release.id, uploadId)
+      setOpenUploads((current) => current.filter((upload) => upload.uploadId !== uploadId))
+    } catch (error) {
+      setStartError(error instanceof ApiRequestError ? error.message : "Couldn't cancel the upload. Try again.")
+    } finally {
+      setCancelling(null)
     }
   }
 
@@ -80,6 +108,36 @@ export function PublishDialog({ open, onOpenChange, release, job: liveJob, inter
           </DialogHeader>
         </div>
 
+        {view === "confirm" && warned.length > 0 && (
+          <ul aria-label="Files with warnings" className="max-h-64 space-y-3 overflow-y-auto rounded-lg border bg-muted/30 p-3 text-sm">
+            {warned.map((file) => (
+              <li key={file.id}>
+                <p className="font-medium break-all">{file.name}</p>
+                <ul className="mt-0.5 space-y-0.5 text-xs text-amber-700 dark:text-amber-400">
+                  {file.warnings.map((warning, index) => <li key={index}>{warning.message}</li>)}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {openUploads.length > 0 && (
+          <div role="alert" className="space-y-2 text-sm">
+            <p>These uploads haven't finished, so the release would ship without them. Wait for them, or cancel them and publish again.</p>
+            <ul aria-label="Unfinished uploads" className="max-h-64 divide-y overflow-y-auto rounded-lg border bg-muted/30">
+              {openUploads.map((upload) => (
+                <li key={upload.uploadId} className="flex items-center gap-3 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium break-all">{upload.name}</p>
+                    <p className="text-xs text-muted-foreground">Started by {upload.startedBy}</p>
+                  </div>
+                  <Button variant="outline" size="sm" disabled={cancelling !== null} onClick={() => void cancelUpload(upload.uploadId)}>{cancelling === upload.uploadId && <Loader2 className="animate-spin" />}Cancel upload</Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {job && (
           <div className="space-y-2">
             <PublishProgressBar job={job} />
@@ -93,7 +151,7 @@ export function PublishDialog({ open, onOpenChange, release, job: liveJob, inter
           {view === "confirm" && (
             <>
               <Button variant="outline" disabled={starting} onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button disabled={starting} onClick={() => void start()}>{starting && <Loader2 className="animate-spin" />}Publish</Button>
+              <Button disabled={starting} onClick={() => void start()}>{starting && <Loader2 className="animate-spin" />}{warned.length > 0 ? "Publish anyway" : "Publish"}</Button>
             </>
           )}
           {view === "progress" && <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>}

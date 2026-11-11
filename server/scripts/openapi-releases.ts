@@ -5,7 +5,6 @@
 import {
   createReleaseSchema,
   publishedNotesSchema,
-  requestChangesSchema,
   updateReleaseSchema,
 } from "../src/schemas/releases.schema.js";
 import { errorResponse, jsonBody, successResponse } from "./openapi-helpers.js";
@@ -51,14 +50,7 @@ const uploadSession = {
 
 const status = {
   type: "string",
-  enum: [
-    "DRAFT",
-    "IN_REVIEW",
-    "CHANGES_REQUESTED",
-    "PUBLISHED",
-    "ARCHIVED",
-    "ROLLED_BACK",
-  ],
+  enum: ["DRAFT", "PUBLISHED", "ARCHIVED", "ROLLED_BACK"],
 };
 const actor = {
   type: "object",
@@ -139,7 +131,7 @@ const file = {
     blockedBy: {
       type: "array",
       description:
-        "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+        "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
       items: fileCheckItem([
         "SAME_CONTENT",
         "VERSION_MISMATCH",
@@ -150,7 +142,7 @@ const file = {
     warnings: {
       type: "array",
       description:
-        "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+        "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
       items: fileCheckItem(["NO_VERSION", "DOC_VERSION_MISMATCH"]),
     },
   },
@@ -166,7 +158,7 @@ const summary = {
     version: {
       type: ["string", "null"],
       description:
-        "null while a draft has no version yet; every release in review or shipped has one",
+        "null while a draft has no version yet; every shipped release has one",
     },
     status,
     createdBy: actor,
@@ -216,7 +208,7 @@ const detail = {
         review: {
           type: "object",
           description:
-            "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
+            "What a publish would archive (while DRAFT) and what a rollback would restore (while PUBLISHED)",
           properties: {
             currentPublished: versionRef,
             restoreTarget: versionRef,
@@ -253,7 +245,7 @@ const publishJob = {
 const releaseResponse = (description: string) =>
   successResponse(description, detail);
 
-/** Staff (DEV, ADMIN) read; only the creating DEV changes a draft; ADMIN reviews. */
+/** Staff (DEV, ADMIN) read; any DEV manages a release; ADMIN is read-only. */
 export const releaseTags = [
   {
     name: "Catalog",
@@ -267,7 +259,7 @@ export const releaseTags = [
   {
     name: "Releases",
     description:
-      "Release management for staff. Drafts are changed only by the DEV who created them; ADMIN reviews, publishes and rolls back.",
+      "Release management. Developers (any DEV) draft, publish and roll back releases; ADMIN can only read them.",
   },
 ];
 
@@ -349,7 +341,7 @@ export const releasePaths = {
       operationId: "getCatalogProduct",
       tags: ["Catalog"],
       summary:
-        "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts, reviews and rolled-back releases never appear; storage keys are never sent",
+        "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts and rolled-back releases never appear; storage keys are never sent",
       security: cookie,
       parameters: [
         { name: "id", in: "path", required: true, schema: { type: "string" } },
@@ -511,7 +503,7 @@ export const releasePaths = {
       operationId: "downloadReleaseFile",
       tags: ["Releases"],
       summary:
-        "Staff (DEV/ADMIN), any release state: a read-only link to the file. Staged files get a short link to the staging bucket (STAGED_DOWNLOAD_URL_TTL_SECONDS, default 5 min); shipped ones the normal link. Logged to ActivityLog, never Download.",
+        "Staff (DEV/ADMIN), any release state: a read-only link to the file. Draft files get a short link (STAGED_DOWNLOAD_URL_TTL_SECONDS, default 5 min); shipped ones the normal link. Logged to ActivityLog, never Download.",
       security: [{ cookieAuth: [] }],
       parameters: [
         { name: "id", in: "path", required: true, schema: { type: "string" } },
@@ -589,11 +581,6 @@ export const releasePaths = {
                 "Every status with its count; ignores the status filter",
               additionalProperties: { type: "integer" },
             },
-            needsYou: {
-              type: "integer",
-              description:
-                "What waits for the caller, ignoring every filter: an admin's releases in review, or a dev's own releases with changes requested. Drives the sidebar badge.",
-            },
           },
         }),
         400: errorResponse(
@@ -612,7 +599,7 @@ export const releasePaths = {
       security: cookie,
       requestBody: jsonBody(
         createReleaseSchema,
-        "Product, plus an optional semver version and Markdown notes. Without a version the draft is created anyway, so files can upload first; the version is set later and required to submit",
+        "Product, plus an optional semver version and Markdown notes. Without a version the draft is created anyway, so files can upload first; the version is set later and required to publish",
       ),
       responses: {
         201: { ...releaseResponse("Draft created") },
@@ -681,9 +668,9 @@ export const releasePaths = {
       operationId: "saveReleaseDraft",
       tags: ["Releases"],
       summary:
-        "Save draft: product, version, notes and file type/platform mappings (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "Save draft: product, version, notes and file type/platform mappings (DEV)",
       description:
-        "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved. productId moves the draft to another active product (staged files don't move; publish groups them by the release's product and version); a version is then checked against that product. version: null clears the version.",
+        "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved. productId moves the draft to another active product (draft files don't move; publish groups them by the release's product and version); a version is then checked against that product. version: null clears the version.",
       security: cookie,
       parameters: [idParam],
       requestBody: jsonBody(
@@ -694,7 +681,7 @@ export const releasePaths = {
         200: releaseResponse("Saved"),
         400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound([
           "RELEASE_NOT_FOUND",
           "FILE_NOT_FOUND",
@@ -715,14 +702,13 @@ export const releasePaths = {
     delete: {
       operationId: "deleteRelease",
       tags: ["Releases"],
-      summary:
-        "Delete a draft and its staged files (creating DEV; DRAFT or CHANGES_REQUESTED)",
+      summary: "Delete a draft and its files (DEV)",
       security: cookie,
       parameters: [idParam],
       responses: {
         200: successResponse("Deleted"),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(),
         409: locked,
         502: errorResponse(
@@ -738,94 +724,12 @@ export const releasePaths = {
       operationId: "editPublishedNotes",
       tags: ["Releases"],
       summary:
-        "Edit the notes of a PUBLISHED release (creating DEV or ADMIN); logged as NOTES_EDITED",
+        "Edit the notes of a PUBLISHED release (DEV); logged as NOTES_EDITED",
       security: cookie,
       parameters: [idParam],
       requestBody: jsonBody(publishedNotesSchema, "Markdown; empty clears"),
       responses: {
         200: releaseResponse("Notes updated"),
-        400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
-        401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
-        404: notFound(),
-        409: locked,
-      },
-    },
-  },
-  "/releases/{id}/submit": {
-    post: {
-      operationId: "submitRelease",
-      tags: ["Releases"],
-      summary: "Send for review (creating DEV)",
-      description:
-        "Every file is judged again first. A blocked file refuses the submit (FILE_BLOCKED, details.files). Warnings need confirmWarnings: true (else FILE_WARNINGS_UNCONFIRMED, details.files); the SUBMITTED event then lists them.",
-      security: cookie,
-      parameters: [idParam],
-      requestBody: {
-        required: false,
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              properties: { confirmWarnings: { type: "boolean" } },
-            },
-          },
-        },
-      },
-      responses: {
-        200: releaseResponse("In review"),
-        400: errorResponse(
-          "Not ready",
-          [
-            "NO_FILES",
-            "FILE_TYPE_MISSING",
-            "SDK_PLATFORM_MISSING",
-            "VERSION_REQUIRED",
-          ],
-          400,
-        ),
-        401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
-        404: notFound(),
-        409: errorResponse(
-          "Conflict",
-          [
-            "RELEASE_LOCKED",
-            "VERSION_NOT_NEWER",
-            "FILE_BLOCKED",
-            "FILE_WARNINGS_UNCONFIRMED",
-          ],
-          409,
-        ),
-      },
-    },
-  },
-  "/releases/{id}/withdraw": {
-    post: {
-      operationId: "withdrawRelease",
-      tags: ["Releases"],
-      summary: "Take a release out of review, back to draft (creating DEV)",
-      security: cookie,
-      parameters: [idParam],
-      responses: {
-        200: releaseResponse("Draft again"),
-        401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
-        404: notFound(),
-        409: locked,
-      },
-    },
-  },
-  "/releases/{id}/request-changes": {
-    post: {
-      operationId: "requestReleaseChanges",
-      tags: ["Releases"],
-      summary: "Send a release in review back with feedback (ADMIN)",
-      security: cookie,
-      parameters: [idParam],
-      requestBody: jsonBody(requestChangesSchema, "Feedback, 1–2000 chars"),
-      responses: {
-        200: releaseResponse("Changes requested"),
         400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
         401: unauthorized,
         403: forbidden(),
@@ -839,7 +743,7 @@ export const releasePaths = {
       operationId: "rollbackRelease",
       tags: ["Releases"],
       summary:
-        "Roll back a customer-facing release (ADMIN). PUBLISHED: the newest lower-version ARCHIVED release is published again if there is one, otherwise the product has no published release. ARCHIVED: withdrawn only. Customers who downloaded it are emailed afterwards (CUSTOMERS_NOTIFIED event).",
+        "Roll back a customer-facing release (DEV). PUBLISHED: the newest lower-version ARCHIVED release is published again if there is one, otherwise the product has no published release. ARCHIVED: withdrawn only. Customers who downloaded it are emailed afterwards (CUSTOMERS_NOTIFIED event).",
       security: cookie,
       parameters: [idParam],
       requestBody: jsonBody(
@@ -882,11 +786,22 @@ export const releasePaths = {
       operationId: "publishRelease",
       tags: ["Releases"],
       summary:
-        "Start publishing a release in review: a background job copies the files to the release bucket, then publishes (ADMIN)",
+        "Start publishing a draft: a background job copies the files to publish/, then publishes (DEV)",
       description:
-        "Answers 202 at once; poll publish-status. A second call while the job runs returns the same job. All-or-nothing: a failed copy or final check leaves the database unchanged and removes the copies.",
+        "Answers 202 at once; poll publish-status. A second call while the job runs returns the same job. An upload still open on the draft refuses it (UPLOADS_IN_PROGRESS, details.uploads). Every file is judged again first: a blocked file refuses it (FILE_BLOCKED, details.files), and warnings need confirmWarnings: true (else FILE_WARNINGS_UNCONFIRMED, details.files); the PUBLISHED event then lists them. All-or-nothing: a failed copy or final check leaves the database unchanged and removes the copies. While the job runs, edits to the draft answer RELEASE_PUBLISHING.",
       security: cookie,
       parameters: [idParam],
+      requestBody: {
+        required: false,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: { confirmWarnings: { type: "boolean" } },
+            },
+          },
+        },
+      },
       responses: {
         202: successResponse(
           "Publishing started",
@@ -908,7 +823,13 @@ export const releasePaths = {
         404: notFound(),
         409: errorResponse(
           "Conflict",
-          ["RELEASE_LOCKED", "VERSION_NOT_NEWER"],
+          [
+            "RELEASE_LOCKED",
+            "VERSION_NOT_NEWER",
+            "UPLOADS_IN_PROGRESS",
+            "FILE_BLOCKED",
+            "FILE_WARNINGS_UNCONFIRMED",
+          ],
           409,
         ),
       },
@@ -918,7 +839,7 @@ export const releasePaths = {
     get: {
       operationId: "listPublishJobs",
       tags: ["Releases"],
-      summary: "Every publish job running or recently settled (ADMIN)",
+      summary: "Every publish job running or recently settled (DEV)",
       description:
         "So a page that doesn't know the release ids (after a refresh, or in another tab) can follow publishing. Settled jobs stay listed for PUBLISH_JOB_TTL_MS; jobs live in memory, so a restart empties the list.",
       security: cookie,
@@ -949,7 +870,7 @@ export const releasePaths = {
     get: {
       operationId: "getPublishStatus",
       tags: ["Releases"],
-      summary: "Progress of the publish job (ADMIN)",
+      summary: "Progress of the publish job (DEV)",
       description:
         "job is null when none is known (never started, or lost in a server restart); status tells the two apart. Failed jobs carry COPY_FAILED, COPY_TIMEOUT, SOURCE_NOT_FOUND, RELEASE_LOCKED, RELEASE_CHANGED, VERSION_NOT_NEWER or PUBLISH_FAILED.",
       security: cookie,
@@ -969,8 +890,7 @@ export const releasePaths = {
     post: {
       operationId: "checkReleaseFile",
       tags: ["Releases"],
-      summary:
-        "Rule on a file before it uploads (creating DEV; DRAFT or CHANGES_REQUESTED)",
+      summary: "Rule on a file before it uploads (DEV; drafts only)",
       description:
         "Stateless byte-range loop. Send name and size; answer NEED_BYTES by resending with the requested ranges (base64, 64 KiB-aligned, at most 7 MiB in total) until the server rules. Without sha256 only the version rules run (NEED_HASH); with it, the content rules too (ALLOWED). Installers (PE, DEB, PKG): identical bytes anywhere or another version block. Docs and other files: only identical bytes in this release block; another version is a warning. Damaged files always block.",
       security: cookie,
@@ -1063,7 +983,7 @@ export const releasePaths = {
           400,
         ),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
         409: errorResponse(
           "Blocked (details.reasons: SAME_CONTENT, VERSION_MISMATCH, VERSION_EXISTS, DAMAGED) or wrong status",
@@ -1079,7 +999,7 @@ export const releasePaths = {
       operationId: "createUploadSession",
       tags: ["Releases"],
       summary:
-        "Open (or find) a resumable upload for one file (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "Open (or find) a resumable upload for one file (DEV; drafts only)",
       description:
         "Call after /files/check allowed the file. Opens a storage multipart upload and returns its session; the same sha256 again returns the existing session (that's how a client resumes after losing the id). Then send the parts in order and complete. The same bytes already in this release are refused here; every other rule runs on the stored object at complete. Sessions untouched for 24 h are aborted.",
       security: cookie,
@@ -1121,7 +1041,7 @@ export const releasePaths = {
         200: successResponse("Upload ready", uploadSession),
         400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
         409: errorResponse(
           "Conflict",
@@ -1140,7 +1060,7 @@ export const releasePaths = {
     get: {
       operationId: "listUploadSessions",
       tags: ["Releases"],
-      summary: "The creating DEV's open uploads for a release",
+      summary: "The calling DEV's open uploads for a release",
       description:
         "So a client can rebuild its state after a refresh. Stale sessions are aborted first.",
       security: cookie,
@@ -1151,7 +1071,7 @@ export const releasePaths = {
           properties: { uploads: { type: "array", items: uploadSession } },
         }),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["UPLOAD_NOT_FOUND"]),
       },
     },
@@ -1195,7 +1115,7 @@ export const releasePaths = {
           400,
         ),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["UPLOAD_NOT_FOUND"]),
         409: errorResponse(
           "Conflict",
@@ -1226,7 +1146,7 @@ export const releasePaths = {
           properties: { file },
         }),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["UPLOAD_NOT_FOUND", "FILE_NOT_FOUND"]),
         409: errorResponse(
           "Conflict",
@@ -1262,7 +1182,7 @@ export const releasePaths = {
       responses: {
         200: successResponse("Upload cancelled"),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["UPLOAD_NOT_FOUND"]),
         409: errorResponse(
           "Conflict",
@@ -1276,13 +1196,13 @@ export const releasePaths = {
     delete: {
       operationId: "deleteReleaseFile",
       tags: ["Releases"],
-      summary: "Remove a file from the draft and storage (creating DEV)",
+      summary: "Remove a file from the draft and storage (DEV)",
       security: cookie,
       parameters: [idParam, fileIdParam],
       responses: {
         200: successResponse("Removed"),
         401: unauthorized,
-        403: forbidden(["FORBIDDEN", "NOT_RELEASE_OWNER"]),
+        403: forbidden(),
         404: notFound(["RELEASE_NOT_FOUND", "FILE_NOT_FOUND"]),
         409: locked,
         502: errorResponse(

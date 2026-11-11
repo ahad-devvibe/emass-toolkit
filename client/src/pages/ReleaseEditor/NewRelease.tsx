@@ -130,17 +130,17 @@ export function NewRelease() {
 
           <aside className="space-y-4 lg:sticky lg:top-20">
             <section className="rounded-xl border bg-card p-4">
-              <h2 className="mb-3 text-xs font-medium text-muted-foreground">Ready to submit?</h2>
+              <h2 className="mb-3 text-xs font-medium text-muted-foreground">Ready to publish?</h2>
               <ul className="space-y-2">
                 <CheckItem state="todo" label="At least one file" />
                 <CheckItem state={version.trim() && !formatError ? "ok" : touched && formatError ? "error" : "todo"} label={version.trim() && !formatError ? `Version v${version.trim()}` : "Version (from the SDK files, or typed)"} />
                 <CheckItem state={notes.trim() ? "ok" : "optional"} label={notes.trim() ? "Release notes added" : "Release notes (optional)"} />
               </ul>
               <div className="mt-4 grid gap-2 border-t pt-4">
-                <Button disabled>Send for review</Button>
+                <Button disabled>Save and continue</Button>
                 <Button variant="outline" onClick={() => void create([])} disabled={creating || !productId}>{creating && <Loader2 className="animate-spin" />}Save draft</Button>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">Add files to send this for review. An admin reviews every release before customers can download it.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Add files to continue. Customers can download a release as soon as you publish it.</p>
             </section>
           </aside>
         </div>

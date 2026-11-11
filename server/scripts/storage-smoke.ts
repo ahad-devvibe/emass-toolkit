@@ -2,13 +2,13 @@ import "dotenv/config";
 import { randomBytes, randomUUID } from "node:crypto";
 import { logger } from "../src/configs/logger.js";
 import {
-  getStorageBuckets,
+  getStorageBucket,
   getStorageClient,
   getStorageConfig,
 } from "../src/configs/storage.js";
 import { createOciDriver } from "../src/services/storage/drivers/oci.driver.js";
 
-// Checks the OCI multipart path against the real staging bucket (needs OCI_*
+// Checks the OCI multipart path against the real bucket (needs OCI_*
 // env and credentials). Uploads ~50 MB in parts, verifies it, reads byte
 // ranges back (file inspection reads staged objects this way), deletes it,
 // then aborts an upload midway and checks no object was left behind. Then
@@ -45,8 +45,8 @@ async function objectSize(bucket: string, key: string): Promise<number | null> {
 
 async function main() {
   const driver = createOciDriver();
-  const { staging } = getStorageBuckets();
-  const prefix = `staged/_smoke/${randomUUID()}`;
+  const staging = getStorageBucket();
+  const prefix = `draft/_smoke/${randomUUID()}`;
 
   const okKey = `${prefix}/ok.bin`;
   const data = randomBytes(TOTAL_BYTES);

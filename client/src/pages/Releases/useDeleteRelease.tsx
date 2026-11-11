@@ -4,7 +4,6 @@ import { DeleteDialog } from "@/components/common/dialogs"
 import { useUploads, useUploadsStore } from "@/features/uploads/useUploads"
 import { ApiRequestError } from "@/lib/api/http"
 import { releasesApi } from "./releases.api"
-import { notifyReleasesChanged } from "./useReleaseQueries"
 
 /** A release to delete, by id, and what to call it ("v1.135.0" or "EMASS IDE v1.135.0"). */
 export type DeletableRelease = { id: string; name: string }
@@ -36,7 +35,6 @@ export function useDeleteRelease({ onDeleted }: { onDeleted: (release: Deletable
       return false
     }
     store.forgetRelease(target.id)
-    notifyReleasesChanged()
     toast(`${target.name} deleted`)
     onDeleted(target)
     return true

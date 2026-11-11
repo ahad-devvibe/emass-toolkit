@@ -10,7 +10,7 @@ const detail: ApiReleaseDetail = {
   id: "r1",
   product: { id: "p1", name: "EMASS Core SDK" },
   version: "2.5.0",
-  status: "CHANGES_REQUESTED",
+  status: "DRAFT",
   createdBy: actor,
   createdAt: "2026-10-20T10:00:00.000Z",
   updatedAt: "2026-10-22T10:00:00.000Z",
@@ -30,7 +30,7 @@ describe("toReleaseDetail", () => {
   it("lowercases status, kinds, platforms and events", () => {
     const release = toReleaseDetail(detail)
 
-    expect(release.status).toBe("changes_requested")
+    expect(release.status).toBe("draft")
     expect(release.files).toEqual([
       expect.objectContaining({ id: "f1", kind: "sdk", os: "linux", sizeBytes: 5_000_000_000 }),
       expect.objectContaining({ id: "f2", kind: "documentation", os: null }),
@@ -56,9 +56,9 @@ describe("toReleaseDetail", () => {
 
 describe("toReleaseList", () => {
   it("fills every status count, zeros included", () => {
-    const list = toReleaseList({ releases: [detail], nextCursor: "abc", counts: { DRAFT: 2, IN_REVIEW: 0, CHANGES_REQUESTED: 1, PUBLISHED: 1, ARCHIVED: 0, ROLLED_BACK: 0 } })
+    const list = toReleaseList({ releases: [detail], nextCursor: "abc", counts: { DRAFT: 2, PUBLISHED: 1, ARCHIVED: 0, ROLLED_BACK: 0 } })
 
-    expect(list.counts).toEqual({ draft: 2, in_review: 0, changes_requested: 1, published: 1, archived: 0, rolled_back: 0 })
+    expect(list.counts).toEqual({ draft: 2, published: 1, archived: 0, rolled_back: 0 })
     expect(list.nextCursor).toBe("abc")
     expect(list.releases[0]).not.toHaveProperty("files")
   })
@@ -66,7 +66,7 @@ describe("toReleaseList", () => {
 
 describe("request mapping", () => {
   it("maps every client value back to the server's", () => {
-    expect(toApiStatus("in_review")).toBe("IN_REVIEW")
+    expect(toApiStatus("published")).toBe("PUBLISHED")
     expect(toApiStatus("rolled_back")).toBe("ROLLED_BACK")
     expect(toApiKind("documentation")).toBe("DOC")
     expect(toApiPlatform("linux")).toBe("UBUNTU")

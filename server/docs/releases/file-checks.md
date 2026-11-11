@@ -25,14 +25,14 @@ even from a modified client.
 - On a block, the server answers `409 FILE_BLOCKED` and deletes the object.
 - `format` and `detectedVersions` are stored on `ReleaseFile`.
 
-**Verdicts on read and on submit:**
-- Files of DRAFT, CHANGES_REQUESTED and IN_REVIEW releases carry `blockedBy`
+**Verdicts on read and on publish:**
+- Files of DRAFT releases carry `blockedBy`
   and `warnings` (`releaseFileVerdicts`). Shipped releases are never judged.
-- Submit judges every file again:
+- Publish judges every file again before it starts:
   - a block → `409 FILE_BLOCKED` with `details.files`;
   - warnings without `confirmWarnings: true` → `409 FILE_WARNINGS_UNCONFIRMED`;
-  - confirmed warnings are listed in the `SUBMITTED` event note, so the admin
-    sees them in Activity.
+  - confirmed warnings are listed in the `PUBLISHED` event note, so they stay
+    in Activity.
 
 **Code:**
 - Parser: `src/services/releases/file-inspect/` (pe, deb, xar, pdf and name
@@ -74,11 +74,13 @@ even from a modified client.
 - **A draft without a version** skips the version rules (`VERSION_MISMATCH`,
   `VERSION_EXISTS`, `DOC_VERSION_MISMATCH`): there's nothing to compare with.
   The content rules still run. Once the draft gets a version, the editor
-  re-checks its files, and submit judges every file again.
+  re-checks its files, and publish judges every file again.
 - **A version edit on a draft isn't refused.** The affected files show
-  `blockedBy`, and submit decides. A mistyped version doesn't trap the
+  `blockedBy`, and publish decides. A mistyped version doesn't trap the
   developer.
-- **Publish doesn't re-check:** files can't change while in review.
+- **No re-check after the copy starts:** a draft can't change while it's being
+  published (`RELEASE_PUBLISHING`), and the final transaction refuses if it did
+  (`RELEASE_CHANGED`).
 
 ## Measurements (2026-10-27)
 
@@ -110,7 +112,7 @@ even from a modified client.
 ## Risks / follow-ups
 
 - **Two people uploading the same installer to different releases within
-  milliseconds can both get it in.** Accepted, because submit re-judges every
+  milliseconds can both get it in.** Accepted, because publish re-judges every
   file and blocks it then.
 - **Dev only:** Vite needs its own `requestTimeout` raised (`vite.config.ts`,
   2 h). Otherwise uploads over 5 minutes lose their response while the API

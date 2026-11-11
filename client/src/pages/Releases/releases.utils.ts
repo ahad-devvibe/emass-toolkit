@@ -2,8 +2,6 @@ import type { ReleaseStatus } from "./releases.types"
 
 export const statusLabels: Record<ReleaseStatus, string> = {
   draft: "Draft",
-  in_review: "In review",
-  changes_requested: "Changes requested",
   published: "Published",
   archived: "Archived",
   rolled_back: "Rolled back",

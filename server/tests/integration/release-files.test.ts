@@ -6,12 +6,13 @@ import request from "supertest";
 import { app } from "../../src/app.js";
 import { env } from "../../src/configs/env.js";
 import { prisma } from "../../src/configs/prisma.js";
-import { getStorageBuckets } from "../../src/configs/storage.js";
+import { getStorageBucket } from "../../src/configs/storage.js";
 import { getStorageDriver } from "../../src/services/storage/drivers/storage.driver.js";
 import { ApiError } from "../../src/utils/api-error.utils.js";
 import { resetDb } from "../helpers/resetDb.js";
 import {
   createAdmin,
+  publishAndWait,
   createCustomer,
   createDev,
   createProduct,
@@ -69,7 +70,7 @@ function upload(
 }
 
 async function storedBytes(objectKey: string): Promise<Buffer> {
-  const { staging } = getStorageBuckets();
+  const staging = getStorageBucket();
   return readFile(path.resolve(env.STORAGE_LOCAL_DIR, staging, objectKey));
 }
 
@@ -102,7 +103,7 @@ describe("uploading a file (create, parts, complete)", () => {
     });
     const [row] = await fileRows(release.id);
     expect(row.objectKey).toMatch(
-      new RegExp(`^staged/[0-9a-f-]{36}/emass-core-2\\.5\\.0\\.msi$`),
+      new RegExp(`^draft/[0-9a-f-]{36}/emass-core-2\\.5\\.0\\.msi$`),
     );
     expect((await storedBytes(row.objectKey)).equals(body)).toBe(true);
   });
@@ -334,7 +335,7 @@ describe("uploading a file (create, parts, complete)", () => {
     expect(await stagedFilesFor(release.id)).toEqual([]);
   });
 
-  it("refuses to complete an upload after the release was submitted", async () => {
+  it("refuses to complete an upload after the release was published", async () => {
     const release = await draft({ files: [{ platform: "MACOS" }] });
     const body = randomBytes(512 * 1024);
     const file = { body, name: "late.msi" };
@@ -347,10 +348,10 @@ describe("uploading a file (create, parts, complete)", () => {
       (await putPart(release.id, dev.cookie, uploadId, 1, body)).status,
     ).toBe(200);
 
-    const submitted = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-    expect(submitted.status).toBe(200);
+    await prisma.release.update({
+      where: { id: release.id },
+      data: { status: "PUBLISHED" },
+    });
 
     const res = await completeUpload(release.id, dev.cookie, uploadId);
 
@@ -403,7 +404,7 @@ describe("DELETE /api/releases/:id/files/:fileId", () => {
   });
 });
 
-describe("file routes: roles, ownership and status", () => {
+describe("file routes: roles and status", () => {
   type Send = (
     releaseId: string,
     fileId: string,
@@ -434,7 +435,7 @@ describe("file routes: roles, ownership and status", () => {
   ];
 
   for (const [name, send] of routes) {
-    it(`${name} is for the creating DEV only`, async () => {
+    it(`${name} is for developers only`, async () => {
       const release = await draft({ files: [{ kind: "DOC" }] });
       const [file] = await fileRows(release.id);
 
@@ -444,16 +445,25 @@ describe("file routes: roles, ownership and status", () => {
         expect(res.status).toBe(403);
         expect(res.body.code).toBe("FORBIDDEN");
       }
-      const other = await send(release.id, file.id, otherDev);
-      expect(other.status).toBe(403);
-      expect(other.body.code).toBe("NOT_RELEASE_OWNER");
 
       const rows = await fileRows(release.id);
       expect(rows).toEqual([file]);
     });
 
-    it(`${name} is locked in review and after publishing`, async () => {
-      for (const status of ["IN_REVIEW", "PUBLISHED"] as const) {
+    it(`${name} works for any developer`, async () => {
+      const release = await draft({
+        files: [{ kind: "DOC" }],
+        withObjects: true,
+      });
+      const [file] = await fileRows(release.id);
+
+      const res = await send(release.id, file.id, otherDev);
+
+      expect(res.status).toBeLessThan(300);
+    });
+
+    it(`${name} is locked after publishing`, async () => {
+      for (const status of ["PUBLISHED", "ARCHIVED"] as const) {
         const release = await draft({ status, files: [{ kind: "DOC" }] });
         const [file] = await fileRows(release.id);
 
@@ -467,8 +477,8 @@ describe("file routes: roles, ownership and status", () => {
   }
 });
 
-describe("draft to review with real uploads", () => {
-  it("uploads two SDKs and a doc, then submits", async () => {
+describe("draft to published with real uploads", () => {
+  it("uploads two SDKs and a doc, then publishes", async () => {
     const release = await draft();
     for (const [fields, name] of [
       [{ kind: "SDK", platform: "WINDOWS" }, "emass-1.0.0.msi"],
@@ -482,19 +492,20 @@ describe("draft to review with real uploads", () => {
       expect(res.status).toBe(201);
     }
 
-    const submitted = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
+    const started = await publishAndWait(release.id, dev);
 
-    expect(submitted.status).toBe(200);
-    expect(submitted.body.data).toMatchObject({
-      status: "IN_REVIEW",
+    expect(started.status).toBe(202);
+    const detail = await request(app)
+      .get(`/api/releases/${release.id}`)
+      .set(dev.cookie);
+    expect(detail.body.data).toMatchObject({
+      status: "PUBLISHED",
       fileCount: 3,
     });
   });
 });
 
-describe("file rules on upload, read and submit", () => {
+describe("file rules on upload, read and publish", () => {
   // Each test gets its own installer bytes (all say 2.5.0 inside): once a
   // test ships one, the same bytes are rightly blocked everywhere else
   let installers = 0;
@@ -633,7 +644,7 @@ describe("file rules on upload, read and submit", () => {
     ]);
   });
 
-  it("re-judges installers after a version change, and submit refuses them", async () => {
+  it("re-judges installers after a version change, and publish refuses them", async () => {
     const exe = freshExe();
     const release = await draft({ version: "2.5.0" });
     expect(
@@ -664,12 +675,11 @@ describe("file rules on upload, read and submit", () => {
       },
     ]);
 
-    const submitted = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie)
-      .send({ confirmWarnings: true });
-    expect(submitted.status).toBe(409);
-    expect(submitted.body).toMatchObject({
+    const refused = await publishAndWait(release.id, dev, {
+      confirmWarnings: true,
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
       code: "FILE_BLOCKED",
       details: {
         files: [
@@ -682,7 +692,7 @@ describe("file rules on upload, read and submit", () => {
     });
   });
 
-  it("asks submit to confirm warnings, then records them on the event", async () => {
+  it("asks publish to confirm warnings, then records them on the event", async () => {
     const release = await draft({ version: "2.5.0" });
     expect(
       (
@@ -693,13 +703,7 @@ describe("file rules on upload, read and submit", () => {
         )
       ).status,
     ).toBe(201);
-    const submit = (body: object) =>
-      request(app)
-        .post(`/api/releases/${release.id}/submit`)
-        .set(dev.cookie)
-        .send(body);
-
-    const unconfirmed = await submit({});
+    const unconfirmed = await publishAndWait(release.id, dev);
     expect(unconfirmed.status).toBe(409);
     expect(unconfirmed.body).toMatchObject({
       code: "FILE_WARNINGS_UNCONFIRMED",
@@ -712,20 +716,24 @@ describe("file rules on upload, read and submit", () => {
         ],
       },
     });
-    expect((await submit({ confirmWarnings: "yes" })).status).toBe(400);
+    expect(
+      (await publishAndWait(release.id, dev, { confirmWarnings: "yes" }))
+        .status,
+    ).toBe(400);
 
-    const confirmed = await submit({ confirmWarnings: true });
-    expect(confirmed.status).toBe(200);
-    expect(confirmed.body.data.status).toBe("IN_REVIEW");
+    const confirmed = await publishAndWait(release.id, dev, {
+      confirmWarnings: true,
+    });
+    expect(confirmed.status).toBe(202);
     const event = await prisma.releaseEvent.findFirstOrThrow({
-      where: { releaseId: release.id, type: "SUBMITTED" },
+      where: { releaseId: release.id, type: "PUBLISHED" },
     });
     expect(event.note).toBe(
-      "Submitted with warnings: notes.txt: No version found in this file's name or contents.",
+      "Published with warnings: notes.txt: No version found in this file's name or contents.",
     );
   });
 
-  it("submits without a note when nothing warns", async () => {
+  it("publishes without a note when nothing warns", async () => {
     const exe = freshExe();
     const release = await draft({ version: "2.5.0" });
     expect(
@@ -738,12 +746,9 @@ describe("file rules on upload, read and submit", () => {
       ).status,
     ).toBe(201);
 
-    await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie)
-      .expect(200);
+    expect((await publishAndWait(release.id, dev)).status).toBe(202);
     const event = await prisma.releaseEvent.findFirstOrThrow({
-      where: { releaseId: release.id, type: "SUBMITTED" },
+      where: { releaseId: release.id, type: "PUBLISHED" },
     });
     expect(event.note).toBeNull();
   });

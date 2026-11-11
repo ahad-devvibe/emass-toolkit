@@ -5,7 +5,7 @@ import type { PublishJob } from "@/pages/Releases/releases.model"
 import { isPublishRunning } from "./publish-progress"
 
 /**
- * The admin's publish job for one release, from the app-wide store, so this
+ * The publish job for one release, from the app-wide store, so this
  * page and the uploads panel follow the same job with one poller. `start()`
  * kicks off the server's background job (and rethrows its up-front 4xx
  * errors). On mount it picks up a job that is already running, so reopening
@@ -35,10 +35,10 @@ export function usePublishJob(releaseId: string, { enabled, onSettled }: { enabl
     }
   }, [store, releaseId, enabled])
 
-  async function start(): Promise<void> {
+  async function start(input: { confirmWarnings?: boolean } = {}): Promise<void> {
     setStarting(true)
     try {
-      store.trackPublish(releaseId, "", await releasesApi.publish(releaseId))
+      store.trackPublish(releaseId, "", await releasesApi.publish(releaseId, input))
     } finally {
       setStarting(false)
     }

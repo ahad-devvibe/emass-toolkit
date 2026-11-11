@@ -130,7 +130,7 @@ const partExpected = (error: unknown) => (codeOf(error) === "PART_OUT_OF_ORDER" 
 
 /**
  * Every release file being uploaded in this tab, and every publish job an
- * admin follows. Files go up piece by piece (2 at a time across releases):
+ * developer follows. Files go up piece by piece (2 at a time across releases):
  * check → hash → check again → open the server's session → parts in order →
  * complete. A network error retries the same piece; pausing keeps the pieces
  * already sent; after a refresh the upload waits for its file to be opened
@@ -496,8 +496,8 @@ export function createUploadsStore({
 
     /**
      * Who is signed in. A DEV's unfinished uploads come back from the last
-     * visit (each waiting for its file); an admin's running publish jobs are
-     * picked up. Someone else's records are deleted.
+     * visit (each waiting for its file) and running publish jobs are picked
+     * up. Someone else's records are deleted.
      */
     async start(user: { id: string; role: UserRole }) {
       if (userId === user.id) return
@@ -508,8 +508,8 @@ export function createUploadsStore({
         // A record holds everything a restored item needs (and its owner, unused)
         dispatch({ type: "restored", items: records })
         await resumeGranted()
+        await poller.seed()
       }
-      if (user.role === "ADMIN") await poller.seed()
     },
     /** Signed out: stop everything and forget it, so the next person sees nothing. */
     stop() {

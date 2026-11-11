@@ -95,8 +95,6 @@ describe("GET /api/releases", () => {
     expect(releases[0]).toMatchObject({ fileCount: 0, totalBytes: 0 });
     expect(counts).toEqual({
       DRAFT: 1,
-      IN_REVIEW: 0,
-      CHANGES_REQUESTED: 0,
       PUBLISHED: 1,
       ARCHIVED: 0,
       ROLLED_BACK: 0,
@@ -110,7 +108,7 @@ describe("GET /api/releases", () => {
       productId: product.id,
       createdById: dev.id,
       version: "1.0.0",
-      status: "IN_REVIEW",
+      status: "PUBLISHED",
     });
     await createRelease({
       productId: product.id,
@@ -119,13 +117,13 @@ describe("GET /api/releases", () => {
     });
 
     const res = await request(app)
-      .get(`/api/releases?productId=${product.id}&status=IN_REVIEW`)
+      .get(`/api/releases?productId=${product.id}&status=PUBLISHED`)
       .set(admin.cookie);
 
     expect(res.status).toBe(200);
     expect(res.body.data.releases).toHaveLength(1);
-    expect(res.body.data.releases[0].status).toBe("IN_REVIEW");
-    expect(res.body.data.counts).toMatchObject({ IN_REVIEW: 1, DRAFT: 1 });
+    expect(res.body.data.releases[0].status).toBe("PUBLISHED");
+    expect(res.body.data.counts).toMatchObject({ PUBLISHED: 1, DRAFT: 1 });
   });
 
   it("filters by several comma-separated statuses", async () => {
@@ -280,7 +278,7 @@ describe("GET /api/releases/:id", () => {
       }),
     ]);
     expect(JSON.stringify(res.body)).not.toContain("objectKey");
-    expect(JSON.stringify(res.body)).not.toContain("staged/");
+    expect(JSON.stringify(res.body)).not.toContain("draft/");
   });
 
   it("answers 404 for unknown and malformed ids", async () => {
@@ -517,21 +515,6 @@ describe("PATCH /api/releases/:id", () => {
     expect(row.versionMinor).toBe(1);
   });
 
-  it("allows edits while changes are requested", async () => {
-    const product = await createProduct();
-    const release = await createRelease({
-      productId: product.id,
-      createdById: dev.id,
-      status: "CHANGES_REQUESTED",
-    });
-    const res = await request(app)
-      .patch(`/api/releases/${release.id}`)
-      .set(dev.cookie)
-      .send({ releaseNotes: "Fixed" });
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe("CHANGES_REQUESTED");
-  });
-
   it("rejects an empty body", async () => {
     const product = await createProduct();
     const release = await createRelease({
@@ -581,10 +564,10 @@ describe("PATCH /api/releases/:id", () => {
     expect(taken.body.code).toBe("VERSION_TAKEN");
   });
 
-  it("is locked once the release is in review or shipped", async () => {
+  it("is locked once the release has shipped", async () => {
     const product = await createProduct();
     for (const [status, version] of [
-      ["IN_REVIEW", "1.0.0"],
+      ["ARCHIVED", "1.0.0"],
       ["PUBLISHED", "1.0.1"],
     ] as const) {
       const release = await createRelease({
@@ -769,17 +752,9 @@ describe("PATCH /api/releases/:id with file mappings", () => {
     expect(res.body.code).toBe("FILE_NOT_FOUND");
   });
 
-  it("is for the creating DEV only", async () => {
+  it("is for developers only", async () => {
     const { release, rows } = await draftWith([{ kind: "DOC" }]);
-    const other = await createDev("Oscar");
     const body = { files: [{ id: rows[0].id, kind: null }] };
-
-    const res = await request(app)
-      .patch(`/api/releases/${release.id}`)
-      .set(other.cookie)
-      .send(body);
-    expect(res.status).toBe(403);
-    expect(res.body.code).toBe("NOT_RELEASE_OWNER");
 
     const asAdmin = await request(app)
       .patch(`/api/releases/${release.id}`)
@@ -789,38 +764,5 @@ describe("PATCH /api/releases/:id with file mappings", () => {
     expect(await mappingsOf(release.id)).toEqual([
       [rows[0].originalName, "DOC", null],
     ]);
-  });
-});
-
-describe("GET /api/releases needsYou", () => {
-  const needsYou = async (user: StaffUser, query = "") =>
-    (await request(app).get(`/api/releases${query}`).set(user.cookie)).body.data
-      .needsYou as number;
-
-  it("counts an admin's reviews and only a dev's own sent-back releases, ignoring filters", async () => {
-    const devB = await createDev("Bea");
-    const before = {
-      a: await needsYou(dev),
-      b: await needsYou(devB),
-      admin: await needsYou(admin),
-    };
-    const product = await createProduct();
-    const make = (
-      createdById: string,
-      status: "CHANGES_REQUESTED" | "IN_REVIEW",
-      version: string,
-    ) => createRelease({ productId: product.id, createdById, status, version });
-    await make(dev.id, "CHANGES_REQUESTED", "7.0.1");
-    await make(dev.id, "CHANGES_REQUESTED", "7.0.2");
-    await make(devB.id, "CHANGES_REQUESTED", "7.0.3");
-    await make(dev.id, "IN_REVIEW", "7.0.4");
-    await make(devB.id, "IN_REVIEW", "7.0.5");
-    await make(dev.id, "IN_REVIEW", "7.0.6");
-
-    expect((await needsYou(dev)) - before.a).toBe(2);
-    expect((await needsYou(devB)) - before.b).toBe(1);
-    expect((await needsYou(admin)) - before.admin).toBe(3);
-    // Filters narrow the list, never the badge
-    expect(await needsYou(dev, "?status=PUBLISHED&q=zzz")).toBe(before.a + 2);
   });
 });

@@ -1,28 +1,33 @@
 ---
 title: Release storage — deploy checklist
 status: active
-updated: 2026-10-23
+updated: 2026-11-10
 ---
 
 # Release storage: deploy checklist
 
-What production needs before developers upload and admins publish release
-files. Background: `docs/architecture.md` §12 and
+What production needs before developers upload and publish release files. Background: `docs/architecture.md` §12 and
 `docs/releases/release-management.md`.
 
-## 1. Buckets
+## 1. Bucket
 
-| Bucket | Holds | Visibility |
-|---|---|---|
-| Staging (`OCI_STAGING_BUCKET`) | `staged/…`: files on drafts and releases in review | **private** |
-| Release (`OCI_RELEASE_BUCKET`) | `releases/…`: published, archived and rolled-back files | **private** |
+One **private** bucket (`OCI_BUCKET`) holds everything:
 
-Never make either bucket public: a public bucket serves staged builds and
-every version to anyone with the URL. Customers will get ~60 s object PARs
-(downloads task).
+| Prefix | Holds |
+|---|---|
+| `draft/{randomId}/{name}` | files on unpublished releases |
+| `publish/{productId}/{version}/{randomId}/{name}` | published, archived and rolled-back files |
 
-In dev, one bucket (`OCI_BUCKET`) holds both prefixes; leave the two
-variables unset.
+Objects stored before these prefixes keep their `staged/…` and `releases/…`
+keys and go on working.
+
+Never make the bucket public: a public bucket serves unfinished builds and
+every version to anyone with the URL. Customers get 1-hour object PARs.
+
+**Moving from two buckets:** `OCI_STAGING_BUCKET` and `OCI_RELEASE_BUCKET` are
+gone and are ignored if still set. If production used them, copy every object
+from both into `OCI_BUCKET`, with the same keys, before deploying this version.
+Otherwise existing downloads and drafts stop working.
 
 ## 2. Server environment
 
@@ -31,8 +36,7 @@ STORAGE_DRIVER=oci                 # production refuses to boot otherwise
 OCI_AUTH_MODE=instance-principal
 OCI_REGION=…
 OCI_OBJECT_NAMESPACE=…
-OCI_STAGING_BUCKET=…
-OCI_RELEASE_BUCKET=…
+OCI_BUCKET=…
 MAX_UPLOAD_BYTES=1073741824        # 1 GiB per file
 UPLOAD_PART_BYTES=10485760         # 10 MiB multipart parts (OCI minimum)
 UPLOAD_TIMEOUT_MS=7200000          # 2 h per upload request (server-wide)
@@ -44,14 +48,13 @@ PUBLISH_JOB_TTL_MS=600000
 ## 3. IAM
 
 - **The VM's instance principal (dynamic group):**
-  - read and delete objects in the staging bucket (uploads run as multipart:
+  - read, write and delete objects in the bucket (uploads run as multipart:
     create, upload part, commit, abort);
-  - write (create, overwrite) and delete objects in the release bucket;
-  - manage pre-authenticated requests **on the release bucket only**
-    (`PAR_MANAGE`), for downloads; never on staging.
+  - manage pre-authenticated requests on the bucket (`PAR_MANAGE`), for
+    downloads.
 - **The Object Storage service itself**, for publish copies. OCI performs
   `CopyObject` as a work request run by the service, so it needs its own
-  policy in the compartment that holds the buckets:
+  policy in the compartment that holds the bucket:
 
   ```
   Allow service objectstorage-<region> to manage object-family in compartment <compartment>
@@ -59,7 +62,7 @@ PUBLISH_JOB_TTL_MS=600000
 
   A missing policy makes the publish job fail with `COPY_FAILED`.
 
-## 4. Lifecycle rule (staging bucket)
+## 4. Lifecycle rule
 
 Add an Object Lifecycle Management rule that **aborts uncommitted multipart
 uploads after 1 day**. The server aborts uploads itself on errors and
@@ -80,17 +83,15 @@ location /api/ {
 
 Every hop an upload passes through needs the same long limit; any one left at its default cuts uploads off. In dev, that hop is the Vite server: `client/vite.config.ts` raises Vite's own Node `requestTimeout` (default 300 s) along with the proxy timeouts. Without it, any dev upload taking more than 5 minutes was cut off with a 408, even though the API still saved the file.
 
-## 6. Verify on the real buckets
+## 6. Verify on the real bucket
 
 From `server/` on the VM (or a machine with the same credentials):
 
 1. `npm run storage:smoke`: multipart upload, delete, and an aborted upload
    leaves no object.
 2. `npm run storage:copy-smoke`: copies 1 GiB (`SMOKE_COPY_MB` to change)
-   within one bucket and, with both bucket variables set, **across the
-   staging and release buckets**. It prints the timing and fails with a hint
-   if the service policy in §3 is missing.
+   from `draft/` to `publish/`. It prints the timing and fails with a hint if
+   the service policy in §3 is missing.
 
-Measured on the dev bucket (2026-10-23, same-bucket): a 1 GiB copy took
-11.8 s, and `percentComplete` reports 0 until it jumps to 100. The
-cross-bucket run is still pending.
+Measured on the dev bucket (2026-10-23): a 1 GiB copy took 11.8 s, and
+`percentComplete` reports 0 until it jumps to 100.

@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { ReleaseStatus } from "@prisma/client";
 import { prisma } from "../src/configs/prisma.js";
 import { logger } from "../src/configs/logger.js";
-import { getStorageBuckets } from "../src/configs/storage.js";
+import { getStorageBucket } from "../src/configs/storage.js";
 import { lockProductReleases } from "../src/services/releases/releases.service.js";
 import {
   VERSION_ORDER_DESC,
@@ -82,9 +82,7 @@ async function main(): Promise<boolean> {
     return true;
   }
 
-  const buckets = getStorageBuckets();
-  const bucketOf = (key: string) =>
-    key.startsWith("releases/") ? buckets.release : buckets.staging;
+  const bucket = getStorageBucket();
   const removing = new Set(releases.map((release) => release.id));
 
   // What takes over from each PUBLISHED release that goes
@@ -122,7 +120,7 @@ async function main(): Promise<boolean> {
       `  remove  v${versionOf(release)}  ${release.status}  ${release._count.files} file(s) (${formatBytes(bytes)})  ${downloads} download(s)`,
     );
     for (const file of release.files) {
-      console.log(`          ${file.objectKey}  (${bucketOf(file.objectKey)})`);
+      console.log(`          ${file.objectKey}  (${bucket})`);
     }
     const restore = restores.get(release.id);
     if (restore) {
@@ -146,9 +144,7 @@ async function main(): Promise<boolean> {
     const label = `${release.product.name} v${versionOf(release)}`;
     // Objects first: a failure keeps the row, so a re-run retries them
     const results = await Promise.allSettled(
-      release.files.map((file) =>
-        driver.deleteObject(bucketOf(file.objectKey), file.objectKey),
-      ),
+      release.files.map((file) => driver.deleteObject(bucket, file.objectKey)),
     );
     if (results.some((result) => result.status === "rejected")) {
       console.error(

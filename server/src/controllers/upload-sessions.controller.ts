@@ -56,7 +56,6 @@ export const putPart = async (req: Request, res: Response) => {
     );
   }
   const result = await putUploadPart(
-    userId(req),
     releaseId(req),
     uploadId(req),
     n,
@@ -66,15 +65,11 @@ export const putPart = async (req: Request, res: Response) => {
 };
 
 export const complete = async (req: Request, res: Response) => {
-  const result = await completeUploadSession(
-    userId(req),
-    releaseId(req),
-    uploadId(req),
-  );
+  const result = await completeUploadSession(releaseId(req), uploadId(req));
   res.status(201).json(ApiResponse.success(result, "File uploaded", 201));
 };
 
 export const abort = async (req: Request, res: Response) => {
-  await abortUploadSession(userId(req), releaseId(req), uploadId(req));
+  await abortUploadSession(releaseId(req), uploadId(req));
   res.json(ApiResponse.ok("Upload cancelled"));
 };

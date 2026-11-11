@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
-import { ArrowLeft, Loader2, MessageSquareWarning, RefreshCw, Trash2 } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, Trash2 } from "lucide-react"
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/useAuth"
@@ -10,21 +10,18 @@ import { ApiRequestError } from "@/lib/api/http"
 import { osMeta } from "@/pages/Catalog/catalog.meta"
 import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
 import { formatBytes } from "@/pages/ProductDetails/release.utils"
-import { latestEvent } from "@/pages/ReleaseDetail/release-detail.utils"
 import { canEditRelease, releaseActions } from "@/pages/Releases/release-permissions"
 import { useDeleteRelease } from "@/pages/Releases/useDeleteRelease"
 import { releasesApi } from "@/pages/Releases/releases.api"
 import { duplicatePlatforms } from "@/pages/Releases/releases.errors"
-import { SubmitWarningsDialog } from "@/pages/Releases/components/SubmitWarningsDialog"
-import { reportBlockedSubmit } from "@/pages/Releases/submit-errors"
-import { unconfirmedWarnings } from "@/pages/Releases/releases.errors"
-import type { FileIssues, ReleaseDetail, ReleaseFileItem } from "@/pages/Releases/releases.model"
+import type { ReleaseDetail, ReleaseFileItem } from "@/pages/Releases/releases.model"
 import { useProducts, useRelease, useVersionSuggestion } from "@/pages/Releases/useReleaseQueries"
 import { releaseTitle, versionLabel, versionsInName } from "@/pages/Releases/version.utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { changedFields, changedMappings, draftVersionProblem, effectiveMapping, hasDuplicates, mappingProblems, productOptions, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionFromSdks, versionProblem, type MappingOverrides } from "./editor.state"
+import { changedFields, changedMappings, draftVersionProblem, effectiveMapping, hasDuplicates, mappingProblems, productOptions, savedHolderFor, serverVersionProblem, publishBlocker, unsavedSummary, versionFromSdks, versionProblem, type MappingOverrides } from "./editor.state"
 import type { CreatedDraftState } from "./NewRelease"
+import type { ReleaseNavState } from "@/pages/ReleaseDetail/ReleaseDetailPage"
 import { hasConflicts, isBusy, overall } from "@/features/uploads/uploads.state"
 import { CancelUploadDialog } from "@/features/uploads/CancelUploadDialog"
 import { InterruptedNotice } from "@/features/uploads/InterruptedNotice"
@@ -61,7 +58,8 @@ export function EditRelease({ releaseId }: { releaseId: string }) {
       </AppShell>
     )
   }
-  if (!release || !user) return <PageLoader />
+  // Inside the shell, so the sidebar and top bar stay put while the draft loads
+  if (!release || !user) return <AppShell breadcrumb={["All Releases", "Edit"]}><PageLoader className="min-h-[60vh]" /></AppShell>
   if (!canEditRelease(user, release)) return <Navigate to={`/releases/${release.id}`} replace />
   return <EditForm release={release} onReload={reload} onSaved={setData} draftVersion={created?.draftVersion} versionError={created?.versionError} />
 }
@@ -94,7 +92,7 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
   const [serverError, setServerError] = useState<string | null>(refusedVersion ?? null)
   // Why the last save was refused, shown in the save bar
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [pending, setPending] = useState<"save" | "submit" | null>(null)
+  const [pending, setPending] = useState<"save" | "continue" | null>(null)
   const [attempted, setAttempted] = useState(false)
   // The upload whose cancel waits for "Cancel upload"
   const [confirmingCancel, setConfirmingCancel] = useState<QueueItem | null>(null)
@@ -155,10 +153,7 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
   const problems = mappingProblems(release.files, overrides)
   // Judged against the saved version; an unsaved version edit may clear them on save
   const blockedFiles = version.trim() === (release.version ?? "") ? release.files.filter((file) => file.blockedBy.length > 0) : []
-  const blocker = submitBlocker({ version, fileCount: release.fileCount, queue: state, problems, blockedFiles: blockedFiles.length })
-  // Files whose warnings the server wants confirmed before this goes to review
-  const [warnedFiles, setWarnedFiles] = useState<FileIssues[] | null>(null)
-  const feedback = release.status === "changes_requested" ? latestEvent(release, "changes_requested") : undefined
+  const blocker = publishBlocker({ version, fileCount: release.fileCount, queue: state, problems, blockedFiles: blockedFiles.length })
 
   useEffect(() => {
     if (!busy && !dirty) return
@@ -188,23 +183,25 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
     setTouched(false)
   }
 
-  async function save(): Promise<boolean> {
+  /** The release as saved, or null when it couldn't be. */
+  async function save(): Promise<ReleaseDetail | null> {
     if (formatError) {
       setTouched(true)
       setSaveError("Fix the version number first.")
-      return false
+      return null
     }
     if (hasDuplicates(problems)) {
       setSaveError("A platform is set on more than one file. Each platform can have one SDK.")
-      return false
+      return null
     }
-    if (!dirty) return true
+    if (!dirty) return release
     try {
-      onSaved(await releasesApi.update(release.id, { ...fieldChanges, ...(fileChanges.length && { files: fileChanges }) }))
+      const saved = await releasesApi.update(release.id, { ...fieldChanges, ...(fileChanges.length && { files: fileChanges }) })
+      onSaved(saved)
       setOverrides({})
       setRejected(new Set())
       setSaveError(null)
-      return true
+      return saved
     } catch (error) {
       const duplicates = duplicatePlatforms(error)
       const problem = serverVersionProblem(error)
@@ -220,7 +217,7 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
         toast.error(message)
       }
       if (error instanceof ApiRequestError && error.code === "RELEASE_LOCKED") onReload()
-      return false
+      return null
     }
   }
 
@@ -243,38 +240,17 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
     return () => window.removeEventListener("keydown", listener)
   }, [])
 
-  async function submit() {
+  /** Saves, then opens the release, where its checks and Publish are. */
+  async function saveAndContinue() {
     setAttempted(true)
     if (blocker) return
-    setPending("submit")
+    setPending("continue")
     try {
-      if (!(await save())) return
-      await sendForReview()
-    } catch (error) {
-      const warned = unconfirmedWarnings(error)
-      if (warned) setWarnedFiles(warned)
-      else if (!reportBlockedSubmit(error)) toast.error(error instanceof ApiRequestError ? error.message : "Couldn't submit. Try again.")
-      onReload()
+      // The saved release comes along, so the release page opens without a loader
+      const saved = await save()
+      if (saved) navigate(`/releases/${release.id}`, { state: { release: saved } satisfies ReleaseNavState })
     } finally {
       setPending(null)
-    }
-  }
-
-  async function sendForReview(confirmWarnings = false) {
-    await releasesApi.submit(release.id, confirmWarnings ? { confirmWarnings } : {})
-    toast.success(`${versionLabel(version.trim() || null)} sent for review`, { description: "An admin will publish it or send feedback." })
-    navigate(`/releases/${release.id}`)
-  }
-
-  /** "Submit anyway" in the warnings dialog: true closes it. */
-  async function confirmSubmit(): Promise<boolean> {
-    try {
-      await sendForReview(true)
-      return true
-    } catch (error) {
-      if (!reportBlockedSubmit(error)) toast.error(error instanceof ApiRequestError ? error.message : "Couldn't submit. Try again.")
-      onReload()
-      return false
     }
   }
 
@@ -302,13 +278,6 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
             )}
           </div>
         </header>
-
-        {feedback?.note && (
-          <div role="note" className="flex gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
-            <MessageSquareWarning className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-            <div><p className="font-medium">Changes requested by {feedback.actor.name}</p><p className="mt-0.5 whitespace-pre-line text-foreground/80">{feedback.note}</p></div>
-          </div>
-        )}
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
           <div className="space-y-5">
@@ -394,25 +363,24 @@ function EditForm({ release, onReload, onSaved, draftVersion, versionError: refu
 
           <aside className="space-y-4 lg:sticky lg:top-20">
             <section className="rounded-xl border bg-card p-4">
-              <h2 className="mb-3 text-xs font-medium text-muted-foreground">Ready to submit?</h2>
+              <h2 className="mb-3 text-xs font-medium text-muted-foreground">Ready to publish?</h2>
               <ul className="space-y-2">
-                <CheckItem state={versionState} label={serverError ? "Valid, unused version" : versionMissing ? "Version (needed to submit)" : `Version v${version.trim()}`} />
+                <CheckItem state={versionState} label={serverError ? "Valid, unused version" : versionMissing ? "Version (needed to publish)" : `Version v${version.trim()}`} />
                 <CheckItem state={fileState} label={fileLabel} />
                 <CheckItem state={mappingState} label={mappingLabel} />
-                {blockedFiles.length > 0 && <CheckItem state="error" label={`${blockedFiles.length === 1 ? "1 file can't" : `${blockedFiles.length} files can't`} be submitted`} />}
+                {blockedFiles.length > 0 && <CheckItem state="error" label={`${blockedFiles.length === 1 ? "1 file can't" : `${blockedFiles.length} files can't`} be published`} />}
                 <CheckItem state={notes.trim() ? "ok" : "optional"} label={notes.trim() ? "Release notes added" : "Release notes (optional)"} />
               </ul>
               <div className="mt-4 border-t pt-4">
-                {/* Saving lives in the save bar; Send for review saves anything pending first */}
-                <Button onClick={() => void submit()} disabled={pending !== null} aria-disabled={Boolean(blocker) || undefined} className={cn("w-full", blocker && "opacity-60")}>{pending === "submit" && <Loader2 className="animate-spin" />}{dirty ? "Save and send for review" : "Send for review"}</Button>
+                {/* Saving lives in the save bar; this saves anything pending first */}
+                <Button onClick={() => void saveAndContinue()} disabled={pending !== null} aria-disabled={Boolean(blocker) || undefined} className={cn("w-full", blocker && "opacity-60")}>{pending === "continue" && <Loader2 className="animate-spin" />}{dirty ? "Save and continue" : "Continue to publish"}</Button>
               </div>
               {attempted && blocker && <p role="alert" className="mt-3 text-xs text-destructive">{blocker}</p>}
-              <p className="mt-3 text-xs text-muted-foreground">{SAVE_RULE} An admin reviews every release before customers can download it.</p>
+              <p className="mt-3 text-xs text-muted-foreground">{SAVE_RULE} Customers can download a release as soon as you publish it.</p>
             </section>
           </aside>
         </div>
 
-        <SubmitWarningsDialog files={warnedFiles} onClose={() => setWarnedFiles(null)} onConfirm={confirmSubmit} />
         {deletion.dialog}
         <CancelUploadDialog item={confirmingCancel} onClose={() => setConfirmingCancel(null)} onConfirm={(localId) => queue.cancel(localId)} />
         {dirty && <SaveBar summary={unsavedSummary(fieldChanges, fileChanges.length)} error={saveError} uploading={busy} saving={pending === "save"} onDiscard={discard} onSave={() => void saveDraft()} />}

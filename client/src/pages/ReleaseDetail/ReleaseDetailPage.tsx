@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
-import { ArrowLeft, Ban, CircleAlert, FileQuestion, Info, MessageSquareWarning, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react"
-import { Link } from "react-router-dom"
+import { ArrowLeft, Ban, FileQuestion, RefreshCw, RotateCcw, TriangleAlert } from "lucide-react"
+import { Link, useLocation } from "react-router-dom"
 import { toast } from "sonner"
 import { useAuth } from "@/auth/useAuth"
 import { AppShell } from "@/components/common/AppShell"
@@ -16,16 +16,17 @@ import { relativeTime } from "@/pages/Releases/releases.utils"
 import { useRelease } from "@/pages/Releases/useReleaseQueries"
 import { releasesApi } from "@/pages/Releases/releases.api"
 import type { ReleaseFile as CatalogReleaseFile } from "@/pages/Catalog/catalog.types"
+import type { ReleaseDetail } from "@/pages/Releases/releases.model"
 import { downloadFromServer } from "@/lib/download"
 import { cn } from "@/lib/utils"
 import { ActivityTimeline } from "./components/ActivityTimeline"
 import { ReleaseActions } from "./components/ReleaseActions"
 import { ReviewCards } from "./components/ReviewCards"
-import { filesUpdatedAfterFeedback, latestEvent, toCatalogFile } from "./release-detail.utils"
+import { latestEvent, toCatalogFile } from "./release-detail.utils"
 import { releaseTitle, versionLabel } from "@/pages/Releases/version.utils"
 
-function Callout({ tone, icon, title, children }: { tone: "amber" | "info" | "danger"; icon: ReactNode; title: string; children?: ReactNode }) {
-  const styles = { amber: "border-amber-500/30 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400", info: "border-primary/25 bg-primary/5 [&>svg]:text-primary", danger: "border-destructive/30 bg-destructive/5 [&>svg]:text-destructive" }
+function Callout({ tone, icon, title, children }: { tone: "amber" | "danger"; icon: ReactNode; title: string; children?: ReactNode }) {
+  const styles = { amber: "border-amber-500/30 bg-amber-500/10 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400", danger: "border-destructive/30 bg-destructive/5 [&>svg]:text-destructive" }
   return (
     <div role="note" className={cn("flex gap-3 rounded-xl border px-4 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0", styles[tone])}>
       {icon}
@@ -50,22 +51,25 @@ function Centered({ breadcrumb, title, body, action }: { breadcrumb: string; tit
   )
 }
 
+/** Sent by the editor after saving, so this page opens without a loader. */
+export type ReleaseNavState = { release: ReleaseDetail }
+
 export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
   const { user } = useAuth()
-  const { data: release, error, loading, notFound, reload, setData } = useRelease(releaseId)
+  const handed = useLocation().state as Partial<ReleaseNavState> | null
+  const { data: release, error, loading, notFound, reload, setData } = useRelease(releaseId, handed?.release)
   const [notesOpen, setNotesOpen] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   if (notFound) return <Centered breadcrumb="Not found" title="Release not found" body="It may have been deleted." action={<Button render={<Link to="/releases" />}>Back to releases</Button>} />
   if (error) return <Centered breadcrumb="Error" title="Couldn't load this release" body={error.message} action={<Button variant="outline" onClick={reload}><RefreshCw />Try again</Button>} />
-  if (!release || !user) return <PageLoader />
+  // Inside the shell, so the sidebar and top bar stay put while it loads
+  if (!release || !user) return <AppShell breadcrumb={["All Releases", "Release"]}><PageLoader className="min-h-[60vh]" /></AppShell>
 
   const files = release.files.map(toCatalogFile).filter((file) => file !== null)
   // Drafts can hold files without a type, or SDKs without a platform
   const unmapped = release.files.filter((file) => toCatalogFile(file) === null)
-  const feedback = latestEvent(release, "changes_requested")
   const rolledBack = latestEvent(release, "rolled_back")
-  const updated = release.status === "in_review" ? filesUpdatedAfterFeedback(release) : []
   const platforms = supportedOs(files)
   // The server judges files only before publishing, so shipped releases have none
   const blocked = release.files.filter((file) => file.blockedBy.length > 0)
@@ -94,21 +98,10 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
           </div>
         </header>
 
-        {release.status === "in_review" && user.role === "ADMIN" && <ReviewCards release={release} />}
+        {release.status === "draft" && user.role === "DEV" && <ReviewCards release={release} />}
 
-        {release.status === "changes_requested" && feedback && <Callout tone="amber" icon={<MessageSquareWarning />} title={`Changes requested by ${feedback.actor.name}`}>{feedback.note}</Callout>}
-        {release.status === "in_review" && user.role === "ADMIN" && (
-          <Callout tone="info" icon={<Info />} title="Waiting for your review">
-            {feedback ? <>Previously requested: {feedback.note}</> : "Check the files and notes, then publish it or request changes."}
-          </Callout>
-        )}
-        {updated.length > 0 && (
-          <Callout tone="info" icon={<CircleAlert />} title={`${updated.length} ${updated.length === 1 ? "file" : "files"} updated after feedback`}>
-            {updated.map((file) => file.name).join(", ")}
-          </Callout>
-        )}
         {blocked.length > 0 && (
-          <Callout tone="danger" icon={<Ban />} title={`${blocked.length} ${blocked.length === 1 ? "file can't" : "files can't"} be submitted`}>
+          <Callout tone="danger" icon={<Ban />} title={`${blocked.length} ${blocked.length === 1 ? "file can't" : "files can't"} be published`}>
             <ul className="space-y-0.5">
               {blocked.flatMap((file) => file.blockedBy.map((reason, index) => <li key={`${file.id}-${index}`}><span className="font-medium">{file.name}</span>: {reason.message}</li>))}
             </ul>
@@ -139,9 +132,12 @@ export function ReleaseDetailPage({ releaseId }: { releaseId?: string }) {
 
           {/* Capped at the viewport on lg so the sticky column never hides its own bottom; Activity scrolls inside */}
           <aside className="flex flex-col gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)]">
-            <div className="shrink-0">
-              <ReleaseActions release={release} viewer={user} onUpdated={setData} onStale={reload} />
-            </div>
+            {/* Admins only read releases, so they get no Actions card */}
+            {user.role === "DEV" && (
+              <div className="shrink-0">
+                <ReleaseActions release={release} viewer={user} onUpdated={setData} onStale={reload} />
+              </div>
+            )}
             <section className="shrink-0 rounded-xl border bg-card p-4">
               <h2 className="mb-3 text-xs font-medium text-muted-foreground">Summary</h2>
               <dl className="space-y-2.5 text-sm">

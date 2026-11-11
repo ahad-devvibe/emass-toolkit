@@ -8,10 +8,8 @@ import { ApiError } from "../src/utils/api-error.utils.js";
 
 // Spike for publish: how long OCI takes to copy a large release file, and
 // whether the copy's percentComplete moves gradually or jumps 0 -> 100.
-// Runs against real buckets (needs OCI_* env and credentials):
-//   - always: within one bucket (OCI_BUCKET, staged/ -> releases/), like dev
-//   - also, when OCI_STAGING_BUCKET and OCI_RELEASE_BUCKET are both set and
-//     differ: across buckets, like production
+// Runs against the real bucket (needs OCI_* env and credentials), copying
+// draft/ -> publish/ within OCI_BUCKET as publish does.
 // Size via SMOKE_COPY_MB (default 1024). Every object it creates is deleted.
 //   npm run storage:copy-smoke
 const SIZE_MB = Number(process.env.SMOKE_COPY_MB ?? 1024);
@@ -59,8 +57,8 @@ async function run(mode: Mode) {
   const driver = createOciDriver();
   const bytes = SIZE_MB * 1024 ** 2;
   const id = randomUUID();
-  const fromKey = `staged/_smoke/${id}/big.bin`;
-  const toKey = `releases/_smoke/${id}/big.bin`;
+  const fromKey = `draft/_smoke/${id}/big.bin`;
+  const toKey = `publish/_smoke/${id}/big.bin`;
   const samples: { percent: number; elapsedMs: number }[] = [];
 
   try {
@@ -127,30 +125,11 @@ async function run(mode: Mode) {
 
 async function main() {
   if (!env.OCI_BUCKET) throw new Error("Set OCI_BUCKET (and OCI_* auth) first");
-  const modes: Mode[] = [
-    {
-      name: "same bucket",
-      fromBucket: env.OCI_BUCKET,
-      toBucket: env.OCI_BUCKET,
-    },
-  ];
-  if (
-    env.OCI_STAGING_BUCKET &&
-    env.OCI_RELEASE_BUCKET &&
-    env.OCI_STAGING_BUCKET !== env.OCI_RELEASE_BUCKET
-  ) {
-    modes.push({
-      name: "across buckets",
-      fromBucket: env.OCI_STAGING_BUCKET,
-      toBucket: env.OCI_RELEASE_BUCKET,
-    });
-  } else {
-    logger.info(
-      "OCI_STAGING_BUCKET / OCI_RELEASE_BUCKET not both set: skipping the across-buckets run",
-    );
-  }
-
-  for (const mode of modes) await run(mode);
+  await run({
+    name: "same bucket",
+    fromBucket: env.OCI_BUCKET,
+    toBucket: env.OCI_BUCKET,
+  });
 }
 
 main().catch((err: unknown) => {

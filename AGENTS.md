@@ -27,26 +27,28 @@ download versioned files. This is an MVP: keep it simple.
 
 ## Fixed decisions
 
-- Roles: `dev` can stage a release; `admin` can approve, publish and roll back.
-  Enforce roles on the server, never only in the UI.
+- Roles: `dev` owns releases end to end (any developer can draft, publish and
+  roll back any release); `admin` has the dashboard, sign-up approvals and
+  domain rules, and can only read releases. Enforce roles on the server, never
+  only in the UI.
 - Files: private OCI bucket, never public. A release file is never overwritten;
   every version is a new object.
 - Downloads: on click the client calls our API (cookie auth); we check access,
   log the download, and return an object-level, read-only OCI PAR (1 hour,
   `DOWNLOAD_URL_TTL_SECONDS`) for the shipped object. Every click mints a new
-  PAR. Customers never get a PAR for a staged object; staff (DEV/ADMIN) may,
+  PAR. Customers never get a PAR for a draft object; staff (DEV/ADMIN) may,
   short-lived (~5 min, `STAGED_DOWNLOAD_URL_TTL_SECONDS`), to test a build
   before it ships. Customer downloads are logged to `Download`, staff ones to
   `ActivityLog`. Customers accept the download licence once, before their
   first download (server-enforced; time and wording version stored on User). OCI access uses an instance principal, no keys on disk.
-- Buckets: always private. Dev uses one bucket with `staged/` and `releases/`
-  prefixes; prod uses separate staging and release buckets
-  (`OCI_STAGING_BUCKET` / `OCI_RELEASE_BUCKET`, both defaulting to
-  `OCI_BUCKET`). Publishing copies staged → release, then deletes the staged
-  object.
+- Bucket: one private bucket (`OCI_BUCKET`). Unpublished files live under
+  `draft/{randomId}/{name}`, shipped ones under
+  `publish/{productId}/{version}/{randomId}/{name}`; older objects keep their
+  `staged/` and `releases/` keys. Publishing copies draft → publish, then
+  deletes the draft object.
 - Checksums: we compute SHA-256 on upload, store it per file, show it next to
   the download.
-- Release states: staged -> published -> archived. Publishing archives the
+- Release states: draft -> published -> archived. Publishing archives the
   previous version. Rollback (published or archived) withdraws the release;
   rolling back the published one restores the previous archived version if
   there is one. Everyone who downloaded the withdrawn build is emailed.

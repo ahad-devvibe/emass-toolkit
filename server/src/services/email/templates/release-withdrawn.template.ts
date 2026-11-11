@@ -15,7 +15,7 @@ export interface ReleaseWithdrawnEmailTemplateInput {
   replacementVersion: string | null;
   /** Absolute URL of the product page (or the catalog when there's no replacement). */
   url: string;
-  /** Optional note from the admin, written for customers. Never the internal reason. */
+  /** Optional note from the developer, written for customers. Never the internal reason. */
   customerMessage?: string;
 }
 

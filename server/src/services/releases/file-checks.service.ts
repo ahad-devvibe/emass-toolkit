@@ -1,13 +1,12 @@
 import {
   ReleaseFileFormat,
-  ReleaseStatus,
   type Release,
   type ReleaseFile,
 } from "@prisma/client";
 import { env } from "../../configs/env.js";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
-import { getStorageBuckets } from "../../configs/storage.js";
+import { getStorageBucket } from "../../configs/storage.js";
 import type { FileCheckInput } from "../../schemas/release-files.schema.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
@@ -34,7 +33,6 @@ import {
   fileBlocked,
   fileNotFound,
   fileTooLarge,
-  notReleaseOwner,
   releaseLocked,
   releaseNotFound,
 } from "./releases.errors.js";
@@ -172,7 +170,6 @@ export async function fileFacts(
  * SHA-256 only the version rules run (NEED_HASH); with one, everything does.
  */
 export async function checkReleaseFile(
-  devId: string,
   releaseId: string,
   input: FileCheckInput,
 ): Promise<FileCheckResult> {
@@ -186,12 +183,10 @@ export async function checkReleaseFile(
       version: true,
       productId: true,
       status: true,
-      createdById: true,
       files: { select: { id: true } },
     },
   });
   if (!release) throw releaseNotFound();
-  if (release.createdById !== devId) throw notReleaseOwner();
   if (!EDITABLE_STATUSES.includes(release.status)) {
     throw releaseLocked(release.status);
   }
@@ -248,26 +243,17 @@ export const storedInspection = (inspection: Inspection) => ({
   ],
 });
 
-/** Statuses whose files are still judged; shipped releases are settled. */
-const JUDGED_STATUSES: ReleaseStatus[] = [
-  ...EDITABLE_STATUSES,
-  ReleaseStatus.IN_REVIEW,
-];
-
 /**
  * Files uploaded before inspection existed carry no format: inspect each once
  * from storage and save the result. An unreadable object is judged by its
  * name only, and isn't saved, so a later read can try again.
  */
 async function withInspections(files: ReleaseFile[]) {
-  const { staging, release } = getStorageBuckets();
+  const bucket = getStorageBucket();
   return Promise.all(
     files.map(async (file) => {
       if (file.format !== null) return file;
       try {
-        const bucket = file.objectKey.startsWith("releases/")
-          ? release
-          : staging;
         const inspection = await inspectFile(
           storageReader(bucket, file.objectKey, Number(file.sizeBytes)),
           file.originalName,
@@ -293,8 +279,8 @@ async function withInspections(files: ReleaseFile[]) {
 
 /**
  * The verdict on every file of a release, from what each file said about
- * itself when it uploaded: two queries for the whole release. Only releases
- * still being edited or reviewed are judged; shipped ones get no verdicts.
+ * itself when it uploaded: two queries for the whole release. Only drafts are
+ * judged; shipped releases are settled and get no verdicts.
  * Returns the files too, since older ones may have just been inspected.
  */
 export async function releaseFileVerdicts(
@@ -302,7 +288,7 @@ export async function releaseFileVerdicts(
   files: ReleaseFile[],
 ): Promise<{ files: ReleaseFile[]; verdicts: Map<string, FileVerdict> }> {
   const verdicts = new Map<string, FileVerdict>();
-  if (!JUDGED_STATUSES.includes(release.status) || files.length === 0) {
+  if (!EDITABLE_STATUSES.includes(release.status) || files.length === 0) {
     return { files, verdicts };
   }
   // The rows as judged: files inspected just now carry their new findings

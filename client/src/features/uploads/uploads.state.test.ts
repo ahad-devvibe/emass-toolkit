@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
 import type { FileIssue, PublishJob, ReleaseFileItem } from "@/pages/Releases/releases.model"
-import { blocksSubmit, emptyQueue, forRelease, versionBlocked, nextToStart, overall, queueHolder, queueReducer, type PlatformHolder, type QueueState } from "./uploads.state"
+import { blocksPublish, emptyQueue, forRelease, versionBlocked, nextToStart, overall, queueHolder, queueReducer, type PlatformHolder, type QueueState } from "./uploads.state"
 
 const fileOf = (name: string, size = 10) => new File([new Uint8Array(size)], name)
 
@@ -61,7 +61,7 @@ describe("queueReducer", () => {
     expect(state.items[0]).toMatchObject({ status: "blocked", blockedBy: [mismatch] })
 
     // A blocked file never joined the release: it neither counts nor holds up submit
-    expect(blocksSubmit(state)).toBe(false)
+    expect(blocksPublish(state)).toBe(false)
     expect(overall(state)).toMatchObject({ total: 0 })
     expect(queueReducer(state, { type: "dismissed", localId: "a.exe" }).items).toEqual([])
   })
@@ -140,14 +140,14 @@ describe("selectors", () => {
   })
 
   it("blocks submit while busy, failed or holding a conflict", () => {
-    expect(blocksSubmit(emptyQueue)).toBe(false)
-    expect(blocksSubmit(added({ name: "a" }))).toBe(true)
-    expect(blocksSubmit(queueReducer(added({ name: "a" }), { type: "started", localId: "a" }))).toBe(true)
-    expect(blocksSubmit(fail(added({ name: "a" }), "a"))).toBe(true)
-    expect(blocksSubmit(queueReducer(added({ name: "a", holder: { fileId: "f", name: "x" } }), { type: "cancelled", localId: "nope" }))).toBe(true)
+    expect(blocksPublish(emptyQueue)).toBe(false)
+    expect(blocksPublish(added({ name: "a" }))).toBe(true)
+    expect(blocksPublish(queueReducer(added({ name: "a" }), { type: "started", localId: "a" }))).toBe(true)
+    expect(blocksPublish(fail(added({ name: "a" }), "a"))).toBe(true)
+    expect(blocksPublish(queueReducer(added({ name: "a", holder: { fileId: "f", name: "x" } }), { type: "cancelled", localId: "nope" }))).toBe(true)
 
     const done = queueReducer(uploading(added({ name: "a" }), "a"), { type: "succeeded", localId: "a", file: uploaded("a") })
-    expect(blocksSubmit(done)).toBe(false)
+    expect(blocksPublish(done)).toBe(false)
   })
 })
 
@@ -185,7 +185,7 @@ describe("resumable states", () => {
     expect(queueReducer(state, { type: "restored", items: [restoredItem] })).toBe(state)
     // Nothing starts without its file, and submit waits for it
     expect(nextToStart(state)).toEqual([])
-    expect(blocksSubmit(state)).toBe(true)
+    expect(blocksPublish(state)).toBe(true)
 
     state = queueReducer(state, { type: "wrongFile", localId: "r.pkg", error: { code: "WRONG_FILE", message: "Pick r.pkg" } })
     expect(state.items[0]).toMatchObject({ status: "needsFile", error: { code: "WRONG_FILE" } })

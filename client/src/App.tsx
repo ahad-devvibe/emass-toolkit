@@ -58,7 +58,7 @@ export default function App() {
           <Route path="/catalog" element={customer(<CatalogPage />)} />
           <Route path="/catalog/:productId" element={customer(<ProductRoute />)} />
           <Route path="/releases" element={staff(<ReleasesPage />)} />
-          {/* Only DEVs create releases; admins review them */}
+          {/* Only DEVs manage releases; admins can only read them */}
           <Route path="/releases/new" element={<RequireAuth><RequireRole roles={["DEV"]}><ReleaseEditorPage key="new" /></RequireRole></RequireAuth>} />
           <Route path="/releases/:releaseId" element={staff(<ReleaseRoute />)} />
           <Route path="/releases/:releaseId/edit" element={staff(<ReleaseEditRoute />)} />

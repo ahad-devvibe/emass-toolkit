@@ -8,13 +8,10 @@ import {
   publishJobs,
   publishStatus,
   remove,
-  requestChanges,
   rollback,
-  submit,
   suggestVersion,
   update,
   updateNotes,
-  withdraw,
 } from "../controllers/releases.controller.js";
 import {
   check as checkFile,
@@ -30,30 +27,25 @@ import {
 } from "../controllers/upload-sessions.controller.js";
 import { requireRole } from "../middleware/role.middleware.js";
 
-// Staff can read every release; only the creating DEV can change one
-// (ownership is checked in the service)
+// Developers own releases end to end, and any of them can manage any release.
+// Admins can only read them.
 const staff = requireRole("DEV", "ADMIN");
 const dev = requireRole("DEV");
-// Review actions: only admins approve, send back or roll back
-const admin = requireRole("ADMIN");
 
 const router = Router();
 
 router.get("/", staff, list);
-router.get("/next-version", staff, suggestVersion);
+router.get("/next-version", dev, suggestVersion);
 // Before /:id, so it isn't read as a release id
-router.get("/publish-jobs", admin, publishJobs);
+router.get("/publish-jobs", dev, publishJobs);
 router.get("/:id", staff, get);
 router.post("/", dev, create);
 router.patch("/:id", dev, update);
-// Published releases: notes only, by the creating DEV or an admin (checked in the service)
-router.patch("/:id/notes", staff, updateNotes);
-router.post("/:id/submit", dev, submit);
-router.post("/:id/withdraw", dev, withdraw);
-router.post("/:id/request-changes", admin, requestChanges);
-router.post("/:id/rollback", admin, rollback);
-router.post("/:id/publish", admin, publish);
-router.get("/:id/publish-status", admin, publishStatus);
+// Published releases: notes only
+router.patch("/:id/notes", dev, updateNotes);
+router.post("/:id/rollback", dev, rollback);
+router.post("/:id/publish", dev, publish);
+router.get("/:id/publish-status", dev, publishStatus);
 router.delete("/:id", dev, remove);
 router.post("/:id/files/check", dev, checkFile);
 // Files arrive piece by piece; each part is one raw body of at most a part size

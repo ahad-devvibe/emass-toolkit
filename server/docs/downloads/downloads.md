@@ -11,7 +11,7 @@ The Download buttons on the customer product page now work. A click calls `POST 
 The browser then saves the file straight from storage.
 
 **Staff** (DEV and ADMIN) download from the release page with `POST /api/releases/:id/files/:fileId/download`, in **any** release state:
-- **Staged files** (draft, in review, changes requested) get a 5-minute link to the staging bucket (`STAGED_DOWNLOAD_URL_TTL_SECONDS`).
+- **Draft files** get a 5-minute link (`STAGED_DOWNLOAD_URL_TTL_SECONDS`).
 - **Shipped files** get the normal 1-hour link.
 
 - **Code:**
@@ -29,8 +29,8 @@ The browser then saves the file straight from storage.
   - **Cost:** a copied link works for anyone for up to an hour.
   - **Mitigations:** every click mints a new link; links are object-level, read-only and never listable; and every click is logged with the user.
 - **Who can download:** any signed-in user (`requireAuth`), with the same visibility as the catalog: `PUBLISHED` and `ARCHIVED` releases of active products.
-  - Drafts, reviews and rolled-back builds, inactive products, and unknown or malformed ids all give the same `404 FILE_NOT_FOUND`.
-- **Staged objects are staff-only:** the customer endpoint also requires the key to start with `releases/`. The staff endpoint picks the bucket from the key prefix (`staged/` → staging, short TTL; `releases/` → release) and refuses anything else. (AGENTS.md updated: it used to forbid any staged PAR.)
+  - Drafts and rolled-back builds, inactive products, and unknown or malformed ids all give the same `404 FILE_NOT_FOUND`.
+- **Draft objects are staff-only:** the customer endpoint also requires a published key (`publish/`, or the older `releases/`). The staff endpoint picks the link length from the key prefix (`draft/` or the older `staged/` → short TTL) and refuses anything else. (AGENTS.md updated: it used to forbid any draft PAR.)
 - **Order:** mint the link, then record the download; the link is returned only once the row exists. A link minted for a failed insert just expires unused.
 - **Two logs, no role column:**
   - **`Download` is customers only:** who got our files, used for rollback emails and counts.

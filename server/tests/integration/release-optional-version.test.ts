@@ -90,7 +90,7 @@ describe("drafts without a version", () => {
     });
 
     const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
+      .post(`/api/releases/${release.id}/publish`)
       .set(dev.cookie)
       .send({});
 
@@ -206,8 +206,8 @@ describe("moving a draft to another product", () => {
   });
 });
 
-describe("staged object keys", () => {
-  it("stores new uploads at staged/{uuid}/{name}, free of product and release", async () => {
+describe("draft object keys", () => {
+  it("stores new uploads at draft/{uuid}/{name}, free of product and release", async () => {
     const product = await createProduct();
     const release = await createRelease({
       productId: product.id,
@@ -224,8 +224,6 @@ describe("staged object keys", () => {
     const session = await prisma.uploadSession.findFirstOrThrow({
       where: { releaseId: release.id },
     });
-    expect(session.objectKey).toMatch(
-      /^staged\/[0-9a-f-]{36}\/emass-sdk\.zip$/,
-    );
+    expect(session.objectKey).toMatch(/^draft\/[0-9a-f-]{36}\/emass-sdk\.zip$/);
   });
 });

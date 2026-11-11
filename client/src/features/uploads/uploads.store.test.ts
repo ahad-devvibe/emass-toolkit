@@ -66,7 +66,7 @@ function fakeApi({ parts = "auto", verdict = async () => allowed() }: FakeOption
     }),
     findUploaded: vi.fn<UploadsApi["findUploaded"]>(async () => null),
     publishJobs: vi.fn(async () => [] as Awaited<ReturnType<UploadsApi["publishJobs"]>>),
-    publishStatus: vi.fn(async () => ({ job: null, status: "in_review" as const })),
+    publishStatus: vi.fn(async () => ({ job: null, status: "draft" as const })),
   } satisfies UploadsApi
   return { api, calls, sessions }
 }
@@ -595,7 +595,7 @@ describe("uploads store: publish jobs", () => {
   it("marks a job the server lost while still in review as interrupted", async () => {
     const { store, api, tick } = storeWith()
     store.trackPublish("r1", "", job("copying"))
-    api.publishStatus.mockResolvedValue({ job: null, status: "in_review" })
+    api.publishStatus.mockResolvedValue({ job: null, status: "draft" })
 
     await tick()
 
@@ -618,7 +618,7 @@ describe("uploads store: publish jobs", () => {
     const { store, api } = storeWith()
     api.publishJobs.mockResolvedValue([entry("r1", "copying"), entry("r2", "done")])
 
-    await store.start({ id: "admin1", role: "ADMIN" })
+    await store.start({ id: "dev1", role: "DEV" })
 
     expect(store.getSnapshot().publishes.map((item) => item.releaseId)).toEqual(["r1"])
   })

@@ -18,11 +18,11 @@ const timeout: Schedule = (run, ms) => {
 const labelOf = (entry: PublishJobEntry) => `${entry.productName} v${entry.version}`
 
 /**
- * Follows admins' publish jobs. Publishing runs on the server, so a refresh
+ * Follows developers' publish jobs. Publishing runs on the server, so a refresh
  * or a new page never stops it; this only watches. One request a second lists
  * every job, however many are running. A job missing from that list either
  * finished long enough ago to be forgotten (the release is published) or was
- * lost in a server restart (still in review): publish-status tells which.
+ * lost in a server restart (still a draft): publish-status tells which.
  */
 export function createPublishPoller({
   api,
@@ -66,7 +66,7 @@ export function createPublishPoller({
         }
         const status = await api.publishStatus(item.releaseId)
         if (status.job) update(item.releaseId, status.job)
-        else if (status.status === "in_review") dispatch({ type: "publishInterrupted", releaseId: item.releaseId })
+        else if (status.status === "draft") dispatch({ type: "publishInterrupted", releaseId: item.releaseId })
         // The job expired after the release was published
         else if (item.job) update(item.releaseId, { ...item.job, phase: "done", percent: 100, error: null, finishedAt: new Date().toISOString() })
       }

@@ -16,7 +16,7 @@ const toneStyle: Record<CardTone, { accent: string; text: string }> = {
 }
 
 /**
- * What an admin checks before publishing: the version step, checksums against
+ * What a developer checks before publishing: the version step, checksums against
  * the live version, platform coverage, and docs plus release notes.
  */
 export function ReviewCards({ release }: { release: ReleaseDetail }) {
@@ -25,7 +25,7 @@ export function ReviewCards({ release }: { release: ReleaseDetail }) {
   const live: LiveVersion = current ? { version: current.version, files: previous.data?.files ?? null, unavailable: Boolean(previous.error) } : null
 
   return (
-    <section aria-label="Review checks" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section aria-label="Pre-publish checks" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {reviewCards(release, live).map((card) => {
         const Icon = cardIcon[card.key]
         const ToneIcon = toneIcon[card.tone]

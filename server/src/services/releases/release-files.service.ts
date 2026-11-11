@@ -6,7 +6,7 @@ import {
 } from "@prisma/client";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
-import { getStorageBuckets } from "../../configs/storage.js";
+import { getStorageBucket } from "../../configs/storage.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
 import {
   fileFacts,
@@ -15,16 +15,16 @@ import {
 } from "./file-checks.service.js";
 import { evaluateFile, type FileVerdict } from "./file-checks.utils.js";
 import { inspectFile } from "./file-inspect/inspect.js";
+import { assertNotPublishing } from "./publish-jobs.js";
 import {
   fileBlocked,
   fileNotFound,
-  notReleaseOwner,
   platformTaken,
   releaseLocked,
   releaseNotFound,
 } from "./releases.errors.js";
 import { presentFile } from "./releases.presenter.js";
-import { lockOwnedRelease } from "./releases.service.js";
+import { lockDraft } from "./releases.service.js";
 import { EDITABLE_STATUSES } from "./releases.utils.js";
 
 // Deleting a file removes its object while holding the release lock
@@ -37,13 +37,12 @@ export interface UploadTargetInput {
 }
 
 /**
- * The release a new file may go into: it exists, the DEV created it, it's
- * still editable, the file it replaces belongs to it, and no other file holds
- * the platform. Checked before any bytes are stored, and again under the lock
- * when the file is saved.
+ * The release a new file may go into: it exists, it's still editable and not
+ * being published, the file it replaces belongs to it, and no other file
+ * holds the platform. Checked before any bytes are stored, and again under
+ * the lock when the file is saved.
  */
 export async function assertUploadTarget(
-  devId: string,
   releaseId: string,
   { platform, replace }: UploadTargetInput,
 ) {
@@ -52,10 +51,10 @@ export async function assertUploadTarget(
     include: { files: { select: { id: true, platform: true } } },
   });
   if (!release) throw releaseNotFound();
-  if (release.createdById !== devId) throw notReleaseOwner();
   if (!EDITABLE_STATUSES.includes(release.status)) {
     throw releaseLocked(release.status);
   }
+  assertNotPublishing(releaseId);
   if (replace && !release.files.some((file) => file.id === replace)) {
     throw fileNotFound();
   }
@@ -123,11 +122,11 @@ export async function deleteOrphan(
   releaseId: string,
 ): Promise<void> {
   try {
-    await getStorageDriver().deleteObject(getStorageBuckets().staging, key);
+    await getStorageDriver().deleteObject(getStorageBucket(), key);
   } catch (err) {
     logger.error(
       { key, releaseId, err },
-      "Orphaned staged object after a failed upload",
+      "Orphaned draft object after a failed upload",
     );
   }
 }
@@ -145,23 +144,19 @@ export interface StagedFile {
 }
 
 /**
- * Saves a file whose bytes are already in staging. The stored object is
+ * Saves a file whose bytes are already under draft/. The stored object is
  * inspected again (a modified client could skip the browser's checks) and
  * the file rules run on it; then the row is inserted under the release lock,
- * replacing the old file if asked. Any failure deletes the staged object.
+ * replacing the old file if asked. Any failure deletes the draft object.
  */
-export async function saveStagedFile(
-  devId: string,
-  releaseId: string,
-  staged: StagedFile,
-) {
+export async function saveStagedFile(releaseId: string, staged: StagedFile) {
   const { key, sha256, replace } = staged;
   let committed: { created: ReleaseFile; replaced: ReleaseFile | null };
   let verdict: FileVerdict;
   try {
-    const target = await assertUploadTarget(devId, releaseId, staged);
+    const target = await assertUploadTarget(releaseId, staged);
     const inspection = await inspectFile(
-      storageReader(getStorageBuckets().staging, key, staged.sizeBytes),
+      storageReader(getStorageBucket(), key, staged.sizeBytes),
       staged.name,
     );
     verdict = evaluateFile(
@@ -175,7 +170,7 @@ export async function saveStagedFile(
     }
 
     committed = await prisma.$transaction(async (tx) => {
-      await lockOwnedRelease(tx, releaseId, devId, EDITABLE_STATUSES);
+      await lockDraft(tx, releaseId);
       let old: ReleaseFile | null = null;
       if (replace) {
         old = await tx.releaseFile.findFirst({
@@ -219,21 +214,17 @@ export async function saveStagedFile(
  * delete rolls back; a missing object counts as deleted, so retries are safe.
  */
 export async function deleteReleaseFile(
-  devId: string,
   releaseId: string,
   fileId: string,
 ): Promise<void> {
   await prisma.$transaction(
     async (tx) => {
-      await lockOwnedRelease(tx, releaseId, devId, EDITABLE_STATUSES);
+      await lockDraft(tx, releaseId);
       const file = await tx.releaseFile.findFirst({
         where: { id: fileId, releaseId },
       });
       if (!file) throw fileNotFound();
-      await getStorageDriver().deleteObject(
-        getStorageBuckets().staging,
-        file.objectKey,
-      );
+      await getStorageDriver().deleteObject(getStorageBucket(), file.objectKey);
       await tx.releaseFile.delete({ where: { id: fileId } });
     },
     { timeout: DELETE_TRANSACTION_TIMEOUT_MS },

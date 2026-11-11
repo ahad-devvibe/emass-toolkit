@@ -16,7 +16,7 @@ export function versionProblem(input: string): string | null {
   return null
 }
 
-/** A draft may be saved without a version (it's needed to submit), but not with a malformed one. */
+/** A draft may be saved without a version (it's needed to publish), but not with a malformed one. */
 export const draftVersionProblem = (input: string): string | null => (input.trim() ? versionProblem(input) : null)
 
 /** One file's say on the version: its type, and the versions found in its name or contents. */
@@ -123,19 +123,18 @@ export function savedHolderFor(files: ReleaseFileItem[], overrides: MappingOverr
   return holder ? { fileId: holder.id, name: holder.name } : null
 }
 
-/** Why Send for review is blocked, or null when it can go. */
 /**
- * Why Send for review can't go ahead yet, or null. `blockedFiles` counts saved
+ * Why a draft can't go on to publishing yet, or null. `blockedFiles` counts saved
  * files the server's rules now refuse (e.g. installers of another version).
  */
-export function submitBlocker({ version, fileCount, queue, problems, blockedFiles = 0 }: { version: string; fileCount: number; queue: QueueState; problems: Record<string, MappingProblem>; blockedFiles?: number }): string | null {
+export function publishBlocker({ version, fileCount, queue, problems, blockedFiles = 0 }: { version: string; fileCount: number; queue: QueueState; problems: Record<string, MappingProblem>; blockedFiles?: number }): string | null {
   const kinds = new Set(Object.values(problems).map((problem) => problem.type))
   if (versionProblem(version)) return "Fix the version number first."
   if (isBusy(queue)) return "Wait for uploads to finish."
   if (hasUnfinished(queue)) return "Resume or cancel the paused uploads."
   if (hasFailures(queue)) return "Retry or remove the failed uploads."
   if (hasConflicts(queue)) return "Replace or re-map the uploads held on a platform."
-  if (blockedFiles > 0) return "Remove the files that can't be submitted, or change the version."
+  if (blockedFiles > 0) return "Remove the files that can't be published, or change the version."
   if (kinds.has("duplicate")) return "Each platform can have only one SDK."
   if (kinds.has("needsType")) return "Choose a type for every file."
   if (kinds.has("needsPlatform")) return "Choose a platform for every SDK."
@@ -153,7 +152,7 @@ export type DraftToContinue = {
   uploads: string | null
 }
 
-const OPEN_STATUSES: ReleaseStatus[] = ["draft", "changes_requested"]
+const OPEN_STATUSES: ReleaseStatus[] = ["draft"]
 
 /** What this tab is doing for one release's files, in a few words. */
 export function uploadsText(state: QueueState, releaseId: string): string | null {

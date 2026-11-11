@@ -46,7 +46,7 @@ export type FileBlockReason =
       status: ReleaseStatus;
     };
 
-/** Allowed, but the developer confirms these on submit. */
+/** Allowed, but the developer confirms these on publish. */
 export type FileCheckWarning =
   | { code: "NO_VERSION"; message: string }
   | {
@@ -118,7 +118,7 @@ export function evaluateFile(facts: FileFacts): FileVerdict {
   }
 
   const claims = versionClaims(inspection.versions);
-  // No release version yet: nothing to compare with. Submit judges every
+  // No release version yet: nothing to compare with. Publish judges every
   // file again once the draft has one
   for (const [version, fields] of claims) {
     if (expected === null || version === expected) continue;

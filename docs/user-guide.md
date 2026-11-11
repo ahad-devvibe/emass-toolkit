@@ -9,8 +9,8 @@ There are three kinds of accounts. Read the part that applies to you:
 | Account | You use the portal to… | Read |
 |---|---|---|
 | **Customer** | Download EMASS SDKs and documentation | [Getting access](#1-getting-access), [For customers](#2-for-customers) |
-| **Developer** | Prepare new versions and send them for review | [Signing in as staff](#signing-in-as-staff), [For developers](#3-for-developers) |
-| **Admin** | Approve new customers, review and publish versions | [Signing in as staff](#signing-in-as-staff), [For admins](#4-for-admins) |
+| **Developer** | Prepare, publish and roll back versions | [Signing in as staff](#signing-in-as-staff), [For developers](#3-for-developers) |
+| **Admin** | Approve new customers, manage domain rules, watch the dashboard | [Signing in as staff](#signing-in-as-staff), [For admins](#4-for-admins) |
 
 ---
 
@@ -115,8 +115,8 @@ published. To check that your download is complete and unchanged:
 ## 3. For developers
 
 Your home page is **All Releases**, a list of every release and its status.
-Only the developer who creates a release can change it. Other staff can view
-it.
+Developers manage releases from start to finish, and any developer can work on
+any release. Admins can view releases but not change them.
 
 ### Creating a release
 
@@ -146,31 +146,15 @@ Every file is checked before and after it uploads:
   match the release, that version has already shipped, or the exact same file
   was uploaded before. Fix the file and drop it again.
 - **Warnings** (usually documents): for example, a guide that mentions a
-  different version or no version at all. You can still submit; you'll be
-  asked to confirm the warnings, and the admin will see them.
+  different version or no version at all. You can still publish; you'll be
+  asked to confirm the warnings, and they stay in the release's Activity.
 
 If you drop an SDK for a platform that already has one, you'll be asked
 whether to replace the existing file or change the new file's type.
 
-### Sending it for review
-
-Open the release and select **Submit for review**. You need a version and at
-least one file. If there are warnings, review them and select **Submit
-anyway**. The release is now **In review** and waits for an admin.
-
-While it's in review you can't edit it. To change something, select
-**Withdraw to draft**, make your changes, and submit again.
-
-### When an admin requests changes
-
-The release moves to **Changes requested**, and the admin's feedback appears
-in its **Activity**. Select **Edit release**, make the changes, save, and
-submit again.
-
 ### Deleting a draft
 
-Drafts and releases with changes requested can be deleted with **Delete**.
-This removes the uploaded files too and can't be undone.
+Drafts can be deleted with **Delete**. This removes the uploaded files too and can't be undone.
 
 ### Testing a build before it ships
 
@@ -178,10 +162,62 @@ You can download any file from the release page, even before it's published,
 to test it. Download links for unpublished files last 5 minutes. Staff
 downloads never count as customer downloads.
 
+### Checking a release before publishing
+
+In the editor, select **Save and continue** to open the release. Four cards
+summarise a draft:
+
+| Card | What it tells you |
+|---|---|
+| **Version** | The new version compared with the live one, and whether every file matches it. |
+| **Checksums** | Whether any file is identical to one in the live version. |
+| **Core SDKs** | How many of the three platforms (Windows, macOS, Ubuntu) have an SDK, and which are missing. |
+| **Docs & release notes** | Whether documentation and release notes are included. |
+
+Green is fine, amber is worth a look, red is likely wrong. The cards don't
+stop you publishing; they help you decide.
+
+### Publishing
+
+Select **Publish v…**. You need a version and at least one file, and every
+upload on the release has to be finished or cancelled. If someone else's upload
+is still open, the dialog lists it with a **Cancel upload** button. If any file
+has warnings, the dialog lists them and the button reads **Publish anyway**.
+A progress bar shows the files being moved into place. While it runs the
+release can't be edited. When it's done:
+
+- the new version is **live** for customers;
+- the previous version becomes **Archived** (still available as an older
+  version);
+- customers who downloaded an earlier version of the product get a **new
+  version available** email.
+
+If publishing fails, nothing has changed and you can try again.
+
 ### After publishing
 
 A published release can't be changed, except for its notes: use **Edit
 release notes**. To fix a problem in a shipped version, release a new version.
+
+### Rolling back
+
+Use **Roll back** if a published or archived version has a problem.
+
+1. Enter an **Internal reason**. It's kept in the release history; customers
+   never see it.
+2. Optionally write a **Message to customers**. It's added to their email.
+3. Select **Roll back**.
+
+What happens:
+
+- **Rolling back the live version** removes it from customers. The most recent
+  earlier version becomes live again, if there is one.
+- **Rolling back an archived version** removes it from the list of older
+  versions. The live version is unchanged.
+- **Everyone who downloaded the withdrawn version is emailed.** When the emails
+  have gone out, the release's Activity shows how many customers were told.
+
+A rollback can't be undone. To ship a fix, create a new version.
 
 ---
 
@@ -193,8 +229,8 @@ Your home page is the **Dashboard**. It shows:
 
 - **Active users**, **pending sign-ups**, **competitors blocked**, **sign-ups
   rejected**, and **downloads** (total and the last 30 days).
-- **Two queues:** the oldest releases waiting for your review and the oldest
-  sign-ups waiting for approval. Select **Review all** to see everything.
+- **The sign-up queue:** the oldest sign-ups waiting for approval. Select
+  **Review all** to see everything.
 
 The page refreshes itself every 30 seconds.
 
@@ -222,60 +258,11 @@ Select **Add email domain**, enter a domain such as `example.com` (you can
 paste a full email address), and choose the list. Changes apply to **new**
 sign-ups only; existing accounts are unaffected.
 
-### Reviewing a release
+### Viewing releases
 
-Open a release that is **In review**. Four cards summarise it:
-
-| Card | What it tells you |
-|---|---|
-| **Version** | The new version compared with the live one, and whether every file matches it. |
-| **Checksums** | Whether any file is identical to one in the live version. |
-| **Core SDKs** | How many of the three platforms (Windows, macOS, Ubuntu) have an SDK, and which are missing. |
-| **Docs & release notes** | Whether documentation and release notes are included. |
-
-Green is fine, amber is worth a look, red is likely wrong. The cards don't
-stop you publishing; they help you decide. You can also download any file to
-test it, and read the **Activity** timeline, including any warnings the
-developer confirmed.
-
-Then choose one:
-
-- **Request changes:** write your **Feedback** and select **Send feedback**.
-  The release goes back to the developer.
-- **Publish:** see below.
-
-### Publishing
-
-Select **Publish v…** and confirm. A progress bar shows the files being moved
-into place. When it's done:
-
-- the new version is **live** for customers;
-- the previous version becomes **Archived** (still available as an older
-  version);
-- customers who downloaded an earlier version of the product get a **new
-  version available** email.
-
-If publishing fails, nothing has changed and you can try again.
-
-### Rolling back
-
-Use **Roll back** if a published or archived version has a problem.
-
-1. Enter an **Internal reason**. It's kept in the release history; customers
-   never see it.
-2. Optionally write a **Message to customers**. It's added to their email.
-3. Select **Roll back**.
-
-What happens:
-
-- **Rolling back the live version** removes it from customers. The most recent
-  earlier version becomes live again, if there is one.
-- **Rolling back an archived version** removes it from the list of older
-  versions. The live version is unchanged.
-- **Everyone who downloaded the withdrawn version is emailed.** When the emails
-  have gone out, the release's Activity shows how many customers were told.
-
-A rollback can't be undone. To ship a fix, a developer creates a new version.
+**All Releases** lists every release. You can open any of them, read its
+Activity and download its files, but only developers can change, publish or
+roll them back.
 
 ---
 
@@ -283,9 +270,7 @@ A rollback can't be undone. To ship a fix, a developer creates a new version.
 
 | Status | Meaning | Who sees it |
 |---|---|---|
-| **Draft** | Being prepared by its developer. | Staff |
-| **In review** | Waiting for an admin to publish it or request changes. | Staff |
-| **Changes requested** | Sent back to the developer with feedback. | Staff |
+| **Draft** | Being prepared by the developers. | Staff |
 | **Published** | The current version, live for customers. | Everyone |
 | **Archived** | Replaced by a newer version, still available as an older version. | Everyone |
 | **Rolled back** | Withdrawn from customers. | Staff |
@@ -337,8 +322,8 @@ already shipped, or the same file was uploaded before. Fix the file and drop
 it again.
 
 **(Developers) I can't edit my release.**
-It's in review: select **Withdraw to draft** first. Published releases only
-allow **Edit release notes**.
+Only drafts can be edited, and not while they're being published. Published
+releases only allow **Edit release notes**.
 
 **Who do I contact?**
 Use **Contact support** in the portal, or reach your Nanoveu contact.

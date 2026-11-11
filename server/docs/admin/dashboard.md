@@ -7,9 +7,7 @@ sidebar entry). It shows:
 - **Five stats:** active users (customers and staff), pending sign-ups,
   competitors blocked, sign-ups rejected, and total downloads (with the
   last 30 days).
-- **Queues:** the oldest 5 releases waiting for review and the oldest 5
-  sign-ups waiting for approval, each with its total. The two cards are always
-  the same height.
+- **Queue:** the oldest 5 sign-ups waiting for approval, with the total.
 
 API: `GET /api/admin/dashboard` (`requireAdmin`). Sign-ins, refusals and
 completed password resets are recorded in `AuthEvent` but not shown on the
@@ -25,13 +23,12 @@ dashboard.
   dashboard never reads it. It's kept for audits and a future activity-log
   page.
 - **Alerts are queues, not notifications:** they are derived from current
-  state (IN_REVIEW releases, PENDING_APPROVAL users), so they clear once
+  state (PENDING_APPROVAL users), so they clear once
   handled. There's no read/unread storage.
 - **Sign-ups:** the dashboard only shows who is waiting. Approve and reject
   stay on the Signups page ("Review all").
-- **Release queue order:** oldest submission first. Nothing edits a release in
-  review, so `updatedAt` stands in for the submit time. The time shown is the
-  latest SUBMITTED event.
+- **No release queue (2026-11-10):** developers now publish on their own, so
+  nothing waits for an admin.
 - **Blocked split:** stored as `User.blockReason`:
   - `COMPETITOR_DOMAIN` is set by signup;
   - `SIGNUP_REJECTED` is set by an admin reject;
@@ -48,8 +45,7 @@ dashboard.
     logged and never fails the request.
 - **Downloads:** the card counts `Download` rows, which are customer
   downloads only (staff downloads go to `ActivityLog`). Every click counts,
-  so it's downloads, not unique customers. It replaced "Releases in review",
-  which repeated the review queue's total.
+  so it's downloads, not unique customers.
 
 ## Assumptions
 
@@ -63,5 +59,5 @@ dashboard.
   days) before launch.
 - No activity-log page yet, so nobody sees failed sign-ins. Rate limiting is
   tracked in `tasks/review-fixes.md`.
-- Polling costs six small queries per open dashboard every 30 s.
+- Polling costs four small queries per open dashboard every 30 s.
   `User.status` has no index, which is fine at current sizes.

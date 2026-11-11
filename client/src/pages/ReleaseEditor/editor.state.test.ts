@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { ApiRequestError } from "@/lib/api/http"
 import type { ReleaseFileItem, ReleaseSummary } from "@/pages/Releases/releases.model"
-import { changedFields, changedMappings, draftsToContinue, draftVersionProblem, effectiveMapping, hasDuplicates, mappingProblems, productOptions, savedHolderFor, serverVersionProblem, submitBlocker, unsavedSummary, versionFromSdks, versionProblem } from "./editor.state"
+import { changedFields, changedMappings, draftsToContinue, draftVersionProblem, effectiveMapping, hasDuplicates, mappingProblems, productOptions, savedHolderFor, serverVersionProblem, publishBlocker, unsavedSummary, versionFromSdks, versionProblem } from "./editor.state"
 import { emptyQueue, queueReducer, type QueueState } from "@/features/uploads/uploads.state"
 
 const file = (id: string, kind: ReleaseFileItem["kind"], os: ReleaseFileItem["os"] = null): ReleaseFileItem => ({ id, name: `${id}.bin`, kind, os, contentType: "application/octet-stream", sizeBytes: 1, sha256: "a", createdAt: "2026-10-22T00:00:00.000Z", format: null, detectedVersions: [], blockedBy: [], warnings: [] })
@@ -126,24 +126,24 @@ describe("mappings", () => {
   })
 })
 
-describe("submitBlocker", () => {
+describe("publishBlocker", () => {
   const none = {}
 
   it("names the first thing in the way", () => {
-    expect(submitBlocker({ version: "x", fileCount: 1, queue: emptyQueue, problems: none })).toBe("Fix the version number first.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("queued"), problems: none })).toBe("Wait for uploads to finish.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("failed"), problems: none })).toBe("Retry or remove the failed uploads.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("conflict"), problems: none })).toBe("Replace or re-map the uploads held on a platform.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("paused"), problems: none })).toBe("Resume or cancel the paused uploads.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none, blockedFiles: 1 })).toBe("Remove the files that can't be submitted, or change the version.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "duplicate", os: "windows", others: [] } } })).toBe("Each platform can have only one SDK.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsType" } } })).toBe("Choose a type for every file.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsPlatform" } } })).toBe("Choose a platform for every SDK.")
-    expect(submitBlocker({ version: "1.0.0", fileCount: 0, queue: emptyQueue, problems: none })).toBe("Add at least one file.")
+    expect(publishBlocker({ version: "x", fileCount: 1, queue: emptyQueue, problems: none })).toBe("Fix the version number first.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("queued"), problems: none })).toBe("Wait for uploads to finish.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("failed"), problems: none })).toBe("Retry or remove the failed uploads.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("conflict"), problems: none })).toBe("Replace or re-map the uploads held on a platform.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: queueWith("paused"), problems: none })).toBe("Resume or cancel the paused uploads.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none, blockedFiles: 1 })).toBe("Remove the files that can't be published, or change the version.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "duplicate", os: "windows", others: [] } } })).toBe("Each platform can have only one SDK.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsType" } } })).toBe("Choose a type for every file.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: { a: { type: "needsPlatform" } } })).toBe("Choose a platform for every SDK.")
+    expect(publishBlocker({ version: "1.0.0", fileCount: 0, queue: emptyQueue, problems: none })).toBe("Add at least one file.")
   })
 
   it("clears once everything is in place", () => {
-    expect(submitBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none })).toBeNull()
+    expect(publishBlocker({ version: "1.0.0", fileCount: 1, queue: emptyQueue, problems: none })).toBeNull()
   })
 })
 
@@ -163,11 +163,11 @@ describe("draftsToContinue", () => {
 
   it("lists the developer's open drafts, newest first, and nobody else's", () => {
     const drafts = draftsToContinue(
-      [summary("old", "draft", "2026-10-01T00:00:00.000Z"), summary("new", "changes_requested", "2026-10-20T00:00:00.000Z"), summary("theirs", "draft", "2026-10-25T00:00:00.000Z", "dev2"), summary("live", "published", "2026-10-26T00:00:00.000Z")],
+      [summary("old", "draft", "2026-10-01T00:00:00.000Z"), summary("new", "draft", "2026-10-20T00:00:00.000Z"), summary("theirs", "draft", "2026-10-25T00:00:00.000Z", "dev2"), summary("live", "published", "2026-10-26T00:00:00.000Z")],
       emptyQueue,
       "dev1",
     )
-    expect(drafts.map((draft) => [draft.id, draft.status])).toEqual([["new", "changes_requested"], ["old", "draft"]])
+    expect(drafts.map((draft) => [draft.id, draft.status])).toEqual([["new", "draft"], ["old", "draft"]])
     expect(drafts[0].uploads).toBeNull()
   })
 

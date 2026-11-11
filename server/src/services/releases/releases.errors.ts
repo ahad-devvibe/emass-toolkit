@@ -9,17 +9,8 @@ export const releaseNotFound = () =>
 export const productNotFound = () =>
   ApiError.notFound("Product not found", "PRODUCT_NOT_FOUND");
 
-export const notReleaseOwner = () =>
-  new ApiError(
-    403,
-    "Only the developer who created this release can change it",
-    "NOT_RELEASE_OWNER",
-  );
-
 export const statusLabels: Record<ReleaseStatus, string> = {
   DRAFT: "a draft",
-  IN_REVIEW: "in review",
-  CHANGES_REQUESTED: "waiting for changes",
   PUBLISHED: "published",
   ARCHIVED: "archived",
   ROLLED_BACK: "rolled back",
@@ -39,11 +30,25 @@ export const versionNotNewer = (highestShipped: string) =>
     { highestShipped },
   );
 
-/** Submit (and publish) need a version; a draft may have none yet. */
+/** Publish needs a version; a draft may have none yet. */
 export const versionRequired = () =>
-  ApiError.badRequest(
-    "Set a version before sending this for review",
-    "VERSION_REQUIRED",
+  ApiError.badRequest("Set a version before publishing", "VERSION_REQUIRED");
+
+/** A publish job is copying this draft's files right now. */
+export const releasePublishing = () =>
+  ApiError.conflict(
+    "This release is being published, so it can't be changed right now",
+    "RELEASE_PUBLISHING",
+  );
+
+/** Every open upload on a draft: publishing now would ship it without them. */
+export const uploadsInProgress = (
+  uploads: { uploadId: string; name: string; startedBy: string }[],
+) =>
+  ApiError.conflict(
+    `${uploads.length === 1 ? "An upload hasn't" : `${uploads.length} uploads haven't`} finished on this release. Wait for ${uploads.length === 1 ? "it" : "them"}, or cancel ${uploads.length === 1 ? "it" : "them"} first.`,
+    "UPLOADS_IN_PROGRESS",
+    { uploads },
   );
 
 /** The release's files changed while publish was copying them. */
@@ -125,10 +130,10 @@ export interface FileWarningsByFile {
   warnings: FileCheckWarning[];
 }
 
-/** Submit needs `confirmWarnings: true` while any file has a warning. */
+/** Publish needs `confirmWarnings: true` while any file has a warning. */
 export const fileWarningsUnconfirmed = (files: FileWarningsByFile[]) =>
   ApiError.conflict(
-    `${files.length === 1 ? "A file has" : `${files.length} files have`} warnings. Check them, then submit at your own risk.`,
+    `${files.length === 1 ? "A file has" : `${files.length} files have`} warnings. Check them, then publish at your own risk.`,
     "FILE_WARNINGS_UNCONFIRMED",
     { files },
   );
@@ -139,10 +144,10 @@ export interface FileReasonsByFile {
   reasons: FileBlockReason[];
 }
 
-/** Submit refused: these files break a rule (e.g. after a version change). */
+/** Publish refused: these files break a rule (e.g. after a version change). */
 export const releaseFilesBlocked = (files: FileReasonsByFile[]) =>
   ApiError.conflict(
-    `${files.length === 1 ? `"${files[0].name}" can't` : `${files.length} files can't`} be submitted: ${files
+    `${files.length === 1 ? `"${files[0].name}" can't` : `${files.length} files can't`} be published: ${files
       .flatMap((file) => file.reasons.map((reason) => reason.message))
       .join(" ")}`,
     "FILE_BLOCKED",

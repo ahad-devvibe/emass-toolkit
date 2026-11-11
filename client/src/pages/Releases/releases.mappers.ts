@@ -5,7 +5,7 @@ import type { ReleaseStatus } from "./releases.types"
 
 // --- Wire shapes, exactly as server/src/services/releases/releases.presenter.ts sends them ---
 
-export type ApiStatus = "DRAFT" | "IN_REVIEW" | "CHANGES_REQUESTED" | "PUBLISHED" | "ARCHIVED" | "ROLLED_BACK"
+export type ApiStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED" | "ROLLED_BACK"
 export type ApiKind = "SDK" | "DOC"
 export type ApiPlatform = "WINDOWS" | "MACOS" | "UBUNTU"
 type ApiEventType = "CREATED" | "SUBMITTED" | "WITHDRAWN" | "CHANGES_REQUESTED" | "PUBLISHED" | "ARCHIVED" | "ROLLED_BACK" | "RESTORED" | "NOTES_EDITED" | "CUSTOMERS_NOTIFIED"
@@ -51,14 +51,12 @@ export type ApiReleaseDetail = ApiReleaseSummary & {
 
 export type ApiPublishStatus = { job: PublishJob | null; status: ApiStatus }
 
-export type ApiReleaseList = { releases: ApiReleaseSummary[]; nextCursor: string | null; counts: Record<ApiStatus, number>; needsYou?: number }
+export type ApiReleaseList = { releases: ApiReleaseSummary[]; nextCursor: string | null; counts: Record<ApiStatus, number> }
 
 // --- Enum translation, both ways ---
 
 const statusFromApi: Record<ApiStatus, ReleaseStatus> = {
   DRAFT: "draft",
-  IN_REVIEW: "in_review",
-  CHANGES_REQUESTED: "changes_requested",
   PUBLISHED: "published",
   ARCHIVED: "archived",
   ROLLED_BACK: "rolled_back",
@@ -161,5 +159,5 @@ export function toReleaseList(list: ApiReleaseList): ReleaseList {
   for (const [status, count] of Object.entries(list.counts) as [ApiStatus, number][]) {
     if (status in statusFromApi) counts[statusFromApi[status]] = count
   }
-  return { releases: list.releases.map(toReleaseSummary), nextCursor: list.nextCursor, counts, needsYou: list.needsYou ?? 0 }
+  return { releases: list.releases.map(toReleaseSummary), nextCursor: list.nextCursor, counts }
 }

@@ -413,12 +413,10 @@ describe("POST /api/releases/:id/files/check: validation", () => {
 describe("POST /api/releases/:id/files/check: access", () => {
   const body = { name: "setup.exe", size: 1000 };
 
-  it("is only for the DEV who created the release", async () => {
+  it("is for developers only, any of them", async () => {
     const release = await draft();
 
-    const other = await post(release.id, body, otherDev);
-    expect(other.status).toBe(403);
-    expect(other.body.code).toBe("NOT_RELEASE_OWNER");
+    expect((await post(release.id, body, otherDev)).status).not.toBe(403);
 
     for (const user of [admin, customer]) {
       expect((await post(release.id, body, user)).status).toBe(403);
@@ -430,7 +428,7 @@ describe("POST /api/releases/:id/files/check: access", () => {
   });
 
   it("refuses releases that can't be edited", async () => {
-    const release = await draft({ status: "IN_REVIEW" });
+    const release = await draft({ status: "PUBLISHED" });
     const res = await post(release.id, body);
     expect(res.status).toBe(409);
     expect(res.body.code).toBe("RELEASE_LOCKED");

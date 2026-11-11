@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { ReleaseEventItem, ReleaseFileItem } from "@/pages/Releases/releases.model"
-import { filesUpdatedAfterFeedback, latestEvent, toCatalogFile } from "./release-detail.utils"
+import { latestEvent, toCatalogFile } from "./release-detail.utils"
 
 const actor = { id: "u1", name: "Dana", role: "DEV" as const }
 const event = (type: ReleaseEventItem["type"], at: string, note: string | null = null): ReleaseEventItem => ({ id: `${type}-${at}`, type, actor, note, at })
@@ -11,20 +11,6 @@ describe("latestEvent", () => {
     const events = [event("changes_requested", "2026-10-01T00:00:00Z", "first"), event("submitted", "2026-10-02T00:00:00Z"), event("changes_requested", "2026-10-03T00:00:00Z", "second")]
     expect(latestEvent({ events }, "changes_requested")?.note).toBe("second")
     expect(latestEvent({ events }, "published")).toBeUndefined()
-  })
-})
-
-describe("filesUpdatedAfterFeedback", () => {
-  it("lists files added after the last change request", () => {
-    const release = {
-      events: [event("created", "2026-10-01T00:00:00Z"), event("changes_requested", "2026-10-05T00:00:00Z")],
-      files: [file("old.msi", "2026-10-02T00:00:00Z"), file("new.dmg", "2026-10-06T00:00:00Z")],
-    }
-    expect(filesUpdatedAfterFeedback(release).map((item) => item.name)).toEqual(["new.dmg"])
-  })
-
-  it("is empty when no changes were requested", () => {
-    expect(filesUpdatedAfterFeedback({ events: [], files: [file("a.msi", "2026-10-02T00:00:00Z")] })).toEqual([])
   })
 })
 

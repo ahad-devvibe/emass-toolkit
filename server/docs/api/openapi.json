@@ -37,7 +37,7 @@
     },
     {
       "name": "Releases",
-      "description": "Release management for staff. Drafts are changed only by the DEV who created them; ADMIN reviews, publishes and rolls back."
+      "description": "Release management. Developers (any DEV) draft, publish and roll back releases; ADMIN can only read them."
     }
   ],
   "paths": {
@@ -3040,21 +3040,6 @@
                             }
                           }
                         },
-                        "releaseAlerts": {
-                          "type": "object",
-                          "description": "IN_REVIEW releases, oldest submission first",
-                          "properties": {
-                            "total": {
-                              "type": "integer"
-                            },
-                            "items": {
-                              "type": "array",
-                              "items": {
-                                "type": "object"
-                              }
-                            }
-                          }
-                        },
                         "signupAlerts": {
                           "type": "object",
                           "description": "PENDING_APPROVAL users, oldest first",
@@ -3824,7 +3809,7 @@
         "tags": [
           "Catalog"
         ],
-        "summary": "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts, reviews and rolled-back releases never appear; storage keys are never sent",
+        "summary": "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts and rolled-back releases never appear; storage keys are never sent",
         "security": [
           {
             "cookieAuth": []
@@ -4533,7 +4518,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Staff (DEV/ADMIN), any release state: a read-only link to the file. Staged files get a short link to the staging bucket (STAGED_DOWNLOAD_URL_TTL_SECONDS, default 5 min); shipped ones the normal link. Logged to ActivityLog, never Download.",
+        "summary": "Staff (DEV/ADMIN), any release state: a read-only link to the file. Draft files get a short link (STAGED_DOWNLOAD_URL_TTL_SECONDS, default 5 min); shipped ones the normal link. Logged to ActivityLog, never Download.",
         "security": [
           {
             "cookieAuth": []
@@ -4883,14 +4868,12 @@
                                   "string",
                                   "null"
                                 ],
-                                "description": "null while a draft has no version yet; every release in review or shipped has one"
+                                "description": "null while a draft has no version yet; every shipped release has one"
                               },
                               "status": {
                                 "type": "string",
                                 "enum": [
                                   "DRAFT",
-                                  "IN_REVIEW",
-                                  "CHANGES_REQUESTED",
                                   "PUBLISHED",
                                   "ARCHIVED",
                                   "ROLLED_BACK"
@@ -4941,10 +4924,6 @@
                           "additionalProperties": {
                             "type": "integer"
                           }
-                        },
-                        "needsYou": {
-                          "type": "integer",
-                          "description": "What waits for the caller, ignoring every filter: an admin's releases in review, or a dev's own releases with changes requested. Drives the sidebar badge."
                         }
                       }
                     }
@@ -5096,7 +5075,7 @@
           }
         ],
         "requestBody": {
-          "description": "Product, plus an optional semver version and Markdown notes. Without a version the draft is created anyway, so files can upload first; the version is set later and required to submit",
+          "description": "Product, plus an optional semver version and Markdown notes. Without a version the draft is created anyway, so files can upload first; the version is set later and required to publish",
           "required": true,
           "content": {
             "application/json": {
@@ -5171,14 +5150,12 @@
                                 "string",
                                 "null"
                               ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
+                              "description": "null while a draft has no version yet; every shipped release has one"
                             },
                             "status": {
                               "type": "string",
                               "enum": [
                                 "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
                                 "PUBLISHED",
                                 "ARCHIVED",
                                 "ROLLED_BACK"
@@ -5314,7 +5291,7 @@
                                   },
                                   "blockedBy": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+                                    "description": "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -5353,8 +5330,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -5384,8 +5359,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -5401,7 +5374,7 @@
                                   },
                                   "warnings": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+                                    "description": "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -5438,8 +5411,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -5469,8 +5440,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -5541,7 +5510,7 @@
                             },
                             "review": {
                               "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
+                              "description": "What a publish would archive (while DRAFT) and what a rollback would restore (while PUBLISHED)",
                               "properties": {
                                 "currentPublished": {
                                   "type": "object",
@@ -6065,14 +6034,12 @@
                                 "string",
                                 "null"
                               ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
+                              "description": "null while a draft has no version yet; every shipped release has one"
                             },
                             "status": {
                               "type": "string",
                               "enum": [
                                 "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
                                 "PUBLISHED",
                                 "ARCHIVED",
                                 "ROLLED_BACK"
@@ -6208,7 +6175,7 @@
                                   },
                                   "blockedBy": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+                                    "description": "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -6247,8 +6214,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -6278,8 +6243,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -6295,7 +6258,7 @@
                                   },
                                   "warnings": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+                                    "description": "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -6332,8 +6295,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -6363,8 +6324,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -6435,7 +6394,7 @@
                             },
                             "review": {
                               "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
+                              "description": "What a publish would archive (while DRAFT) and what a rollback would restore (while PUBLISHED)",
                               "properties": {
                                 "currentPublished": {
                                   "type": "object",
@@ -6607,8 +6566,8 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Save draft: product, version, notes and file type/platform mappings (creating DEV; DRAFT or CHANGES_REQUESTED)",
-        "description": "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved. productId moves the draft to another active product (staged files don't move; publish groups them by the release's product and version); a version is then checked against that product. version: null clears the version.",
+        "summary": "Save draft: product, version, notes and file type/platform mappings (DEV)",
+        "description": "The final mapping of all files is checked as a whole, so platform swaps work in one save; a platform on two files is refused and nothing is saved. productId moves the draft to another active product (draft files don't move; publish groups them by the release's product and version); a version is then checked against that product. version: null clears the version.",
         "security": [
           {
             "cookieAuth": []
@@ -6735,14 +6694,12 @@
                                 "string",
                                 "null"
                               ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
+                              "description": "null while a draft has no version yet; every shipped release has one"
                             },
                             "status": {
                               "type": "string",
                               "enum": [
                                 "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
                                 "PUBLISHED",
                                 "ARCHIVED",
                                 "ROLLED_BACK"
@@ -6878,7 +6835,7 @@
                                   },
                                   "blockedBy": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+                                    "description": "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -6917,8 +6874,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -6948,8 +6903,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -6965,7 +6918,7 @@
                                   },
                                   "warnings": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+                                    "description": "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -7002,8 +6955,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -7033,8 +6984,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -7105,7 +7054,7 @@
                             },
                             "review": {
                               "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
+                              "description": "What a publish would archive (while DRAFT) and what a rollback would restore (while PUBLISHED)",
                               "properties": {
                                 "currentPublished": {
                                   "type": "object",
@@ -7255,8 +7204,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -7363,7 +7311,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Delete a draft and its staged files (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "summary": "Delete a draft and its files (DEV)",
         "security": [
           {
             "cookieAuth": []
@@ -7480,8 +7428,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -7625,7 +7572,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Edit the notes of a PUBLISHED release (creating DEV or ADMIN); logged as NOTES_EDITED",
+        "summary": "Edit the notes of a PUBLISHED release (DEV); logged as NOTES_EDITED",
         "security": [
           {
             "cookieAuth": []
@@ -7710,14 +7657,12 @@
                                 "string",
                                 "null"
                               ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
+                              "description": "null while a draft has no version yet; every shipped release has one"
                             },
                             "status": {
                               "type": "string",
                               "enum": [
                                 "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
                                 "PUBLISHED",
                                 "ARCHIVED",
                                 "ROLLED_BACK"
@@ -7853,7 +7798,7 @@
                                   },
                                   "blockedBy": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+                                    "description": "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -7892,8 +7837,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -7923,8 +7866,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -7940,7 +7881,7 @@
                                   },
                                   "warnings": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+                                    "description": "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -7977,8 +7918,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -8008,8 +7947,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -8080,2078 +8017,7 @@
                             },
                             "review": {
                               "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
-                              "properties": {
-                                "currentPublished": {
-                                  "type": "object",
-                                  "nullable": true,
-                                  "properties": {
-                                    "id": {
-                                      "type": "string"
-                                    },
-                                    "version": {
-                                      "type": "string"
-                                    }
-                                  }
-                                },
-                                "restoreTarget": {
-                                  "type": "object",
-                                  "nullable": true,
-                                  "properties": {
-                                    "id": {
-                                      "type": "string"
-                                    },
-                                    "version": {
-                                      "type": "string"
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid body",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        400
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "VALIDATION_ERROR"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        401
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "TOKEN_MISSING",
-                        "TOKEN_INVALID",
-                        "TOKEN_EXPIRED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this role or user",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        403
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        404
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "RELEASE_NOT_FOUND"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Wrong status for this action",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        409
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "RELEASE_LOCKED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/releases/{id}/submit": {
-      "post": {
-        "operationId": "submitRelease",
-        "tags": [
-          "Releases"
-        ],
-        "summary": "Send for review (creating DEV)",
-        "description": "Every file is judged again first. A blocked file refuses the submit (FILE_BLOCKED, details.files). Warnings need confirmWarnings: true (else FILE_WARNINGS_UNCONFIRMED, details.files); the SUBMITTED event then lists them.",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "confirmWarnings": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "In review",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        200
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "allOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "product": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                }
-                              }
-                            },
-                            "version": {
-                              "type": [
-                                "string",
-                                "null"
-                              ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
-                            },
-                            "status": {
-                              "type": "string",
-                              "enum": [
-                                "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
-                                "PUBLISHED",
-                                "ARCHIVED",
-                                "ROLLED_BACK"
-                              ]
-                            },
-                            "createdBy": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "role": {
-                                  "type": "string",
-                                  "enum": [
-                                    "DEV",
-                                    "ADMIN"
-                                  ]
-                                }
-                              }
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "fileCount": {
-                              "type": "integer"
-                            },
-                            "totalBytes": {
-                              "type": "integer"
-                            }
-                          }
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "releaseNotes": {
-                              "type": "string",
-                              "description": "Markdown"
-                            },
-                            "publishedAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "nullable": true
-                            },
-                            "publishedBy": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "role": {
-                                  "type": "string",
-                                  "enum": [
-                                    "DEV",
-                                    "ADMIN"
-                                  ]
-                                }
-                              },
-                              "nullable": true
-                            },
-                            "files": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "description": "A release file. Storage keys are never exposed.",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "type": "string",
-                                    "enum": [
-                                      "SDK",
-                                      "DOC"
-                                    ],
-                                    "nullable": true,
-                                    "description": "null while unmapped in a draft"
-                                  },
-                                  "platform": {
-                                    "type": "string",
-                                    "enum": [
-                                      "WINDOWS",
-                                      "MACOS",
-                                      "UBUNTU"
-                                    ],
-                                    "nullable": true
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "contentType": {
-                                    "type": "string"
-                                  },
-                                  "sizeBytes": {
-                                    "type": "integer"
-                                  },
-                                  "sha256": {
-                                    "type": "string",
-                                    "description": "Computed by the server on upload"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  },
-                                  "format": {
-                                    "type": "string",
-                                    "enum": [
-                                      "PE",
-                                      "DEB",
-                                      "PKG",
-                                      "PDF",
-                                      "OTHER"
-                                    ],
-                                    "nullable": true,
-                                    "description": "Detected from the first bytes at upload; null for files uploaded before inspection existed (inspected on the next read)"
-                                  },
-                                  "detectedVersions": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    },
-                                    "description": "Versions found in the name and inside the file at upload"
-                                  },
-                                  "blockedBy": {
-                                    "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
-                                    "items": {
-                                      "type": "object",
-                                      "required": [
-                                        "code",
-                                        "message"
-                                      ],
-                                      "properties": {
-                                        "code": {
-                                          "type": "string",
-                                          "enum": [
-                                            "SAME_CONTENT",
-                                            "VERSION_MISMATCH",
-                                            "VERSION_EXISTS",
-                                            "DAMAGED"
-                                          ]
-                                        },
-                                        "message": {
-                                          "type": "string"
-                                        },
-                                        "version": {
-                                          "type": "string"
-                                        },
-                                        "fields": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "string"
-                                          }
-                                        },
-                                        "expected": {
-                                          "type": "string"
-                                        },
-                                        "releaseId": {
-                                          "type": "string"
-                                        },
-                                        "status": {
-                                          "type": "string",
-                                          "enum": [
-                                            "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
-                                            "PUBLISHED",
-                                            "ARCHIVED",
-                                            "ROLLED_BACK"
-                                          ]
-                                        },
-                                        "match": {
-                                          "type": "object",
-                                          "description": "SAME_CONTENT only",
-                                          "properties": {
-                                            "fileId": {
-                                              "type": "string"
-                                            },
-                                            "fileName": {
-                                              "type": "string"
-                                            },
-                                            "releaseId": {
-                                              "type": "string"
-                                            },
-                                            "version": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ],
-                                              "description": "null for a draft that has no version yet"
-                                            },
-                                            "status": {
-                                              "type": "string",
-                                              "enum": [
-                                                "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
-                                                "PUBLISHED",
-                                                "ARCHIVED",
-                                                "ROLLED_BACK"
-                                              ]
-                                            },
-                                            "sameRelease": {
-                                              "type": "boolean"
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  },
-                                  "warnings": {
-                                    "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
-                                    "items": {
-                                      "type": "object",
-                                      "required": [
-                                        "code",
-                                        "message"
-                                      ],
-                                      "properties": {
-                                        "code": {
-                                          "type": "string",
-                                          "enum": [
-                                            "NO_VERSION",
-                                            "DOC_VERSION_MISMATCH"
-                                          ]
-                                        },
-                                        "message": {
-                                          "type": "string"
-                                        },
-                                        "version": {
-                                          "type": "string"
-                                        },
-                                        "fields": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "string"
-                                          }
-                                        },
-                                        "expected": {
-                                          "type": "string"
-                                        },
-                                        "releaseId": {
-                                          "type": "string"
-                                        },
-                                        "status": {
-                                          "type": "string",
-                                          "enum": [
-                                            "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
-                                            "PUBLISHED",
-                                            "ARCHIVED",
-                                            "ROLLED_BACK"
-                                          ]
-                                        },
-                                        "match": {
-                                          "type": "object",
-                                          "description": "SAME_CONTENT only",
-                                          "properties": {
-                                            "fileId": {
-                                              "type": "string"
-                                            },
-                                            "fileName": {
-                                              "type": "string"
-                                            },
-                                            "releaseId": {
-                                              "type": "string"
-                                            },
-                                            "version": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ],
-                                              "description": "null for a draft that has no version yet"
-                                            },
-                                            "status": {
-                                              "type": "string",
-                                              "enum": [
-                                                "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
-                                                "PUBLISHED",
-                                                "ARCHIVED",
-                                                "ROLLED_BACK"
-                                              ]
-                                            },
-                                            "sameRelease": {
-                                              "type": "boolean"
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            },
-                            "events": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "type": {
-                                    "type": "string",
-                                    "enum": [
-                                      "CREATED",
-                                      "SUBMITTED",
-                                      "WITHDRAWN",
-                                      "CHANGES_REQUESTED",
-                                      "PUBLISHED",
-                                      "ARCHIVED",
-                                      "ROLLED_BACK",
-                                      "RESTORED",
-                                      "NOTES_EDITED",
-                                      "CUSTOMERS_NOTIFIED"
-                                    ]
-                                  },
-                                  "actor": {
-                                    "type": "object",
-                                    "properties": {
-                                      "id": {
-                                        "type": "string"
-                                      },
-                                      "name": {
-                                        "type": "string"
-                                      },
-                                      "role": {
-                                        "type": "string",
-                                        "enum": [
-                                          "DEV",
-                                          "ADMIN"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "note": {
-                                    "type": "string",
-                                    "nullable": true
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  }
-                                }
-                              }
-                            },
-                            "review": {
-                              "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
-                              "properties": {
-                                "currentPublished": {
-                                  "type": "object",
-                                  "nullable": true,
-                                  "properties": {
-                                    "id": {
-                                      "type": "string"
-                                    },
-                                    "version": {
-                                      "type": "string"
-                                    }
-                                  }
-                                },
-                                "restoreTarget": {
-                                  "type": "object",
-                                  "nullable": true,
-                                  "properties": {
-                                    "id": {
-                                      "type": "string"
-                                    },
-                                    "version": {
-                                      "type": "string"
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Not ready",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        400
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "NO_FILES",
-                        "FILE_TYPE_MISSING",
-                        "SDK_PLATFORM_MISSING",
-                        "VERSION_REQUIRED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        401
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "TOKEN_MISSING",
-                        "TOKEN_INVALID",
-                        "TOKEN_EXPIRED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this role or user",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        403
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        404
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "RELEASE_NOT_FOUND"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        409
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "RELEASE_LOCKED",
-                        "VERSION_NOT_NEWER",
-                        "FILE_BLOCKED",
-                        "FILE_WARNINGS_UNCONFIRMED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/releases/{id}/withdraw": {
-      "post": {
-        "operationId": "withdrawRelease",
-        "tags": [
-          "Releases"
-        ],
-        "summary": "Take a release out of review, back to draft (creating DEV)",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Draft again",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        200
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "allOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "product": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                }
-                              }
-                            },
-                            "version": {
-                              "type": [
-                                "string",
-                                "null"
-                              ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
-                            },
-                            "status": {
-                              "type": "string",
-                              "enum": [
-                                "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
-                                "PUBLISHED",
-                                "ARCHIVED",
-                                "ROLLED_BACK"
-                              ]
-                            },
-                            "createdBy": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "role": {
-                                  "type": "string",
-                                  "enum": [
-                                    "DEV",
-                                    "ADMIN"
-                                  ]
-                                }
-                              }
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "fileCount": {
-                              "type": "integer"
-                            },
-                            "totalBytes": {
-                              "type": "integer"
-                            }
-                          }
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "releaseNotes": {
-                              "type": "string",
-                              "description": "Markdown"
-                            },
-                            "publishedAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "nullable": true
-                            },
-                            "publishedBy": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "role": {
-                                  "type": "string",
-                                  "enum": [
-                                    "DEV",
-                                    "ADMIN"
-                                  ]
-                                }
-                              },
-                              "nullable": true
-                            },
-                            "files": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "description": "A release file. Storage keys are never exposed.",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "type": "string",
-                                    "enum": [
-                                      "SDK",
-                                      "DOC"
-                                    ],
-                                    "nullable": true,
-                                    "description": "null while unmapped in a draft"
-                                  },
-                                  "platform": {
-                                    "type": "string",
-                                    "enum": [
-                                      "WINDOWS",
-                                      "MACOS",
-                                      "UBUNTU"
-                                    ],
-                                    "nullable": true
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "contentType": {
-                                    "type": "string"
-                                  },
-                                  "sizeBytes": {
-                                    "type": "integer"
-                                  },
-                                  "sha256": {
-                                    "type": "string",
-                                    "description": "Computed by the server on upload"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  },
-                                  "format": {
-                                    "type": "string",
-                                    "enum": [
-                                      "PE",
-                                      "DEB",
-                                      "PKG",
-                                      "PDF",
-                                      "OTHER"
-                                    ],
-                                    "nullable": true,
-                                    "description": "Detected from the first bytes at upload; null for files uploaded before inspection existed (inspected on the next read)"
-                                  },
-                                  "detectedVersions": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    },
-                                    "description": "Versions found in the name and inside the file at upload"
-                                  },
-                                  "blockedBy": {
-                                    "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
-                                    "items": {
-                                      "type": "object",
-                                      "required": [
-                                        "code",
-                                        "message"
-                                      ],
-                                      "properties": {
-                                        "code": {
-                                          "type": "string",
-                                          "enum": [
-                                            "SAME_CONTENT",
-                                            "VERSION_MISMATCH",
-                                            "VERSION_EXISTS",
-                                            "DAMAGED"
-                                          ]
-                                        },
-                                        "message": {
-                                          "type": "string"
-                                        },
-                                        "version": {
-                                          "type": "string"
-                                        },
-                                        "fields": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "string"
-                                          }
-                                        },
-                                        "expected": {
-                                          "type": "string"
-                                        },
-                                        "releaseId": {
-                                          "type": "string"
-                                        },
-                                        "status": {
-                                          "type": "string",
-                                          "enum": [
-                                            "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
-                                            "PUBLISHED",
-                                            "ARCHIVED",
-                                            "ROLLED_BACK"
-                                          ]
-                                        },
-                                        "match": {
-                                          "type": "object",
-                                          "description": "SAME_CONTENT only",
-                                          "properties": {
-                                            "fileId": {
-                                              "type": "string"
-                                            },
-                                            "fileName": {
-                                              "type": "string"
-                                            },
-                                            "releaseId": {
-                                              "type": "string"
-                                            },
-                                            "version": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ],
-                                              "description": "null for a draft that has no version yet"
-                                            },
-                                            "status": {
-                                              "type": "string",
-                                              "enum": [
-                                                "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
-                                                "PUBLISHED",
-                                                "ARCHIVED",
-                                                "ROLLED_BACK"
-                                              ]
-                                            },
-                                            "sameRelease": {
-                                              "type": "boolean"
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  },
-                                  "warnings": {
-                                    "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
-                                    "items": {
-                                      "type": "object",
-                                      "required": [
-                                        "code",
-                                        "message"
-                                      ],
-                                      "properties": {
-                                        "code": {
-                                          "type": "string",
-                                          "enum": [
-                                            "NO_VERSION",
-                                            "DOC_VERSION_MISMATCH"
-                                          ]
-                                        },
-                                        "message": {
-                                          "type": "string"
-                                        },
-                                        "version": {
-                                          "type": "string"
-                                        },
-                                        "fields": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "string"
-                                          }
-                                        },
-                                        "expected": {
-                                          "type": "string"
-                                        },
-                                        "releaseId": {
-                                          "type": "string"
-                                        },
-                                        "status": {
-                                          "type": "string",
-                                          "enum": [
-                                            "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
-                                            "PUBLISHED",
-                                            "ARCHIVED",
-                                            "ROLLED_BACK"
-                                          ]
-                                        },
-                                        "match": {
-                                          "type": "object",
-                                          "description": "SAME_CONTENT only",
-                                          "properties": {
-                                            "fileId": {
-                                              "type": "string"
-                                            },
-                                            "fileName": {
-                                              "type": "string"
-                                            },
-                                            "releaseId": {
-                                              "type": "string"
-                                            },
-                                            "version": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ],
-                                              "description": "null for a draft that has no version yet"
-                                            },
-                                            "status": {
-                                              "type": "string",
-                                              "enum": [
-                                                "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
-                                                "PUBLISHED",
-                                                "ARCHIVED",
-                                                "ROLLED_BACK"
-                                              ]
-                                            },
-                                            "sameRelease": {
-                                              "type": "boolean"
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            },
-                            "events": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "type": {
-                                    "type": "string",
-                                    "enum": [
-                                      "CREATED",
-                                      "SUBMITTED",
-                                      "WITHDRAWN",
-                                      "CHANGES_REQUESTED",
-                                      "PUBLISHED",
-                                      "ARCHIVED",
-                                      "ROLLED_BACK",
-                                      "RESTORED",
-                                      "NOTES_EDITED",
-                                      "CUSTOMERS_NOTIFIED"
-                                    ]
-                                  },
-                                  "actor": {
-                                    "type": "object",
-                                    "properties": {
-                                      "id": {
-                                        "type": "string"
-                                      },
-                                      "name": {
-                                        "type": "string"
-                                      },
-                                      "role": {
-                                        "type": "string",
-                                        "enum": [
-                                          "DEV",
-                                          "ADMIN"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "note": {
-                                    "type": "string",
-                                    "nullable": true
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  }
-                                }
-                              }
-                            },
-                            "review": {
-                              "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
-                              "properties": {
-                                "currentPublished": {
-                                  "type": "object",
-                                  "nullable": true,
-                                  "properties": {
-                                    "id": {
-                                      "type": "string"
-                                    },
-                                    "version": {
-                                      "type": "string"
-                                    }
-                                  }
-                                },
-                                "restoreTarget": {
-                                  "type": "object",
-                                  "nullable": true,
-                                  "properties": {
-                                    "id": {
-                                      "type": "string"
-                                    },
-                                    "version": {
-                                      "type": "string"
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        401
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "TOKEN_MISSING",
-                        "TOKEN_INVALID",
-                        "TOKEN_EXPIRED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this role or user",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        403
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        404
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "RELEASE_NOT_FOUND"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Wrong status for this action",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        409
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "code": {
-                      "type": "string",
-                      "enum": [
-                        "RELEASE_LOCKED"
-                      ]
-                    },
-                    "details": {}
-                  },
-                  "required": [
-                    "success",
-                    "statusCode",
-                    "message",
-                    "code"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/releases/{id}/request-changes": {
-      "post": {
-        "operationId": "requestReleaseChanges",
-        "tags": [
-          "Releases"
-        ],
-        "summary": "Send a release in review back with feedback (ADMIN)",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "description": "Feedback, 1–2000 chars",
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "note": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 2000
-                  }
-                },
-                "required": [
-                  "note"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Changes requested",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "statusCode": {
-                      "type": "integer",
-                      "enum": [
-                        200
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "allOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string"
-                            },
-                            "product": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                }
-                              }
-                            },
-                            "version": {
-                              "type": [
-                                "string",
-                                "null"
-                              ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
-                            },
-                            "status": {
-                              "type": "string",
-                              "enum": [
-                                "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
-                                "PUBLISHED",
-                                "ARCHIVED",
-                                "ROLLED_BACK"
-                              ]
-                            },
-                            "createdBy": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "role": {
-                                  "type": "string",
-                                  "enum": [
-                                    "DEV",
-                                    "ADMIN"
-                                  ]
-                                }
-                              }
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "fileCount": {
-                              "type": "integer"
-                            },
-                            "totalBytes": {
-                              "type": "integer"
-                            }
-                          }
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "releaseNotes": {
-                              "type": "string",
-                              "description": "Markdown"
-                            },
-                            "publishedAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "nullable": true
-                            },
-                            "publishedBy": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "role": {
-                                  "type": "string",
-                                  "enum": [
-                                    "DEV",
-                                    "ADMIN"
-                                  ]
-                                }
-                              },
-                              "nullable": true
-                            },
-                            "files": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "description": "A release file. Storage keys are never exposed.",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "type": "string",
-                                    "enum": [
-                                      "SDK",
-                                      "DOC"
-                                    ],
-                                    "nullable": true,
-                                    "description": "null while unmapped in a draft"
-                                  },
-                                  "platform": {
-                                    "type": "string",
-                                    "enum": [
-                                      "WINDOWS",
-                                      "MACOS",
-                                      "UBUNTU"
-                                    ],
-                                    "nullable": true
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "contentType": {
-                                    "type": "string"
-                                  },
-                                  "sizeBytes": {
-                                    "type": "integer"
-                                  },
-                                  "sha256": {
-                                    "type": "string",
-                                    "description": "Computed by the server on upload"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  },
-                                  "format": {
-                                    "type": "string",
-                                    "enum": [
-                                      "PE",
-                                      "DEB",
-                                      "PKG",
-                                      "PDF",
-                                      "OTHER"
-                                    ],
-                                    "nullable": true,
-                                    "description": "Detected from the first bytes at upload; null for files uploaded before inspection existed (inspected on the next read)"
-                                  },
-                                  "detectedVersions": {
-                                    "type": "array",
-                                    "items": {
-                                      "type": "string"
-                                    },
-                                    "description": "Versions found in the name and inside the file at upload"
-                                  },
-                                  "blockedBy": {
-                                    "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
-                                    "items": {
-                                      "type": "object",
-                                      "required": [
-                                        "code",
-                                        "message"
-                                      ],
-                                      "properties": {
-                                        "code": {
-                                          "type": "string",
-                                          "enum": [
-                                            "SAME_CONTENT",
-                                            "VERSION_MISMATCH",
-                                            "VERSION_EXISTS",
-                                            "DAMAGED"
-                                          ]
-                                        },
-                                        "message": {
-                                          "type": "string"
-                                        },
-                                        "version": {
-                                          "type": "string"
-                                        },
-                                        "fields": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "string"
-                                          }
-                                        },
-                                        "expected": {
-                                          "type": "string"
-                                        },
-                                        "releaseId": {
-                                          "type": "string"
-                                        },
-                                        "status": {
-                                          "type": "string",
-                                          "enum": [
-                                            "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
-                                            "PUBLISHED",
-                                            "ARCHIVED",
-                                            "ROLLED_BACK"
-                                          ]
-                                        },
-                                        "match": {
-                                          "type": "object",
-                                          "description": "SAME_CONTENT only",
-                                          "properties": {
-                                            "fileId": {
-                                              "type": "string"
-                                            },
-                                            "fileName": {
-                                              "type": "string"
-                                            },
-                                            "releaseId": {
-                                              "type": "string"
-                                            },
-                                            "version": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ],
-                                              "description": "null for a draft that has no version yet"
-                                            },
-                                            "status": {
-                                              "type": "string",
-                                              "enum": [
-                                                "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
-                                                "PUBLISHED",
-                                                "ARCHIVED",
-                                                "ROLLED_BACK"
-                                              ]
-                                            },
-                                            "sameRelease": {
-                                              "type": "boolean"
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  },
-                                  "warnings": {
-                                    "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
-                                    "items": {
-                                      "type": "object",
-                                      "required": [
-                                        "code",
-                                        "message"
-                                      ],
-                                      "properties": {
-                                        "code": {
-                                          "type": "string",
-                                          "enum": [
-                                            "NO_VERSION",
-                                            "DOC_VERSION_MISMATCH"
-                                          ]
-                                        },
-                                        "message": {
-                                          "type": "string"
-                                        },
-                                        "version": {
-                                          "type": "string"
-                                        },
-                                        "fields": {
-                                          "type": "array",
-                                          "items": {
-                                            "type": "string"
-                                          }
-                                        },
-                                        "expected": {
-                                          "type": "string"
-                                        },
-                                        "releaseId": {
-                                          "type": "string"
-                                        },
-                                        "status": {
-                                          "type": "string",
-                                          "enum": [
-                                            "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
-                                            "PUBLISHED",
-                                            "ARCHIVED",
-                                            "ROLLED_BACK"
-                                          ]
-                                        },
-                                        "match": {
-                                          "type": "object",
-                                          "description": "SAME_CONTENT only",
-                                          "properties": {
-                                            "fileId": {
-                                              "type": "string"
-                                            },
-                                            "fileName": {
-                                              "type": "string"
-                                            },
-                                            "releaseId": {
-                                              "type": "string"
-                                            },
-                                            "version": {
-                                              "type": [
-                                                "string",
-                                                "null"
-                                              ],
-                                              "description": "null for a draft that has no version yet"
-                                            },
-                                            "status": {
-                                              "type": "string",
-                                              "enum": [
-                                                "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
-                                                "PUBLISHED",
-                                                "ARCHIVED",
-                                                "ROLLED_BACK"
-                                              ]
-                                            },
-                                            "sameRelease": {
-                                              "type": "boolean"
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            },
-                            "events": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string"
-                                  },
-                                  "type": {
-                                    "type": "string",
-                                    "enum": [
-                                      "CREATED",
-                                      "SUBMITTED",
-                                      "WITHDRAWN",
-                                      "CHANGES_REQUESTED",
-                                      "PUBLISHED",
-                                      "ARCHIVED",
-                                      "ROLLED_BACK",
-                                      "RESTORED",
-                                      "NOTES_EDITED",
-                                      "CUSTOMERS_NOTIFIED"
-                                    ]
-                                  },
-                                  "actor": {
-                                    "type": "object",
-                                    "properties": {
-                                      "id": {
-                                        "type": "string"
-                                      },
-                                      "name": {
-                                        "type": "string"
-                                      },
-                                      "role": {
-                                        "type": "string",
-                                        "enum": [
-                                          "DEV",
-                                          "ADMIN"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "note": {
-                                    "type": "string",
-                                    "nullable": true
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  }
-                                }
-                              }
-                            },
-                            "review": {
-                              "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
+                              "description": "What a publish would archive (while DRAFT) and what a rollback would restore (while PUBLISHED)",
                               "properties": {
                                 "currentPublished": {
                                   "type": "object",
@@ -10405,7 +8271,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Roll back a customer-facing release (ADMIN). PUBLISHED: the newest lower-version ARCHIVED release is published again if there is one, otherwise the product has no published release. ARCHIVED: withdrawn only. Customers who downloaded it are emailed afterwards (CUSTOMERS_NOTIFIED event).",
+        "summary": "Roll back a customer-facing release (DEV). PUBLISHED: the newest lower-version ARCHIVED release is published again if there is one, otherwise the product has no published release. ARCHIVED: withdrawn only. Customers who downloaded it are emailed afterwards (CUSTOMERS_NOTIFIED event).",
         "security": [
           {
             "cookieAuth": []
@@ -10496,14 +8362,12 @@
                                 "string",
                                 "null"
                               ],
-                              "description": "null while a draft has no version yet; every release in review or shipped has one"
+                              "description": "null while a draft has no version yet; every shipped release has one"
                             },
                             "status": {
                               "type": "string",
                               "enum": [
                                 "DRAFT",
-                                "IN_REVIEW",
-                                "CHANGES_REQUESTED",
                                 "PUBLISHED",
                                 "ARCHIVED",
                                 "ROLLED_BACK"
@@ -10639,7 +8503,7 @@
                                   },
                                   "blockedBy": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+                                    "description": "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -10678,8 +8542,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -10709,8 +8571,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -10726,7 +8586,7 @@
                                   },
                                   "warnings": {
                                     "type": "array",
-                                    "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+                                    "description": "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
                                     "items": {
                                       "type": "object",
                                       "required": [
@@ -10763,8 +8623,6 @@
                                           "type": "string",
                                           "enum": [
                                             "DRAFT",
-                                            "IN_REVIEW",
-                                            "CHANGES_REQUESTED",
                                             "PUBLISHED",
                                             "ARCHIVED",
                                             "ROLLED_BACK"
@@ -10794,8 +8652,6 @@
                                               "type": "string",
                                               "enum": [
                                                 "DRAFT",
-                                                "IN_REVIEW",
-                                                "CHANGES_REQUESTED",
                                                 "PUBLISHED",
                                                 "ARCHIVED",
                                                 "ROLLED_BACK"
@@ -10866,7 +8722,7 @@
                             },
                             "review": {
                               "type": "object",
-                              "description": "What a publish would archive (while IN_REVIEW) and what a rollback would restore (while PUBLISHED)",
+                              "description": "What a publish would archive (while DRAFT) and what a rollback would restore (while PUBLISHED)",
                               "properties": {
                                 "currentPublished": {
                                   "type": "object",
@@ -11120,8 +8976,8 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Start publishing a release in review: a background job copies the files to the release bucket, then publishes (ADMIN)",
-        "description": "Answers 202 at once; poll publish-status. A second call while the job runs returns the same job. All-or-nothing: a failed copy or final check leaves the database unchanged and removes the copies.",
+        "summary": "Start publishing a draft: a background job copies the files to publish/, then publishes (DEV)",
+        "description": "Answers 202 at once; poll publish-status. A second call while the job runs returns the same job. An upload still open on the draft refuses it (UPLOADS_IN_PROGRESS, details.uploads). Every file is judged again first: a blocked file refuses it (FILE_BLOCKED, details.files), and warnings need confirmWarnings: true (else FILE_WARNINGS_UNCONFIRMED, details.files); the PUBLISHED event then lists them. All-or-nothing: a failed copy or final check leaves the database unchanged and removes the copies. While the job runs, edits to the draft answer RELEASE_PUBLISHING.",
         "security": [
           {
             "cookieAuth": []
@@ -11138,6 +8994,21 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirmWarnings": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "description": "Publishing started",
@@ -11413,7 +9284,10 @@
                       "type": "string",
                       "enum": [
                         "RELEASE_LOCKED",
-                        "VERSION_NOT_NEWER"
+                        "VERSION_NOT_NEWER",
+                        "UPLOADS_IN_PROGRESS",
+                        "FILE_BLOCKED",
+                        "FILE_WARNINGS_UNCONFIRMED"
                       ]
                     },
                     "details": {}
@@ -11437,7 +9311,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Every publish job running or recently settled (ADMIN)",
+        "summary": "Every publish job running or recently settled (DEV)",
         "description": "So a page that doesn't know the release ids (after a refresh, or in another tab) can follow publishing. Settled jobs stay listed for PUBLISH_JOB_TTL_MS; jobs live in memory, so a restart empties the list.",
         "security": [
           {
@@ -11637,7 +9511,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Progress of the publish job (ADMIN)",
+        "summary": "Progress of the publish job (DEV)",
         "description": "job is null when none is known (never started, or lost in a server restart); status tells the two apart. Failed jobs carry COPY_FAILED, COPY_TIMEOUT, SOURCE_NOT_FOUND, RELEASE_LOCKED, RELEASE_CHANGED, VERSION_NOT_NEWER or PUBLISH_FAILED.",
         "security": [
           {
@@ -11731,8 +9605,6 @@
                           "type": "string",
                           "enum": [
                             "DRAFT",
-                            "IN_REVIEW",
-                            "CHANGES_REQUESTED",
                             "PUBLISHED",
                             "ARCHIVED",
                             "ROLLED_BACK"
@@ -11882,7 +9754,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Rule on a file before it uploads (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "summary": "Rule on a file before it uploads (DEV; drafts only)",
         "description": "Stateless byte-range loop. Send name and size; answer NEED_BYTES by resending with the requested ranges (base64, 64 KiB-aligned, at most 7 MiB in total) until the server rules. Without sha256 only the version rules run (NEED_HASH); with it, the content rules too (ALLOWED). Installers (PE, DEB, PKG): identical bytes anywhere or another version block. Docs and other files: only identical bytes in this release block; another version is a warning. Damaged files always block.",
         "security": [
           {
@@ -12182,8 +10054,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -12329,7 +10200,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Open (or find) a resumable upload for one file (creating DEV; DRAFT or CHANGES_REQUESTED)",
+        "summary": "Open (or find) a resumable upload for one file (DEV; drafts only)",
         "description": "Call after /files/check allowed the file. Opens a storage multipart upload and returns its session; the same sha256 again returns the existing session (that's how a client resumes after losing the id). Then send the parts in order and complete. The same bytes already in this release are refused here; every other rule runs on the stored object at complete. Sessions untouched for 24 h are aborted.",
         "security": [
           {
@@ -12571,8 +10442,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -12758,7 +10628,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "The creating DEV's open uploads for a release",
+        "summary": "The calling DEV's open uploads for a release",
         "description": "So a client can rebuild its state after a refresh. Stale sessions are aborted first.",
         "security": [
           {
@@ -12910,8 +10780,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -13191,8 +11060,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -13493,7 +11361,7 @@
                             },
                             "blockedBy": {
                               "type": "array",
-                              "description": "Drafts and reviews only: rules this file now breaks (e.g. after a version change). Submit refuses while any file has one.",
+                              "description": "Drafts only: rules this file now breaks (e.g. after a version change). Publish refuses while any file has one.",
                               "items": {
                                 "type": "object",
                                 "required": [
@@ -13532,8 +11400,6 @@
                                     "type": "string",
                                     "enum": [
                                       "DRAFT",
-                                      "IN_REVIEW",
-                                      "CHANGES_REQUESTED",
                                       "PUBLISHED",
                                       "ARCHIVED",
                                       "ROLLED_BACK"
@@ -13563,8 +11429,6 @@
                                         "type": "string",
                                         "enum": [
                                           "DRAFT",
-                                          "IN_REVIEW",
-                                          "CHANGES_REQUESTED",
                                           "PUBLISHED",
                                           "ARCHIVED",
                                           "ROLLED_BACK"
@@ -13580,7 +11444,7 @@
                             },
                             "warnings": {
                               "type": "array",
-                              "description": "Drafts and reviews only: NO_VERSION or DOC_VERSION_MISMATCH. Submit needs confirmWarnings while any file has one.",
+                              "description": "Drafts only: NO_VERSION or DOC_VERSION_MISMATCH. Publish needs confirmWarnings while any file has one.",
                               "items": {
                                 "type": "object",
                                 "required": [
@@ -13617,8 +11481,6 @@
                                     "type": "string",
                                     "enum": [
                                       "DRAFT",
-                                      "IN_REVIEW",
-                                      "CHANGES_REQUESTED",
                                       "PUBLISHED",
                                       "ARCHIVED",
                                       "ROLLED_BACK"
@@ -13648,8 +11510,6 @@
                                         "type": "string",
                                         "enum": [
                                           "DRAFT",
-                                          "IN_REVIEW",
-                                          "CHANGES_REQUESTED",
                                           "PUBLISHED",
                                           "ARCHIVED",
                                           "ROLLED_BACK"
@@ -13745,8 +11605,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -14062,8 +11921,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}
@@ -14168,7 +12026,7 @@
         "tags": [
           "Releases"
         ],
-        "summary": "Remove a file from the draft and storage (creating DEV)",
+        "summary": "Remove a file from the draft and storage (DEV)",
         "security": [
           {
             "cookieAuth": []
@@ -14294,8 +12152,7 @@
                     "code": {
                       "type": "string",
                       "enum": [
-                        "FORBIDDEN",
-                        "NOT_RELEASE_OWNER"
+                        "FORBIDDEN"
                       ]
                     },
                     "details": {}

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { AlertCircle, ArrowRight, Ban, Clock3, Download, Inbox, Layers, RefreshCw, ShieldX, UserCheck, Users, type LucideIcon } from "lucide-react"
+import { AlertCircle, ArrowRight, Ban, Clock3, Download, Inbox, RefreshCw, ShieldX, UserCheck, Users, type LucideIcon } from "lucide-react"
 import { Link } from "react-router-dom"
 import { AppShell } from "@/components/common/AppShell"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -7,12 +7,10 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { countryLabel } from "@/lib/countries/countries"
 import { cn } from "@/lib/utils"
-import { ProductIcon } from "@/pages/Releases/product-meta"
 import { relativeTime } from "@/pages/Releases/releases.utils"
 import type { Dashboard } from "./dashboard.api"
 import { compactCount, moreCount } from "./dashboard.utils"
 import { useDashboard } from "./useDashboard"
-import { versionLabel } from "@/pages/Releases/version.utils"
 
 // value is null while the first load is in flight; format defaults to the full number
 type StatProps = { label: string; value: number | null; Icon: LucideIcon; to?: string; tone?: "default" | "amber"; format?: (value: number) => string }
@@ -33,7 +31,7 @@ function Stat({ label, value, Icon, to, tone = "default", format }: StatProps) {
   return to ? <Link to={to} className={cn(frame, "block outline-none transition-shadow hover:ring-primary/35 focus-visible:ring-2 focus-visible:ring-ring")}>{body}</Link> : <div className={frame}>{body}</div>
 }
 
-/** A queue card. Both queue cards share a grid row, so they always match in height. */
+/** A queue card. */
 function Panel({ title, count, action, children }: { title: string; count: number | null; action: ReactNode; children: ReactNode }) {
   return (
     <Card className="flex h-full flex-col gap-0 overflow-hidden p-0">
@@ -44,7 +42,7 @@ function Panel({ title, count, action, children }: { title: string; count: numbe
         </h2>
         {action}
       </div>
-      {/* Room for five rows, so the cards don't shrink or jump as queues empty */}
+      {/* Room for five rows, so the card doesn't shrink or jump as the queue empties */}
       <div className="flex min-h-[19rem] flex-1 flex-col">{children}</div>
     </Card>
   )
@@ -62,12 +60,11 @@ function Empty({ Icon, text }: { Icon: LucideIcon; text: string }) {
 // Widths rotate so the placeholder rows don't look stamped
 const ROW_WIDTHS = [["w-44", "w-32"], ["w-36", "w-40"], ["w-52", "w-28"], ["w-40", "w-36"], ["w-48", "w-32"]]
 
-function LoadingRows({ withIcon }: { withIcon?: boolean }) {
+function LoadingRows() {
   return (
     <ul aria-hidden className="divide-y">
       {ROW_WIDTHS.map(([title, sub], index) => (
         <li key={index} className="flex items-center gap-3 px-4 py-3">
-          {withIcon && <Skeleton className="size-9 shrink-0 rounded-lg" />}
           <span className="min-w-0 flex-1 space-y-2"><Skeleton className={cn("h-4", title)} /><Skeleton className={cn("h-3", sub)} /></span>
           <Skeleton className="h-3 w-12 shrink-0" />
         </li>
@@ -85,30 +82,6 @@ function Waited({ at }: { at: string }) {
 }
 
 const viewAll = cn(buttonVariants({ variant: "ghost", size: "sm" }), "-mr-2 text-primary")
-
-function ReleaseQueue({ alerts }: { alerts: Dashboard["releaseAlerts"] | null }) {
-  return (
-    <Panel title="Waiting for review" count={alerts?.total ?? null} action={<Link to="/releases?status=in_review" className={viewAll}>View all<ArrowRight /></Link>}>
-      {!alerts ? <LoadingRows withIcon /> : alerts.items.length === 0 ? <Empty Icon={Layers} text="No releases waiting for review" /> : (
-        <ul className="divide-y">
-          {alerts.items.map((release) => (
-            <li key={release.id}>
-              <Link to={`/releases/${release.id}`} className="flex items-center gap-3 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-foreground/70"><ProductIcon productId={release.product.id} className="size-4" /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{release.product.name} <span className="font-mono text-muted-foreground">{versionLabel(release.version)}</span></span>
-                  <span className="block truncate text-xs text-muted-foreground">Submitted by {release.createdBy.name}</span>
-                </span>
-                <Waited at={release.submittedAt} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      {alerts && <More count={moreCount(alerts.items.length, alerts.total)} noun="in review" />}
-    </Panel>
-  )
-}
 
 function SignupQueue({ alerts }: { alerts: Dashboard["signupAlerts"] | null }) {
   return (
@@ -162,10 +135,7 @@ export function DashboardPage() {
               <Stat label="Sign-ups rejected" value={data?.users.blockedRejected ?? null} Icon={Ban} />
               <Stat label="Total downloads" value={data?.downloads.total ?? null} Icon={Download} format={compactCount} />
             </section>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <ReleaseQueue alerts={data?.releaseAlerts ?? null} />
-              <SignupQueue alerts={data?.signupAlerts ?? null} />
-            </div>
+            <SignupQueue alerts={data?.signupAlerts ?? null} />
           </>
         )}
       </main>

@@ -24,8 +24,8 @@ export function semverOf(release: VersionColumns): Semver | null {
 }
 
 /**
- * The version of a release that must have one: submit refuses a draft
- * without, so anything in review or shipped has it. A missing one is a bug.
+ * The version of a release that must have one: publish refuses a draft
+ * without, so anything shipped has it. A missing one is a bug.
  */
 export function versionOf(release: { version: string | null }): string {
   if (release.version === null) {
@@ -102,11 +102,8 @@ export const SHIPPED_STATUSES: ReleaseStatus[] = [
   ReleaseStatus.ROLLED_BACK,
 ];
 
-/** Statuses in which the creator can still edit, upload, submit or delete. */
-export const EDITABLE_STATUSES: ReleaseStatus[] = [
-  ReleaseStatus.DRAFT,
-  ReleaseStatus.CHANGES_REQUESTED,
-];
+/** Statuses in which a developer can still edit, upload, publish or delete. */
+export const EDITABLE_STATUSES: ReleaseStatus[] = [ReleaseStatus.DRAFT];
 
 /** Highest version first, for "highest shipped" lookups. */
 export const VERSION_ORDER_DESC: Prisma.ReleaseOrderByWithRelationInput[] = [

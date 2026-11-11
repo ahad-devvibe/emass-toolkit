@@ -14,7 +14,7 @@ export type ReleaseActor = { id: string; name: string; role: UserRole }
 // for docs and for SDKs still waiting for a platform. "linux" = the Ubuntu build
 /**
  * Something the server's file rules say about a file, with the message to show
- * (the server owns the wording). Blocks stop submit; warnings need confirming.
+ * (the server owns the wording). Blocks stop publish; warnings need confirming.
  */
 export type FileIssue = { code: string; message: string; version?: string; fields?: string[]; expected?: string }
 
@@ -36,15 +36,12 @@ export type ReleaseFileItem = {
   warnings: FileIssue[]
 }
 
-/** One file's issues, as submit reports them in FILE_BLOCKED / FILE_WARNINGS_UNCONFIRMED. */
-export type FileIssues = { fileId: string; name: string; issues: FileIssue[] }
-
 export type ReleaseEventItem = { id: string; type: ReleaseEventKind; actor: ReleaseActor; note: string | null; at: string }
 
 export type ReleaseSummary = {
   id: string
   product: { id: string; name: string }
-  /** Null while a draft has none yet; every release in review or shipped has one. */
+  /** Null while a draft has none yet; every shipped release has one. */
   version: string | null
   status: ReleaseStatus
   createdBy: ReleaseActor
@@ -56,8 +53,8 @@ export type ReleaseSummary = {
 
 export type VersionRef = { id: string; version: string }
 
-// What the admin's review actions would touch: the release a publish would
-// archive (while in review) and the one a rollback would restore (while published)
+// What a developer's actions would touch: the release a publish would archive
+// (while a draft) and the one a rollback would restore (while published)
 export type ReviewContext = { currentPublished: VersionRef | null; restoreTarget: VersionRef | null }
 
 export type ReleaseDetail = ReleaseSummary & {
@@ -87,8 +84,7 @@ export type PublishJob = {
 export type PublishStatus = { job: PublishJob | null; status: ReleaseStatus }
 
 // counts has every status (zeros included), for the tab badges
-/** needsYou: what waits for the viewer (an admin's reviews, a dev's own releases sent back), ignoring filters */
-export type ReleaseList = { releases: ReleaseSummary[]; nextCursor: string | null; counts: Record<ReleaseStatus, number>; needsYou: number }
+export type ReleaseList = { releases: ReleaseSummary[]; nextCursor: string | null; counts: Record<ReleaseStatus, number> }
 
 export type VersionSuggestion = { highestShipped: string | null; suggestions: { patch: string; minor: string; major: string } }
 

@@ -75,8 +75,7 @@ async function provider<T>(key: string, call: () => Promise<T>): Promise<T> {
  * Streams uploads into an OCI multipart upload, one part in memory at a time.
  * Every upload goes through multipart (even tiny files) so there is one path.
  * Copies run server-side in OCI as work requests; the driver polls them for
- * progress. The same call copies within one bucket (dev: staged/ → releases/)
- * or across buckets (prod: staging → release bucket).
+ * progress. Publish uses one to move a file from draft/ to publish/.
  */
 export function createOciDriver({
   getClient = getStorageClient,

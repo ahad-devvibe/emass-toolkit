@@ -93,7 +93,7 @@ export function StagedFileRow({ releaseId, file, mapping, problem, rejected, onM
         )}
       </div>
       {file.blockedBy.length > 0 && (
-        <ul aria-label={`Why ${file.name} can't be submitted`} className="space-y-1 sm:pl-12">
+        <ul aria-label={`Why ${file.name} can't be published`} className="space-y-1 sm:pl-12">
           {file.blockedBy.map((reason, index) => (
             <li key={index} className="flex items-start gap-1.5 text-xs text-destructive">
               <Ban aria-hidden className="mt-px size-3.5 shrink-0" />

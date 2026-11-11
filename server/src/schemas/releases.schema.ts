@@ -96,8 +96,8 @@ export const nextVersionQuerySchema = z.object({
 // Path param; the controller answers 404 rather than 400 when it's not an id
 export const releaseIdSchema = z.guid();
 
-// Admin review: feedback and rollback reasons are short free text
-function reviewText(label: string) {
+// Rollback reasons are short free text
+function shortText(label: string) {
   return z
     .string({
       error: (iss) =>
@@ -110,12 +110,10 @@ function reviewText(label: string) {
     .max(2000, `${label} can be at most 2,000 characters`);
 }
 
-export const requestChangesSchema = z.object({ note: reviewText("Feedback") });
-
 // reason: internal, kept in the release history. customerMessage: optional,
 // added to the email sent to everyone who downloaded the release.
 export const rollbackSchema = z.object({
-  reason: reviewText("A reason"),
+  reason: shortText("A reason"),
   customerMessage: z
     .string({ error: "Message to customers must be text" })
     .trim()
@@ -138,12 +136,12 @@ export const publishedNotesSchema = z.object({
     }),
 });
 
-// Submitting with file warnings (no version, a doc of another version) is
+// Publishing with file warnings (no version, a doc of another version) is
 // allowed only once the developer confirms them
-export const submitReleaseSchema = z.object({
+export const publishReleaseSchema = z.object({
   confirmWarnings: z
     .boolean({ error: "Confirm warnings must be true or false" })
     .optional(),
 });
 
-export type SubmitReleaseInput = z.infer<typeof submitReleaseSchema>;
+export type PublishReleaseInput = z.infer<typeof publishReleaseSchema>;

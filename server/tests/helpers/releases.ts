@@ -7,11 +7,17 @@ import type {
   ReleaseStatus,
   SdkPlatform,
 } from "@prisma/client";
+import request from "supertest";
+import { app } from "../../src/app.js";
 import { env } from "../../src/configs/env.js";
 import { prisma } from "../../src/configs/prisma.js";
-import { getStorageBuckets } from "../../src/configs/storage.js";
+import { getStorageBucket } from "../../src/configs/storage.js";
+import { emailWorker } from "../../src/services/email/email-worker.js";
 import { getStorageDriver } from "../../src/services/storage/drivers/storage.driver.js";
-import { stagedKey } from "../../src/services/storage/storage.utils.js";
+import {
+  draftKey,
+  isDraftKey,
+} from "../../src/services/storage/storage.utils.js";
 import { parseVersion } from "../../src/services/releases/releases.utils.js";
 import {
   createUser,
@@ -112,13 +118,13 @@ export async function createRelease(options: CreateReleaseOptions) {
     },
   });
 
-  const { staging } = getStorageBuckets();
+  const bucket = getStorageBucket();
   for (const file of options.files ?? []) {
     const name = file.name ?? `${randomUUID().slice(0, 8)}.zip`;
-    const objectKey = stagedKey(randomUUID(), name);
+    const objectKey = draftKey(randomUUID(), name);
     if (options.withObjects) {
       await getStorageDriver().putStream({
-        bucket: staging,
+        bucket,
         key: objectKey,
         body: (async function* () {
           yield Buffer.from(`contents of ${name}`);
@@ -159,11 +165,11 @@ export async function createRelease(options: CreateReleaseOptions) {
 /**
  * Every file the local driver holds for a release's uploads, including
  * leftover `.part` files, so tests can prove nothing leaked. Keys are
- * staged/{uuid}/{name} with no release in them, so the release's file rows
+ * draft/{uuid}/{name} with no release in them, so the release's file rows
  * and upload sessions say which folders to look in.
  */
 export async function stagedFilesFor(releaseId: string): Promise<string[]> {
-  const { staging } = getStorageBuckets();
+  const bucket = getStorageBucket();
   const [files, sessions] = await Promise.all([
     prisma.releaseFile.findMany({
       where: { releaseId },
@@ -177,14 +183,14 @@ export async function stagedFilesFor(releaseId: string): Promise<string[]> {
   const folders = new Set(
     [...files, ...sessions]
       .map((row) => row.objectKey)
-      .filter((key) => key.startsWith("staged/"))
+      .filter(isDraftKey)
       .map((key) => path.posix.dirname(key)),
   );
   const names: string[] = [];
   for (const folder of folders) {
     try {
       const entries = await readdir(
-        path.resolve(env.STORAGE_LOCAL_DIR, staging, folder),
+        path.resolve(env.STORAGE_LOCAL_DIR, bucket, folder),
         { withFileTypes: true },
       );
       names.push(
@@ -197,13 +203,41 @@ export async function stagedFilesFor(releaseId: string): Promise<string[]> {
   return names.sort();
 }
 
-/** True when the local storage driver holds `key` in the staging bucket. */
+/** True when the local storage driver holds `key`. */
 export async function stagedObjectExists(key: string): Promise<boolean> {
-  const { staging } = getStorageBuckets();
   try {
-    await access(path.resolve(env.STORAGE_LOCAL_DIR, staging, key));
+    await access(path.resolve(env.STORAGE_LOCAL_DIR, getStorageBucket(), key));
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * POST /releases/:id/publish, then waits for the job and its announcement, so
+ * nothing it writes lands in a later test. Returns the POST's response.
+ */
+export async function publishAndWait(
+  releaseId: string,
+  user: StaffUser,
+  body: object = {},
+) {
+  const started = await request(app)
+    .post(`/api/releases/${releaseId}/publish`)
+    .set(user.cookie)
+    .send(body);
+  if (started.status !== 202) return started;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const { job } = (
+      await request(app)
+        .get(`/api/releases/${releaseId}/publish-status`)
+        .set(user.cookie)
+    ).body.data as { job: { phase: string } | null };
+    if (job?.phase === "done" || job?.phase === "failed") {
+      await emailWorker.settled();
+      return started;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("publish job did not settle");
 }

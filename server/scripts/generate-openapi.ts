@@ -537,14 +537,6 @@ const authPaths = {
                 last30Days: { type: "integer" },
               },
             },
-            releaseAlerts: {
-              type: "object",
-              description: "IN_REVIEW releases, oldest submission first",
-              properties: {
-                total: { type: "integer" },
-                items: { type: "array", items: { type: "object" } },
-              },
-            },
             signupAlerts: {
               type: "object",
               description: "PENDING_APPROVAL users, oldest first",

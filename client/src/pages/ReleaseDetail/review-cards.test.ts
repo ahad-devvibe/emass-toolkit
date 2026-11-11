@@ -12,7 +12,7 @@ function release(files: ReleaseFileItem[], { previous = "1.3.0" as string | null
     id: "r1",
     product: { id: "p", name: "EMASS IDE" },
     version: "1.4.0",
-    status: "in_review",
+    status: "draft",
     createdBy: { id: "d", name: "Dana", role: "DEV" },
     createdAt: "2026-10-28T00:00:00.000Z",
     updatedAt: "2026-10-28T00:00:00.000Z",
@@ -52,6 +52,18 @@ describe("version card", () => {
     expect(card(release([file("old.exe", { blockedBy: [issue("VERSION_MISMATCH")] })]), "version")).toMatchObject({ tone: "bad", detail: "1 installer says another version" })
     const docs = [file("a.pdf", { kind: "documentation", warnings: [issue("DOC_VERSION_MISMATCH")] }), file("b.pdf", { kind: "documentation", warnings: [issue("NO_VERSION")] })]
     expect(card(release(docs), "version")).toMatchObject({ tone: "warn", detail: "2 files don't mention v1.4.0" })
+  })
+})
+
+describe("an incomplete draft", () => {
+  it("is red without a version", () => {
+    expect(reviewCards({ ...release(allSdks), version: null }, null)[0]).toMatchObject({ tone: "bad", detail: "Set a version before publishing" })
+  })
+
+  it("doesn't call a draft with no files verified", () => {
+    const [version, checksums] = reviewCards(release([]), { version: "1.3.0", files: [] })
+    expect(version.tone).toBe("neutral")
+    expect(checksums).toMatchObject({ tone: "neutral", value: "No files yet" })
   })
 })
 

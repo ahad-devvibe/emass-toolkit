@@ -67,16 +67,9 @@ const mutations: Mutation[] = [
     },
   },
   {
-    name: "submit",
+    name: "publish",
     send: (id, user) => {
-      const req = request(app).post(`/api/releases/${id}/submit`);
-      return user ? req.set(user.cookie) : req;
-    },
-  },
-  {
-    name: "withdraw",
-    send: (id, user) => {
-      const req = request(app).post(`/api/releases/${id}/withdraw`);
+      const req = request(app).post(`/api/releases/${id}/publish`);
       return user ? req.set(user.cookie) : req;
     },
   },
@@ -89,105 +82,22 @@ const mutations: Mutation[] = [
   },
 ];
 
-describe("POST /api/releases/:id/submit", () => {
-  it("moves a draft to review with a SUBMITTED event", async () => {
-    const release = await draft();
-
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe("IN_REVIEW");
-    expect(await eventTypes(release.id)).toEqual(["CREATED", "SUBMITTED"]);
-  });
-
-  it("resubmits a release after changes were requested", async () => {
-    const release = await draft({ status: "CHANGES_REQUESTED" });
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe("IN_REVIEW");
-  });
-
-  it("needs at least one file", async () => {
-    const release = await draft({ files: [] });
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("NO_FILES");
-    expect(await eventTypes(release.id)).toEqual(["CREATED"]);
-  });
-
-  it("needs a platform on every SDK", async () => {
-    const release = await draft({
-      files: [{ kind: "SDK", platform: null }, { kind: "DOC" }],
-    });
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("SDK_PLATFORM_MISSING");
-  });
-
-  it("needs a type on every file", async () => {
-    const release = await draft({
-      files: [{ platform: "WINDOWS" }, { kind: null, platform: null }],
-    });
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe("FILE_TYPE_MISSING");
-  });
-
-  it("re-checks that the version is still newer than shipped", async () => {
-    const release = await draft({ version: "1.0.0" });
-    await createRelease({
-      productId: release.productId,
-      createdById: otherDev.id,
-      version: "2.0.0",
-      status: "PUBLISHED",
-    });
-
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/submit`)
-      .set(dev.cookie);
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe("VERSION_NOT_NEWER");
-  });
-
-  it("accepts only one of two concurrent submits", async () => {
-    const release = await draft();
-
-    const results = await Promise.all([
-      request(app).post(`/api/releases/${release.id}/submit`).set(dev.cookie),
-      request(app).post(`/api/releases/${release.id}/submit`).set(dev.cookie),
-    ]);
-
-    expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
-    expect(await eventTypes(release.id)).toEqual(["CREATED", "SUBMITTED"]);
-  });
-});
-
-describe("POST /api/releases/:id/withdraw", () => {
-  it("moves a release in review back to draft with a WITHDRAWN event", async () => {
-    const release = await draft({ status: "IN_REVIEW" });
-
-    const res = await request(app)
-      .post(`/api/releases/${release.id}/withdraw`)
-      .set(dev.cookie);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe("DRAFT");
-    expect(await eventTypes(release.id)).toEqual(["CREATED", "WITHDRAWN"]);
-  });
+describe("the review routes are gone", () => {
+  it.each(["submit", "withdraw", "request-changes"])(
+    "POST %s",
+    async (path) => {
+      const release = await draft();
+      const res = await request(app)
+        .post(`/api/releases/${release.id}/${path}`)
+        .set(dev.cookie)
+        .send({ note: "x" });
+      expect(res.status).toBe(404);
+    },
+  );
 });
 
 describe("DELETE /api/releases/:id", () => {
-  it("deletes the staged objects, then the release, files and events", async () => {
+  it("deletes the draft objects, then the release, files and events", async () => {
     const release = await draft({
       withObjects: true,
       files: [{ platform: "WINDOWS" }, { kind: "DOC", name: "notes.pdf" }],
@@ -242,21 +152,10 @@ describe("DELETE /api/releases/:id", () => {
 });
 
 describe("state machine", () => {
-  const disallowed: Record<string, ReleaseStatus[]> = {
-    edit: ["IN_REVIEW", "PUBLISHED", "ARCHIVED", "ROLLED_BACK"],
-    submit: ["IN_REVIEW", "PUBLISHED", "ARCHIVED", "ROLLED_BACK"],
-    delete: ["IN_REVIEW", "PUBLISHED", "ARCHIVED", "ROLLED_BACK"],
-    withdraw: [
-      "DRAFT",
-      "CHANGES_REQUESTED",
-      "PUBLISHED",
-      "ARCHIVED",
-      "ROLLED_BACK",
-    ],
-  };
+  const shipped: ReleaseStatus[] = ["PUBLISHED", "ARCHIVED", "ROLLED_BACK"];
 
   for (const mutation of mutations) {
-    for (const status of disallowed[mutation.name]) {
+    for (const status of shipped) {
       it(`${mutation.name} is refused for ${status}`, async () => {
         const release = await draft({ status });
 
@@ -276,12 +175,10 @@ describe("state machine", () => {
   }
 });
 
-describe("roles and ownership", () => {
+describe("roles", () => {
   for (const mutation of mutations) {
-    it(`${mutation.name} is for the creating DEV only`, async () => {
-      const release = await draft({
-        status: mutation.name === "withdraw" ? "IN_REVIEW" : "DRAFT",
-      });
+    it(`${mutation.name} is for developers only`, async () => {
+      const release = await draft();
       const before = await prisma.release.findUniqueOrThrow({
         where: { id: release.id },
       });
@@ -295,10 +192,6 @@ describe("roles and ownership", () => {
         expect(res.body.code).toBe("FORBIDDEN");
       }
 
-      const other = await mutation.send(release.id, otherDev);
-      expect(other.status).toBe(403);
-      expect(other.body.code).toBe("NOT_RELEASE_OWNER");
-
       const after = await prisma.release.findUniqueOrThrow({
         where: { id: release.id },
       });
@@ -307,10 +200,45 @@ describe("roles and ownership", () => {
     });
   }
 
-  it("answers 404 for an unknown release before checking ownership", async () => {
+  it("lets any developer edit or delete another developer's draft", async () => {
+    const edited = await draft();
     const res = await request(app)
-      .post("/api/releases/9f0f9b4e-6f6a-4a3c-9a3c-2f5b8e1d0c11/submit")
-      .set(dev.cookie);
+      .patch(`/api/releases/${edited.id}`)
+      .set(otherDev.cookie)
+      .send({ releaseNotes: "Picked this up" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.releaseNotes).toBe("Picked this up");
+
+    const deleted = await draft();
+    await request(app)
+      .delete(`/api/releases/${deleted.id}`)
+      .set(otherDev.cookie)
+      .expect(200);
+    expect(await prisma.release.count({ where: { id: deleted.id } })).toBe(0);
+  });
+
+  it("lets admins read releases and download their files", async () => {
+    const release = await draft({ withObjects: true });
+    const [file] = await prisma.releaseFile.findMany({
+      where: { releaseId: release.id },
+    });
+
+    await request(app).get("/api/releases").set(admin.cookie).expect(200);
+    await request(app)
+      .get(`/api/releases/${release.id}`)
+      .set(admin.cookie)
+      .expect(200);
+    await request(app)
+      .post(`/api/releases/${release.id}/files/${file.id}/download`)
+      .set(admin.cookie)
+      .expect(200);
+  });
+
+  it("answers 404 for an unknown release", async () => {
+    const res = await request(app)
+      .patch("/api/releases/9f0f9b4e-6f6a-4a3c-9a3c-2f5b8e1d0c11")
+      .set(dev.cookie)
+      .send({ releaseNotes: "x" });
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("RELEASE_NOT_FOUND");
   });

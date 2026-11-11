@@ -1,6 +1,6 @@
 import { ApiRequestError } from "@/lib/api/http"
 import { fromApiPlatform, toFileIssue, type ApiFileIssue, type ApiPlatform } from "./releases.mappers"
-import type { FileIssue, FileIssues, PlatformDuplicate } from "./releases.model"
+import type { FileIssue, PlatformDuplicate } from "./releases.model"
 
 /** The id of the file that already holds the platform, from a PLATFORM_TAKEN error. */
 export function platformTakenBy(error: unknown): string | null {
@@ -20,21 +20,16 @@ export function duplicatePlatforms(error: unknown): PlatformDuplicate[] {
   return (error.details.duplicates as { platform: ApiPlatform; fileIds: string[] }[]).map((duplicate) => ({ os: fromApiPlatform(duplicate.platform), fileIds: duplicate.fileIds }))
 }
 
+export type OpenUpload = { uploadId: string; name: string; startedBy: string }
+
+/** The uploads still open on a draft, from an UPLOADS_IN_PROGRESS error on publish. */
+export function uploadsInProgress(error: unknown): OpenUpload[] | null {
+  if (!(error instanceof ApiRequestError) || error.code !== "UPLOADS_IN_PROGRESS" || !Array.isArray(error.details.uploads)) return null
+  return error.details.uploads as OpenUpload[]
+}
+
 /** Why a file can't be added, from a FILE_BLOCKED error on check or upload. */
 export function fileBlockedReasons(error: unknown): FileIssue[] | null {
   if (!(error instanceof ApiRequestError) || error.code !== "FILE_BLOCKED" || !Array.isArray(error.details.reasons)) return null
   return (error.details.reasons as ApiFileIssue[]).map(toFileIssue)
 }
-
-type ApiFileIssues = { fileId: string; name: string; reasons?: ApiFileIssue[]; warnings?: ApiFileIssue[] }
-
-function issuesByFile(error: unknown, code: string, key: "reasons" | "warnings"): FileIssues[] | null {
-  if (!(error instanceof ApiRequestError) || error.code !== code || !Array.isArray(error.details.files)) return null
-  return (error.details.files as ApiFileIssues[]).map((file) => ({ fileId: file.fileId, name: file.name, issues: (file[key] ?? []).map(toFileIssue) }))
-}
-
-/** The saved files that stop a submit, from FILE_BLOCKED on submit. */
-export const blockedFiles = (error: unknown) => issuesByFile(error, "FILE_BLOCKED", "reasons")
-
-/** The files whose warnings submit needs confirmed, from FILE_WARNINGS_UNCONFIRMED. */
-export const unconfirmedWarnings = (error: unknown) => issuesByFile(error, "FILE_WARNINGS_UNCONFIRMED", "warnings")

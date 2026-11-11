@@ -15,7 +15,7 @@ import { draftsToContinue } from "../editor.state"
  * are offered here first.
  */
 export function DraftsInProgress({ userId }: { userId: string }) {
-  const list = useReleaseList({ statuses: ["draft", "changes_requested"] })
+  const list = useReleaseList({ statuses: ["draft"] })
   const uploads = useUploads()
   const drafts = draftsToContinue(list.releases, uploads, userId)
   // Stay here; the card drops the deleted draft once the list reloads

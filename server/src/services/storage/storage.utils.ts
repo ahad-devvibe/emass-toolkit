@@ -62,35 +62,43 @@ export async function* chunkStream(
 }
 
 /**
- * staged/{uuid}/{safeName}: no product or release in the path, so a draft can
+ * draft/{uuid}/{safeName}: no product or release in the path, so a draft can
  * change product (or get its version) after its files are uploaded. Publish
  * groups them by the release's product and version.
  */
-export function stagedKey(uuid: string, fileName: string): string {
-  return `staged/${uuid}/${safeName(fileName)}`;
+export function draftKey(uuid: string, fileName: string): string {
+  return `draft/${uuid}/${safeName(fileName)}`;
 }
 
-// staged/{uuid}/{name}, or the older staged/{productId}/{releaseId}/{uuid}/{name}
-const STAGED_KEY = /^staged\/(?:[^/]+\/[^/]+\/)?([^/]+)\/([^/]+)$/;
+// Objects stored before the draft/ and publish/ prefixes keep their keys, so
+// staged/ still means a draft and releases/ still means a published file
+export const isDraftKey = (key: string) =>
+  key.startsWith("draft/") || key.startsWith("staged/");
+export const isPublishedKey = (key: string) =>
+  key.startsWith("publish/") || key.startsWith("releases/");
+
+// draft/{uuid}/{name}, or the older staged/{uuid}/{name} and
+// staged/{productId}/{releaseId}/{uuid}/{name}
+const DRAFT_KEY = /^(?:draft\/|staged\/(?:[^/]+\/[^/]+\/)?)([^/]+)\/([^/]+)$/;
 
 /**
- * Where a staged file goes on publish:
- * releases/{productId}/{version}/{uuid}/{safeName}, from the release's
- * product and version at that moment. It reuses the staged uuid and name, so
- * a retried publish writes the same key instead of a new one. Throws on
- * anything that isn't a staged key (a bug, never user input).
+ * Where a draft file goes on publish:
+ * publish/{productId}/{version}/{uuid}/{safeName}, from the release's product
+ * and version at that moment. It reuses the draft uuid and name, so a retried
+ * publish writes the same key instead of a new one. Throws on anything that
+ * isn't a draft key (a bug, never user input).
  */
-export function releasedKey(
-  stagedObjectKey: string,
+export function publishedKey(
+  draftObjectKey: string,
   productId: string,
   version: string,
 ): string {
-  const match = STAGED_KEY.exec(stagedObjectKey);
+  const match = DRAFT_KEY.exec(draftObjectKey);
   if (!match) {
-    throw new ApiError(500, "Not a staged object key", "INVALID_OBJECT_KEY");
+    throw new ApiError(500, "Not a draft object key", "INVALID_OBJECT_KEY");
   }
   const [, uuid, name] = match;
-  return `releases/${productId}/${version}/${uuid}/${name}`;
+  return `publish/${productId}/${version}/${uuid}/${name}`;
 }
 
 // RFC 5987 value: encodeURIComponent leaves ' ( ) * which must be escaped too

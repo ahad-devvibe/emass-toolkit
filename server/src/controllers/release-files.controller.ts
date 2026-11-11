@@ -33,12 +33,12 @@ const userId = (req: Request) => req.user!.userId;
 // file; a blocked file is a 409 FILE_BLOCKED
 export const check = async (req: Request, res: Response) => {
   const input = fileCheckSchema.parse(req.body ?? {});
-  const result = await checkReleaseFile(userId(req), releaseId(req), input);
+  const result = await checkReleaseFile(releaseId(req), input);
   res.json(ApiResponse.success(result, "File checked"));
 };
 
 export const remove = async (req: Request, res: Response) => {
-  await deleteReleaseFile(userId(req), releaseId(req), fileId(req));
+  await deleteReleaseFile(releaseId(req), fileId(req));
   res.json(ApiResponse.ok("File removed"));
 };
 

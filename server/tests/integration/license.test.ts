@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { app } from "../../src/app.js";
 import { prisma } from "../../src/configs/prisma.js";
-import { getStorageBuckets } from "../../src/configs/storage.js";
+import { getStorageBucket } from "../../src/configs/storage.js";
 import { LICENSE_VERSION } from "../../src/services/licenses/license.terms.js";
 import { getStorageDriver } from "../../src/services/storage/drivers/storage.driver.js";
 import { createUser, uniqueEmail } from "../helpers/auth.js";
@@ -35,7 +35,7 @@ beforeAll(async () => {
   });
   const key = `releases/${product.id}/1.0.0/${randomUUID()}/sdk.zip`;
   await getStorageDriver().putStream({
-    bucket: getStorageBuckets().release,
+    bucket: getStorageBucket(),
     key,
     body: (async function* () {
       yield randomBytes(64);

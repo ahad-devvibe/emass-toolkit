@@ -4,11 +4,10 @@ import {
   createReleaseSchema,
   listReleasesQuerySchema,
   nextVersionQuerySchema,
+  publishReleaseSchema,
   publishedNotesSchema,
   releaseIdSchema,
-  requestChangesSchema,
   rollbackSchema,
-  submitReleaseSchema,
   updateReleaseSchema,
 } from "../schemas/releases.schema.js";
 import { releaseNotFound } from "../services/releases/releases.errors.js";
@@ -23,12 +22,9 @@ import {
   getRelease,
   listReleases,
   nextVersion,
-  requestChanges as requestReleaseChanges,
   rollbackRelease,
-  submitRelease,
   updatePublishedNotes,
   updateRelease,
-  withdrawRelease,
 } from "../services/releases/releases.service.js";
 
 // A malformed id can't match any release, so it's a 404 like an unknown one
@@ -43,8 +39,7 @@ const userId = (req: Request) => req.user!.userId;
 
 export const list = async (req: Request, res: Response) => {
   const query = listReleasesQuerySchema.parse(req.query);
-  // requireRole runs first, so req.user is set
-  res.json(ApiResponse.success(await listReleases(query, req.user!)));
+  res.json(ApiResponse.success(await listReleases(query)));
 };
 
 export const suggestVersion = async (req: Request, res: Response) => {
@@ -64,34 +59,13 @@ export const create = async (req: Request, res: Response) => {
 
 export const update = async (req: Request, res: Response) => {
   const body = updateReleaseSchema.parse(req.body ?? {});
-  const release = await updateRelease(userId(req), releaseId(req), body);
+  const release = await updateRelease(releaseId(req), body);
   res.json(ApiResponse.success(release, "Release updated"));
 };
 
-export const submit = async (req: Request, res: Response) => {
-  const input = submitReleaseSchema.parse(req.body ?? {});
-  const release = await submitRelease(userId(req), releaseId(req), input);
-  res.json(ApiResponse.success(release, "Release sent for review"));
-};
-
-export const withdraw = async (req: Request, res: Response) => {
-  const release = await withdrawRelease(userId(req), releaseId(req));
-  res.json(ApiResponse.success(release, "Release withdrawn"));
-};
-
 export const remove = async (req: Request, res: Response) => {
-  await deleteRelease(userId(req), releaseId(req));
+  await deleteRelease(releaseId(req));
   res.json(ApiResponse.ok("Release deleted"));
-};
-
-export const requestChanges = async (req: Request, res: Response) => {
-  const { note } = requestChangesSchema.parse(req.body ?? {});
-  const release = await requestReleaseChanges(
-    userId(req),
-    releaseId(req),
-    note,
-  );
-  res.json(ApiResponse.success(release, "Sent back for changes"));
 };
 
 export const rollback = async (req: Request, res: Response) => {
@@ -102,7 +76,8 @@ export const rollback = async (req: Request, res: Response) => {
 
 // Starts the background copy and answers right away; the dialog polls the status
 export const publish = async (req: Request, res: Response) => {
-  const job = await startPublish(userId(req), releaseId(req));
+  const input = publishReleaseSchema.parse(req.body ?? {});
+  const job = await startPublish(userId(req), releaseId(req), input);
   res.status(202).json(ApiResponse.success({ job }, "Publishing started", 202));
 };
 
@@ -117,7 +92,7 @@ export const publishStatus = async (req: Request, res: Response) => {
 export const updateNotes = async (req: Request, res: Response) => {
   const { releaseNotes } = publishedNotesSchema.parse(req.body ?? {});
   const release = await updatePublishedNotes(
-    req.user!,
+    userId(req),
     releaseId(req),
     releaseNotes,
   );

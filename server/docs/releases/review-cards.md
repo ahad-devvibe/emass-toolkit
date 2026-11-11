@@ -1,8 +1,8 @@
-# Review cards (admin, release in review)
+# Pre-publish check cards (developer, draft)
 
 ## What was built
 
-When an admin opens a release that is **in review** (`/releases/:id`), four
+When a developer opens a **draft** (`/releases/:id`), four
 cards sit under the header. Each is green (ok), amber (check this), red (wrong)
 or grey (nothing to judge):
 
@@ -23,8 +23,8 @@ Code (client only):
 - **"Unique across previous files" compares with the live version only** (the one publishing would replace). The cards load it with one extra `GET /api/releases/:id`.
   - Installers identical to *any* earlier file are already blocked at upload, so the comparison matters for docs.
   - Comparing with every archived version would need a server change; we chose not to.
-- **A doc unchanged from the live version is amber on the card only.** It doesn't become a file-rule warning, which would ask the developer to confirm on submit. Re-shipping last release's guide is normal (see `file-checks.md`).
-- **Only admins, only in review.** The same condition as the "Waiting for your review" callout. The cards change nothing; the server enforces who can publish.
+- **A doc unchanged from the live version is amber on the card only.** It doesn't become a file-rule warning, which would ask the developer to confirm on publish. Re-shipping last release's guide is normal (see `file-checks.md`).
+- **Only developers, only on drafts.** The cards change nothing; the server enforces who can publish.
 - **"Docs & release notes" counts any documentation file** plus the release-notes text. It doesn't look for specific documents by name.
 
 ## Assumptions
@@ -34,4 +34,4 @@ Code (client only):
 ## Risks / follow-ups
 
 - If the live version can't be loaded, the checksum card says so (grey) rather than guessing.
-- Approving with amber or red cards is allowed; the cards inform the decision and don't block Publish.
+- Publishing with amber or red cards is allowed; the cards inform the decision and don't block Publish.

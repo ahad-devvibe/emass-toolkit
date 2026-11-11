@@ -4,16 +4,16 @@ import { createSHA256 } from "hash-wasm";
 import { env } from "../../configs/env.js";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
-import { getStorageBuckets } from "../../configs/storage.js";
+import { getStorageBucket } from "../../configs/storage.js";
 import type { UploadCreateInput } from "../../schemas/upload-sessions.schema.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
-import { stagedKey } from "../storage/storage.utils.js";
+import { draftKey } from "../storage/storage.utils.js";
+import { assertNotPublishing } from "./publish-jobs.js";
 import {
   checksumMismatch,
   fileBlocked,
   fileTooLarge,
-  notReleaseOwner,
   partOutOfOrder,
   partSizeInvalid,
   releaseLocked,
@@ -52,7 +52,7 @@ function presentSession(session: UploadSession) {
 }
 
 const target = (session: UploadSession) => ({
-  bucket: getStorageBuckets().staging,
+  bucket: getStorageBucket(),
   key: session.objectKey,
   uploadId: session.storageUploadId,
 });
@@ -89,16 +89,16 @@ export async function expireStaleSessions(
   );
 }
 
-/** The DEV's own session on this release, while the release is editable. */
-async function ownSession(devId: string, releaseId: string, uploadId: string) {
+/**
+ * A session on this release, while the release is editable. Any developer may
+ * work on it: two sending the same file end up sharing one session.
+ */
+async function openSession(releaseId: string, uploadId: string) {
   const session = await prisma.uploadSession.findFirst({
     where: { id: uploadId, releaseId },
-    include: { release: { select: { status: true, createdById: true } } },
+    include: { release: { select: { status: true } } },
   });
   if (!session) throw uploadNotFound();
-  if (session.createdById !== devId || session.release.createdById !== devId) {
-    throw notReleaseOwner();
-  }
   if (!EDITABLE_STATUSES.includes(session.release.status)) {
     throw releaseLocked(session.release.status);
   }
@@ -126,7 +126,7 @@ export async function createUploadSession(
   if (input.size > env.MAX_UPLOAD_BYTES) {
     throw fileTooLarge(env.MAX_UPLOAD_BYTES);
   }
-  const release = await assertUploadTarget(devId, releaseId, input);
+  const release = await assertUploadTarget(releaseId, input);
   await expireStaleSessions(releaseId);
 
   const existing = await prisma.uploadSession.findUnique({
@@ -170,8 +170,8 @@ export async function createUploadSession(
     input.contentType && CONTENT_TYPE.test(input.contentType)
       ? input.contentType.toLowerCase()
       : FALLBACK_CONTENT_TYPE;
-  const key = stagedKey(randomUUID(), input.name);
-  const bucket = getStorageBuckets().staging;
+  const key = draftKey(randomUUID(), input.name);
+  const bucket = getStorageBucket();
   const storageUploadId = await getStorageDriver().createUpload({
     bucket,
     key,
@@ -221,14 +221,16 @@ export async function createUploadSession(
   }
 }
 
-/** GET /releases/:id/uploads: the DEV's open sessions, so a client can rebuild its state. */
+/**
+ * GET /releases/:id/uploads: the sessions this DEV opened, so their client can
+ * rebuild its state. Another developer's uploads aren't theirs to resume.
+ */
 export async function listUploadSessions(devId: string, releaseId: string) {
   const release = await prisma.release.findUnique({
     where: { id: releaseId },
-    select: { createdById: true },
+    select: { id: true },
   });
   if (!release) throw uploadNotFound();
-  if (release.createdById !== devId) throw notReleaseOwner();
   await expireStaleSessions(releaseId);
   const sessions = await prisma.uploadSession.findMany({
     where: { releaseId, createdById: devId },
@@ -244,13 +246,12 @@ export async function listUploadSessions(devId: string, releaseId: string) {
  * means the client sends it again, which replaces that part in storage.
  */
 export async function putUploadPart(
-  devId: string,
   releaseId: string,
   uploadId: string,
   n: number,
   body: Buffer,
 ) {
-  const session = await ownSession(devId, releaseId, uploadId);
+  const session = await openSession(releaseId, uploadId);
   const size = Number(session.sizeBytes);
   const count = partCount(size, session.partSize);
   if (n > count) {
@@ -307,12 +308,13 @@ export async function putUploadPart(
  * at a time holds the session; a second gets UPLOAD_COMPLETING.
  */
 export async function completeUploadSession(
-  devId: string,
   releaseId: string,
   uploadId: string,
   now = new Date(),
 ) {
-  const session = await ownSession(devId, releaseId, uploadId);
+  const session = await openSession(releaseId, uploadId);
+  // Refused here, while the session can still be completed once publish ends
+  assertNotPublishing(releaseId);
   const size = Number(session.sizeBytes);
   const count = partCount(size, session.partSize);
   if (session.partsDone < count) throw uploadIncomplete(session.partsDone + 1);
@@ -380,7 +382,7 @@ export async function completeUploadSession(
   }
 
   try {
-    return await saveStagedFile(devId, releaseId, {
+    return await saveStagedFile(releaseId, {
       key: session.objectKey,
       name: session.fileName,
       contentType: session.contentType,
@@ -404,12 +406,8 @@ export async function completeUploadSession(
 }
 
 /** DELETE /releases/:id/uploads/:uploadId: cancel, discarding the stored parts. */
-export async function abortUploadSession(
-  devId: string,
-  releaseId: string,
-  uploadId: string,
-) {
-  const session = await ownSession(devId, releaseId, uploadId);
+export async function abortUploadSession(releaseId: string, uploadId: string) {
+  const session = await openSession(releaseId, uploadId);
   if (session.completingAt) {
     throw ApiError.conflict(
       "This upload is already being saved",

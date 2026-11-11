@@ -6,7 +6,7 @@ import {
 } from "@prisma/client";
 import { env } from "../../configs/env.js";
 import { prisma } from "../../configs/prisma.js";
-import { getStorageBuckets } from "../../configs/storage.js";
+import { getStorageBucket } from "../../configs/storage.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import {
   hubspotService,
@@ -17,9 +17,10 @@ import { downloadLabel } from "../hubspot/hubspot.utils.js";
 import { assertLicenseAccepted } from "../licenses/license.service.js";
 import { versionOf } from "../releases/releases.utils.js";
 import { getStorageDriver } from "../storage/drivers/storage.driver.js";
+import { isDraftKey, isPublishedKey } from "../storage/storage.utils.js";
 
 // Same visibility as the catalog: current and older shipped releases of
-// active products. Drafts, reviews and rolled-back builds are never served.
+// active products. Drafts and rolled-back builds are never served.
 const DOWNLOADABLE: ReleaseStatus[] = [
   ReleaseStatus.PUBLISHED,
   ReleaseStatus.ARCHIVED,
@@ -110,13 +111,12 @@ async function issueLink(
   file: DownloadedFile,
   hubspot: HubspotClient,
 ) {
-  const { staging, release } = getStorageBuckets();
-  const staged = file.objectKey.startsWith("staged/");
-  if (!staged && !file.objectKey.startsWith("releases/")) {
+  const staged = isDraftKey(file.objectKey);
+  if (!staged && !isPublishedKey(file.objectKey)) {
     throw fileUnavailable();
   }
   const { url, expiresAt } = await getStorageDriver().createReadUrl({
-    bucket: staged ? staging : release,
+    bucket: getStorageBucket(),
     key: file.objectKey,
     fileName: file.originalName,
     expiresInSeconds: staged
@@ -129,7 +129,7 @@ async function issueLink(
 
 /**
  * POST /catalog/files/:fileId/download: shipped files only, for anyone
- * signed in. Never a staged object (shipped files live under releases/).
+ * signed in. Never a draft object (shipped files live under publish/).
  */
 export async function createDownload(
   user: Downloader,
@@ -148,7 +148,7 @@ export async function createDownload(
     },
     select: fileSelect,
   });
-  if (!file || !file.objectKey.startsWith("releases/")) {
+  if (!file || !isPublishedKey(file.objectKey)) {
     throw fileUnavailable();
   }
   return issueLink(user, file, hubspot);
@@ -156,7 +156,7 @@ export async function createDownload(
 
 /**
  * POST /releases/:id/files/:fileId/download: staff, any release state. A
- * staged file (draft, review) gets a short link to the staging bucket.
+ * draft file gets a short link.
  */
 export async function createStaffDownload(
   user: Downloader,

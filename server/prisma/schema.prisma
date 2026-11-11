@@ -207,8 +207,6 @@ model Product {
 
 enum ReleaseStatus {
   DRAFT
-  IN_REVIEW
-  CHANGES_REQUESTED
   PUBLISHED
   ARCHIVED
   ROLLED_BACK
@@ -237,6 +235,8 @@ enum SdkPlatform {
 
 enum ReleaseEventType {
   CREATED
+  // SUBMITTED, WITHDRAWN and CHANGES_REQUESTED are from the old admin review
+  // flow: no longer written, kept so existing timelines keep their history
   SUBMITTED
   WITHDRAWN
   CHANGES_REQUESTED
@@ -254,7 +254,7 @@ model Release {
   productId    String
   product      Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
   // Null while a draft has none yet (files can upload first); required to
-  // submit, so every release in review or shipped has one
+  // publish, so every shipped release has one
   version      String?
   // Parsed semver parts, for ordering and "newer than shipped" checks
   versionMajor Int?
@@ -290,7 +290,7 @@ model ReleaseFile {
   releaseId String
   release   Release          @relation(fields: [releaseId], references: [id], onDelete: Cascade)
   // Null while drafting: the file uploaded before anyone picked its type.
-  // Submit requires a kind on every file (and a platform on every SDK).
+  // Publish requires a kind on every file (and a platform on every SDK).
   kind      ReleaseFileKind?
 
   platform SdkPlatform?
@@ -299,7 +299,8 @@ model ReleaseFile {
   contentType  String
   sizeBytes    BigInt
   sha256       String
-  // staged/... until publish, then releases/...; never overwritten
+  // draft/... until publish, then publish/...; never overwritten. Older files
+  // keep their staged/... and releases/... keys
   objectKey    String @unique
 
   // What the file-inspect parser found when it was uploaded (null for files

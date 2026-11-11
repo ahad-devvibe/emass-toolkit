@@ -3,19 +3,9 @@ import { formatBytes } from "@/pages/ProductDetails/release.utils"
 import { formatFromName } from "@/pages/ReleaseEditor/detect-file"
 import type { ReleaseDetail, ReleaseEventItem, ReleaseEventKind, ReleaseFileItem } from "@/pages/Releases/releases.model"
 
-/** The most recent event of a type (feedback, rollback reason, publish time). */
+/** The most recent event of a type (rollback reason, publish time). */
 export function latestEvent(release: Pick<ReleaseDetail, "events">, type: ReleaseEventKind): ReleaseEventItem | undefined {
   return [...release.events].reverse().find((event) => event.type === type)
-}
-
-/**
- * Files added since the last "changes requested", so a re-review can see
- * what changed. Empty when no changes were ever requested.
- */
-export function filesUpdatedAfterFeedback(release: Pick<ReleaseDetail, "events" | "files">): ReleaseFileItem[] {
-  const feedback = latestEvent(release, "changes_requested")
-  if (!feedback) return []
-  return release.files.filter((file) => Date.parse(file.createdAt) > Date.parse(feedback.at))
 }
 
 /**

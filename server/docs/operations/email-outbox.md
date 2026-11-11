@@ -40,7 +40,7 @@ There's no opt-out from announcements yet.
    - **any other 4xx (e.g. bad address), 5 attempts used, or the user was
      blocked or deleted since** → `FAILED` with `lastError`.
 5. **Batch summary:** when a batch has nothing left to send, a
-   `CUSTOMERS_NOTIFIED` event appears in the release's Activity, by the admin
+   `CUSTOMERS_NOTIFIED` event appears in the release's Activity, by the developer
    who rolled back or published:
    - "Emailed 998 customers who downloaded v1.4.0 (2 failed)."
    - "No customers had downloaded v1.4.0."

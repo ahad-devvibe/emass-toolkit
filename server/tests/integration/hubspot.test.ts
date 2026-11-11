@@ -162,7 +162,7 @@ describe("HubSpot contact id on the user row", () => {
     expect(owner.hubspotContactId).toBe(contactId);
     expect(dupe.hubspotContactId).toBeNull();
     expect(dupe.status).toBe("ACTIVE");
-  });
+  }, 15_000); // Two full sign-ups with password hashing
 
   it("keeps the id null when HubSpot fails", async () => {
     const email = uniqueEmail("hs-noid");

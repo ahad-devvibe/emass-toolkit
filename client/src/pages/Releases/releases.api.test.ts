@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ApiRequestError } from "@/lib/api/http"
-import { blockedFiles, fileBlockedReasons, highestShipped, platformTakenBy, unconfirmedWarnings } from "./releases.errors"
+import { fileBlockedReasons, highestShipped, platformTakenBy } from "./releases.errors"
 
 // The session module opens a BroadcastChannel at import; the API module only needs its two calls
 const session = vi.hoisted(() => ({ authorizedRequest: vi.fn(), authorizedSend: vi.fn() }))
@@ -15,7 +15,7 @@ beforeEach(() => {
 
 describe("listQuery", () => {
   it("uses the server's status vocabulary and drops blanks", () => {
-    expect(listQuery({ statuses: ["in_review"], productId: "p1", q: "  core ", cursor: "c1", limit: 10 }).toString()).toBe("limit=10&status=IN_REVIEW&productId=p1&q=core&cursor=c1")
+    expect(listQuery({ statuses: ["published"], productId: "p1", q: "  core ", cursor: "c1", limit: 10 }).toString()).toBe("limit=10&status=PUBLISHED&productId=p1&q=core&cursor=c1")
     expect(listQuery({ q: "   ", cursor: null, statuses: [] }).toString()).toBe("limit=50")
   })
 
@@ -97,12 +97,11 @@ describe("releasesApi.checkFile", () => {
 })
 
 describe("releasesApi.submit", () => {
-  const detail = { id: "r1", product: { id: "p", name: "P" }, version: "1.0.0", status: "IN_REVIEW", createdBy: { id: "u", name: "U", role: "DEV" }, createdAt: "", updatedAt: "", fileCount: 0, totalBytes: 0, releaseNotes: "", publishedAt: null, publishedBy: null, files: [], events: [], review: { currentPublished: null, restoreTarget: null } }
 
   it("confirms warnings only when asked", async () => {
-    session.authorizedRequest.mockResolvedValue(detail)
-    await releasesApi.submit("r1")
-    await releasesApi.submit("r1", { confirmWarnings: true })
+    session.authorizedRequest.mockResolvedValue({ job: {} })
+    await releasesApi.publish("r1")
+    await releasesApi.publish("r1", { confirmWarnings: true })
     expect(session.authorizedRequest.mock.calls.map((call) => call[1])).toEqual([
       { method: "POST", body: {} },
       { method: "POST", body: { confirmWarnings: true } },
@@ -132,16 +131,11 @@ describe("releasesApi.update", () => {
 })
 
 describe("file rule errors", () => {
-  it("reads why a file is blocked, and which files block or warn on submit", () => {
+  it("reads why a file is blocked", () => {
     const reason = { code: "VERSION_MISMATCH", message: "says 1.0.0", match: { a: 1 } }
     const blocked = new ApiRequestError(409, "FILE_BLOCKED", "x", {}, { reasons: [reason] })
-    const submitBlocked = new ApiRequestError(409, "FILE_BLOCKED", "x", {}, { files: [{ fileId: "f1", name: "a.exe", reasons: [reason] }] })
-    const warned = new ApiRequestError(409, "FILE_WARNINGS_UNCONFIRMED", "x", {}, { files: [{ fileId: "f2", name: "b.pdf", warnings: [{ code: "NO_VERSION", message: "none" }] }] })
 
     expect(fileBlockedReasons(blocked)).toEqual([{ code: "VERSION_MISMATCH", message: "says 1.0.0" }])
-    expect(blockedFiles(submitBlocked)).toEqual([{ fileId: "f1", name: "a.exe", issues: [{ code: "VERSION_MISMATCH", message: "says 1.0.0" }] }])
-    expect(unconfirmedWarnings(warned)).toEqual([{ fileId: "f2", name: "b.pdf", issues: [{ code: "NO_VERSION", message: "none" }] }])
-    expect(unconfirmedWarnings(blocked)).toBeNull()
     expect(fileBlockedReasons(new Error("x"))).toBeNull()
   })
 })
@@ -158,26 +152,23 @@ describe("error helpers", () => {
   })
 })
 
-describe("admin review calls", () => {
+describe("release action calls", () => {
   const detail = { id: "r1", product: { id: "p", name: "P" }, version: "1.0.0", status: "CHANGES_REQUESTED", createdBy: { id: "u", name: "U", role: "DEV" }, createdAt: "", updatedAt: "", fileCount: 0, totalBytes: 0, releaseNotes: "", publishedAt: null, publishedBy: null, files: [], events: [], review: { currentPublished: null, restoreTarget: null } }
   const job = { phase: "copying", filesTotal: 2, filesDone: 0, percent: 0, error: null, startedAt: "", finishedAt: null }
 
-  it("sends feedback and rollback reasons", async () => {
+  it("sends rollback reasons", async () => {
     session.authorizedRequest.mockResolvedValue(detail)
 
-    const sent = await releasesApi.requestChanges("r1", "Missing macOS")
     await releasesApi.rollback("r1", { reason: "Crashes", customerMessage: "Use v0.9.0" })
 
-    expect(session.authorizedRequest).toHaveBeenNthCalledWith(1, "/releases/r1/request-changes", { method: "POST", body: { note: "Missing macOS" } })
-    expect(session.authorizedRequest).toHaveBeenNthCalledWith(2, "/releases/r1/rollback", { method: "POST", body: { reason: "Crashes", customerMessage: "Use v0.9.0" } })
-    expect(sent.status).toBe("changes_requested")
+    expect(session.authorizedRequest).toHaveBeenNthCalledWith(1, "/releases/r1/rollback", { method: "POST", body: { reason: "Crashes", customerMessage: "Use v0.9.0" } })
   })
 
   it("starts a publish and reads its status", async () => {
-    session.authorizedRequest.mockResolvedValueOnce({ job }).mockResolvedValueOnce({ job, status: "IN_REVIEW" })
+    session.authorizedRequest.mockResolvedValueOnce({ job }).mockResolvedValueOnce({ job, status: "DRAFT" })
 
     expect(await releasesApi.publish("r1")).toEqual(job)
-    expect(await releasesApi.publishStatus("r1")).toEqual({ job, status: "in_review" })
+    expect(await releasesApi.publishStatus("r1")).toEqual({ job, status: "draft" })
     expect(session.authorizedRequest.mock.calls.map((call) => call[0])).toEqual(["/releases/r1/publish", "/releases/r1/publish-status"])
   })
 })

@@ -9,17 +9,15 @@ import {
   uniqueEmail,
 } from "../helpers/auth.js";
 import { accessCookie } from "../helpers/http.js";
-import { createProduct, createRelease } from "../helpers/releases.js";
 import { resetDb } from "../helpers/resetDb.js";
 
 let adminCookie: Record<string, string>;
-let devId: string;
 
 beforeAll(async () => {
   await resetDb();
   const admin = await promoteToAdmin(await createUser(uniqueEmail("admin")));
   adminCookie = { Cookie: accessCookie(admin.accessToken) };
-  devId = (await promoteToDev(await createUser(uniqueEmail("dev")))).id;
+  await promoteToDev(await createUser(uniqueEmail("dev")));
 
   // Active: the admin and dev (staff) plus three customers
   const customers = [];
@@ -58,7 +56,7 @@ beforeAll(async () => {
     });
     await prisma.user.update({ where: { id: user.id }, data: { blockReason } });
   }
-});
+}, 30_000); // Many sign-ups with password hashing
 
 const getDashboard = (headers: Record<string, string> = adminCookie) =>
   request(app).get("/api/admin/dashboard").set(headers);
@@ -98,38 +96,10 @@ describe("GET /api/admin/dashboard", () => {
     expect(signupAlerts.items[0]).not.toHaveProperty("password");
   });
 
-  it("lists releases waiting for review, oldest submission first", async () => {
-    const product = await createProduct();
-    const versions = ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0"];
-    for (const [index, version] of versions.entries()) {
-      const release = await createRelease({
-        productId: product.id,
-        createdById: devId,
-        version,
-        status: "IN_REVIEW",
-      });
-      await prisma.release.update({
-        where: { id: release.id },
-        data: { updatedAt: new Date(Date.UTC(2026, 5, 1 + index)) },
-      });
-    }
-    await createRelease({
-      productId: product.id,
-      createdById: devId,
-      version: "0.9.0",
-      status: "DRAFT",
-    });
-
-    const body = (await getDashboard()).body.data;
-
-    expect(body.releaseAlerts.total).toBe(6);
-    expect(
-      body.releaseAlerts.items.map((r: { version: string }) => r.version),
-    ).toEqual(["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0"]);
-    expect(body.releaseAlerts.items[0]).toMatchObject({
-      product: { id: product.id, name: product.name },
-      createdBy: { id: devId, role: "DEV" },
-    });
+  it("has nothing about release reviews", async () => {
+    expect((await getDashboard()).body.data).not.toHaveProperty(
+      "releaseAlerts",
+    );
   });
 
   it("requires an admin", async () => {

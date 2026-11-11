@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   chunkStream,
   contentDispositionAttachment,
+  draftKey,
+  isDraftKey,
+  isPublishedKey,
+  publishedKey,
   safeName,
-  releasedKey,
   signLocalLink,
-  stagedKey,
   verifyLocalLink,
 } from "../../src/services/storage/storage.utils.js";
 
@@ -69,9 +71,20 @@ describe("safeName", () => {
   });
 });
 
-describe("stagedKey", () => {
-  it("builds staged/{uuid}/{safeName}, with no product or release", () => {
-    expect(stagedKey("u1", "../My SDK.zip")).toBe("staged/u1/My-SDK.zip");
+describe("draftKey", () => {
+  it("builds draft/{uuid}/{safeName}, with no product or release", () => {
+    expect(draftKey("u1", "../My SDK.zip")).toBe("draft/u1/My-SDK.zip");
+  });
+});
+
+describe("key prefixes", () => {
+  it("treats the older prefixes like the new ones", () => {
+    expect(isDraftKey("draft/u/a.zip")).toBe(true);
+    expect(isDraftKey("staged/u/a.zip")).toBe(true);
+    expect(isDraftKey("publish/p/1.0.0/u/a.zip")).toBe(false);
+    expect(isPublishedKey("publish/p/1.0.0/u/a.zip")).toBe(true);
+    expect(isPublishedKey("releases/p/1.0.0/u/a.zip")).toBe(true);
+    expect(isPublishedKey("draft/u/a.zip")).toBe(false);
   });
 });
 
@@ -106,32 +119,40 @@ describe("chunkStream", () => {
   });
 });
 
-describe("releasedKey", () => {
-  it("maps a staged key to releases/{productId}/{version}, keeping uuid and name", () => {
-    expect(releasedKey("staged/uuid-7/emass-core.msi", "prod-1", "2.5.0")).toBe(
-      "releases/prod-1/2.5.0/uuid-7/emass-core.msi",
-    );
+describe("publishedKey", () => {
+  it("maps a draft key to publish/{productId}/{version}, keeping uuid and name", () => {
+    for (const key of [
+      "draft/uuid-7/emass-core.msi",
+      "staged/uuid-7/emass-core.msi",
+    ]) {
+      expect(publishedKey(key, "prod-1", "2.5.0")).toBe(
+        "publish/prod-1/2.5.0/uuid-7/emass-core.msi",
+      );
+    }
   });
 
   it("groups an older-format key by the release's current product, not the one in its path", () => {
     expect(
-      releasedKey(
+      publishedKey(
         "staged/old-prod/rel-9/uuid-7/emass-core.msi",
         "prod-2",
         "2.5.0",
       ),
-    ).toBe("releases/prod-2/2.5.0/uuid-7/emass-core.msi");
+    ).toBe("publish/prod-2/2.5.0/uuid-7/emass-core.msi");
   });
 
-  it("rejects anything that is not a staged key", () => {
+  it("rejects anything that is not a draft key", () => {
     for (const key of [
       "releases/p/1.0.0/u/a.zip",
+      "publish/p/1.0.0/u/a.zip",
+      "draft/a.zip",
+      "draft/p/r/u/a.zip",
       "staged/a.zip",
       "staged/p/r/a.zip",
       "staged/p/r/u/nested/a.zip",
       "",
     ]) {
-      expect(() => releasedKey(key, "p", "1.0.0"), key).toThrowError(
+      expect(() => publishedKey(key, "p", "1.0.0"), key).toThrowError(
         expect.objectContaining({ code: "INVALID_OBJECT_KEY" }),
       );
     }

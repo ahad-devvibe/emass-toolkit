@@ -14,7 +14,7 @@ type ApiCatalogProduct = { product: { id: string; name: string; description: str
 
 const productPath = (id: string) => `/catalog/products/${encodeURIComponent(id)}`
 
-/** An SDK always has a platform once shipped (submit requires it); one without is skipped. */
+/** An SDK always has a platform once shipped (publish requires it); one without is skipped. */
 export function toCatalogReleaseFile(file: ApiCatalogFile): ReleaseFile | null {
   const base = { id: file.id, name: file.name, sizeBytes: file.sizeBytes, size: formatBytes(file.sizeBytes), checksum: file.sha256 }
   if (file.kind === "DOC") return { ...base, kind: "documentation", title: file.name, format: formatFromName(file.name) }

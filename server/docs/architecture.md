@@ -62,7 +62,7 @@ src/
 │   ├── catalog.routes.ts       # customer catalog: shipped versions only, and POST /files/:id/download (docs/downloads/downloads.md)
 │   ├── local-files.routes.ts   # GET /files/local/:token, signed download links (STORAGE_DRIVER=local only)
 │   ├── products.routes.ts
-│   └── releases.routes.ts      # releases, files, review, publish
+│   └── releases.routes.ts      # releases, files, publish, rollback
 ├── controllers/   # flat handler files (health, docs, auth, admin-signups, admin-dashboard, admin-domains, admin-integrations, catalog, products, releases, release-files)
 ├── middleware/    # auth (requireAuth), role (requireRole), admin, upload (multer, images), error-handler
 ├── services/      # per-module folders (the only folders allowed)
@@ -323,12 +323,11 @@ Full decisions in `docs/releases/release-management.md`; deploy steps in
   under `STORAGE_LOCAL_DIR` (dev/tests, no cloud); `oci` uses the OCI SDK and
   is enforced in production at boot. Writes and copies go through `.part` /
   multipart and only appear when complete.
-- **Buckets:** keys always carry a prefix: `staged/{uuid}/{name}` (older
-  drafts: `staged/{productId}/{releaseId}/{uuid}/{name}`) and
-  `releases/{productId}/{version}/{uuid}/{name}`, built at publish from the
-  release's product and version. Dev uses one bucket
-  (`OCI_BUCKET`); prod sets `OCI_STAGING_BUCKET` and `OCI_RELEASE_BUCKET`. Same
-  code path, no environment branch.
+- **Bucket:** one private bucket (`OCI_BUCKET`). Keys always carry a prefix:
+  `draft/{uuid}/{name}` and `publish/{productId}/{version}/{uuid}/{name}`,
+  built at publish from the release's product and version. Older objects keep
+  `staged/…` and `releases/…`, which the code treats the same way
+  (`isDraftKey`, `isPublishedKey`).
 - **Uploads:** `POST /releases/:id/files` is parsed by **busboy** as a stream
   (fields before the file), hashed (SHA-256) and counted on the fly, and
   piped into an OCI multipart upload, one `UPLOAD_PART_BYTES` part in memory.
@@ -348,10 +347,11 @@ Full decisions in `docs/releases/release-management.md`; deploy steps in
 - **Publish** (`publish.service.ts`) is an in-memory background job (one
   VM): `copyObject` per file (OCI work request polled every `COPY_POLL_MS`,
   bounded by `COPY_TIMEOUT_MS`), then one transaction that archives the
-  previous release and publishes, then the staged objects are deleted.
+  previous release and publishes, then the draft objects are deleted.
   All-or-nothing; a restart loses the job but never half-publishes, and a
   retry is safe (deterministic keys). Results are readable for
-  `PUBLISH_JOB_TTL_MS`. Measured: 1 GiB copies in ~12 s in-region, with
+  `PUBLISH_JOB_TTL_MS`. While a job runs, changes to that draft answer
+  `RELEASE_PUBLISHING`. Measured: 1 GiB copies in ~12 s in-region, with
   `percentComplete` jumping 0 → 100.
 
 ## 13. Roadmap / known gaps

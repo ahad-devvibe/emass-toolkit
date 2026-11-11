@@ -1,70 +1,65 @@
-import { ReleaseEventType, ReleaseStatus, type Release } from "@prisma/client";
+import {
+  ReleaseEventType,
+  ReleaseStatus,
+  type Release,
+  type ReleaseFile,
+} from "@prisma/client";
 import { env } from "../../configs/env.js";
 import { logger } from "../../configs/logger.js";
 import { prisma } from "../../configs/prisma.js";
-import {
-  getStorageBuckets,
-  type StorageBuckets,
-} from "../../configs/storage.js";
+import { getStorageBucket } from "../../configs/storage.js";
+import type { PublishReleaseInput } from "../../schemas/releases.schema.js";
 import { ApiError } from "../../utils/api-error.utils.js";
 import {
   getStorageDriver,
   type StorageDriver,
 } from "../storage/drivers/storage.driver.js";
-import { releasedKey } from "../storage/storage.utils.js";
+import { publishedKey } from "../storage/storage.utils.js";
 import { enqueueReleaseAnnouncement } from "../email/email-outbox.service.js";
 import { emailWorker } from "../email/email-worker.js";
+import { isRunning, jobs, type PublishJob } from "./publish-jobs.js";
+import { expireStaleSessions } from "./upload-sessions.service.js";
 import { releaseChanged, releaseNotFound } from "./releases.errors.js";
-import { requiredSemver, versionOf } from "./releases.utils.js";
+import {
+  EDITABLE_STATUSES,
+  requiredSemver,
+  versionOf,
+} from "./releases.utils.js";
 import {
   assertNewerThanShipped,
-  assertReadyForReview,
+  assertPublishable,
   lockProductReleases,
   lockRelease,
 } from "./releases.service.js";
 
-// Publish copies every file staging → release bucket, which can take minutes
-// for large builds, so it runs as a background job the admin dialog polls.
+// Publish copies every file draft/ → publish/, which can take minutes for
+// large builds, so it runs as a background job the developer's dialog polls.
 // Jobs live in memory (one VM). The database only changes in the final
 // transaction, so a restart mid-job never leaves a half-published release,
-// and a retry is safe: released keys are deterministic (same uuid).
+// and a retry is safe: published keys are deterministic (same uuid).
 
-export type PublishPhase = "copying" | "finalizing" | "done" | "failed";
-
-export interface PublishJob {
-  releaseId: string;
-  phase: PublishPhase;
-  filesTotal: number;
-  filesDone: number;
-  /** Size-weighted 0–100 across all files. */
-  percent: number;
-  error: { code: string; message: string } | null;
-  startedAt: string;
-  finishedAt: string | null;
-}
+export type { PublishJob, PublishPhase } from "./publish-jobs.js";
 
 export interface PublishDeps {
   driver: StorageDriver;
-  buckets: () => StorageBuckets;
+  bucket: () => string;
   now: () => Date;
   ttlMs: number;
 }
 
 const defaultDeps = (): PublishDeps => ({
   driver: getStorageDriver(),
-  buckets: getStorageBuckets,
+  bucket: getStorageBucket,
   now: () => new Date(),
   ttlMs: env.PUBLISH_JOB_TTL_MS,
 });
 
+// Files uploaded before inspection existed are read from storage once
+const PUBLISH_CHECK_TIMEOUT_MS = 30_000;
 // Finalize may wait on the product lock behind a rollback or another publish
 const FINALIZE_TIMEOUT_MS = 30_000;
 
-const jobs = new Map<string, PublishJob>();
 const expiries = new Map<string, NodeJS.Timeout>();
-
-const isRunning = (job: PublishJob) =>
-  job.phase === "copying" || job.phase === "finalizing";
 
 /** Forget every job (tests; a restart does the same). */
 export function resetPublishJobs(): void {
@@ -111,7 +106,10 @@ function toJobError(error: unknown, releaseId: string): PublishJob["error"] {
   return { code: "PUBLISH_FAILED", message: "Publishing failed. Try again." };
 }
 
-type FileToPublish = { id: string; objectKey: string; sizeBytes: bigint };
+type FileToPublish = Pick<
+  ReleaseFile,
+  "id" | "objectKey" | "sizeBytes" | "kind" | "platform"
+>;
 type ReleaseToPublish = Pick<
   Release,
   | "id"
@@ -123,29 +121,35 @@ type ReleaseToPublish = Pick<
 >;
 
 /**
- * ADMIN: start publishing a release in review. Checks everything it can up
- * front (status, files mapped, version still newer) and throws those as
- * normal 4xx errors; otherwise registers a job, starts it without waiting
- * and returns it. A second call while a job runs returns the same job.
+ * Start publishing a draft. Checks everything it can up front (status, files
+ * mapped and allowed, version still newer) and throws those as normal 4xx
+ * errors; otherwise registers a job, starts it without waiting and returns
+ * it. A second call while a job runs returns the same job.
  */
 export async function startPublish(
-  adminId: string,
+  devId: string,
   releaseId: string,
+  input: PublishReleaseInput = {},
   deps: PublishDeps = defaultDeps(),
 ): Promise<PublishJob> {
   const running = jobs.get(releaseId);
   if (running && isRunning(running)) return { ...running };
 
-  const { release, files } = await prisma.$transaction(async (tx) => {
-    const locked = await lockRelease(tx, releaseId, [ReleaseStatus.IN_REVIEW]);
-    await assertReadyForReview(tx, locked);
-    const rows = await tx.releaseFile.findMany({
-      where: { releaseId },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, objectKey: true, sizeBytes: true },
-    });
-    return { release: locked, files: rows };
-  });
+  // Abandoned uploads shouldn't hold the release back
+  await expireStaleSessions(releaseId);
+
+  const { release, files, note } = await prisma.$transaction(
+    async (tx) => {
+      const locked = await lockRelease(tx, releaseId, EDITABLE_STATUSES);
+      const rows = await tx.releaseFile.findMany({
+        where: { releaseId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+      const warnings = await assertPublishable(tx, locked, rows, input);
+      return { release: locked, files: rows, note: warnings };
+    },
+    { timeout: PUBLISH_CHECK_TIMEOUT_MS },
+  );
 
   // Another request may have started a job while this one was checking
   const raced = jobs.get(releaseId);
@@ -165,34 +169,35 @@ export async function startPublish(
   };
   jobs.set(releaseId, job);
 
-  void runPublish(job, adminId, release, files, deps).catch((err: unknown) =>
-    logger.error({ releaseId, err }, "Publish job crashed"),
+  void runPublish(job, devId, release, files, note, deps).catch(
+    (err: unknown) => logger.error({ releaseId, err }, "Publish job crashed"),
   );
   return { ...job };
 }
 
 async function runPublish(
   job: PublishJob,
-  adminId: string,
+  devId: string,
   release: ReleaseToPublish,
   files: FileToPublish[],
+  note: string | null,
   deps: PublishDeps,
 ): Promise<void> {
-  const { staging, release: releaseBucket } = deps.buckets();
+  const bucket = deps.bucket();
   const sizes = files.map((file) => Number(file.sizeBytes));
   const copiedKeys: string[] = [];
-  // In review, so it has a version, and its product can't change any more
+  // The checks passed, so it has a version
   const version = versionOf(release);
-  const releaseKey = (file: { objectKey: string }) =>
-    releasedKey(file.objectKey, release.productId, version);
+  const destination = (file: { objectKey: string }) =>
+    publishedKey(file.objectKey, release.productId, version);
 
   try {
     for (const [index, file] of files.entries()) {
-      const toKey = releaseKey(file);
+      const toKey = destination(file);
       await deps.driver.copyObject({
-        fromBucket: staging,
+        fromBucket: bucket,
         fromKey: file.objectKey,
-        toBucket: releaseBucket,
+        toBucket: bucket,
         toKey,
         onProgress: (percent) => {
           job.percent = weightedPercent(sizes, index, percent);
@@ -207,17 +212,27 @@ async function runPublish(
     await prisma.$transaction(
       async (tx) => {
         await lockProductReleases(tx, release.productId);
-        await lockRelease(tx, release.id, [ReleaseStatus.IN_REVIEW]);
+        const locked = await lockRelease(tx, release.id, EDITABLE_STATUSES);
 
-        // Sent back and resubmitted while copying: the copies may be stale
+        // Edits are refused while a job runs, but one that got in before the
+        // job started would leave these copies stale or under the wrong path
         const current = await tx.releaseFile.findMany({
           where: { releaseId: release.id },
-          select: { id: true, objectKey: true },
+          select: { id: true, objectKey: true, kind: true, platform: true },
         });
-        const copied = new Map(files.map((file) => [file.id, file.objectKey]));
+        const copied = new Map(files.map((file) => [file.id, file]));
         if (
+          locked.version !== release.version ||
+          locked.productId !== release.productId ||
           current.length !== files.length ||
-          current.some((file) => copied.get(file.id) !== file.objectKey)
+          current.some((file) => {
+            const was = copied.get(file.id);
+            return (
+              was?.objectKey !== file.objectKey ||
+              was.kind !== file.kind ||
+              was.platform !== file.platform
+            );
+          })
         ) {
           throw releaseChanged();
         }
@@ -245,7 +260,7 @@ async function runPublish(
             data: {
               releaseId: previous.id,
               type: ReleaseEventType.ARCHIVED,
-              actorId: adminId,
+              actorId: devId,
               note: `Replaced by v${version}`,
             },
           });
@@ -256,20 +271,21 @@ async function runPublish(
           data: {
             status: ReleaseStatus.PUBLISHED,
             publishedAt: deps.now(),
-            publishedById: adminId,
+            publishedById: devId,
           },
         });
         for (const file of files) {
           await tx.releaseFile.update({
             where: { id: file.id },
-            data: { objectKey: releaseKey(file) },
+            data: { objectKey: destination(file) },
           });
         }
         const published = await tx.releaseEvent.create({
           data: {
             releaseId: release.id,
             type: ReleaseEventType.PUBLISHED,
-            actorId: adminId,
+            actorId: devId,
+            note,
           },
           select: { id: true },
         });
@@ -297,13 +313,13 @@ async function runPublish(
   } catch (error) {
     // All or nothing: drop the copies; the database never changed
     const cleanup = await Promise.allSettled(
-      copiedKeys.map((key) => deps.driver.deleteObject(releaseBucket, key)),
+      copiedKeys.map((key) => deps.driver.deleteObject(bucket, key)),
     );
     cleanup.forEach((result, index) => {
       if (result.status === "rejected") {
         logger.error(
           { releaseId: release.id, key: copiedKeys[index], err: result.reason },
-          "Orphaned released copy after a failed publish",
+          "Orphaned published copy after a failed publish",
         );
       }
     });
@@ -318,9 +334,9 @@ async function runPublish(
   finish(job, deps);
   emailWorker.kick();
 
-  // Published: the staged copies are no longer needed (and never served)
+  // Published: the draft copies are no longer needed (and never served)
   const removed = await Promise.allSettled(
-    files.map((file) => deps.driver.deleteObject(staging, file.objectKey)),
+    files.map((file) => deps.driver.deleteObject(bucket, file.objectKey)),
   );
   removed.forEach((result, index) => {
     if (result.status === "rejected") {
@@ -330,19 +346,15 @@ async function runPublish(
           key: files[index].objectKey,
           err: result.reason,
         },
-        "Staged object left behind after publish",
+        "Draft object left behind after publish",
       );
     }
   });
 }
 
 /**
- * The job if one is known, plus the release's status, so the client can tell
- * "published" from "never started or lost in a restart" (still IN_REVIEW).
- */
-/**
  * GET /releases/publish-jobs: every job still running or recently settled,
- * with what an admin needs to label it. Lets a page that doesn't know the
+ * with what a developer needs to label it. Lets a page that doesn't know the
  * release ids (after a refresh, another tab) follow publishing.
  */
 export async function listPublishJobs() {
@@ -371,6 +383,10 @@ export async function listPublishJobs() {
   };
 }
 
+/**
+ * The job if one is known, plus the release's status, so the client can tell
+ * "published" from "never started or lost in a restart" (still DRAFT).
+ */
 export async function getPublishStatus(releaseId: string) {
   const release = await prisma.release.findUnique({
     where: { id: releaseId },

@@ -5,7 +5,7 @@ import request from "supertest";
 import { app } from "../../src/app.js";
 import { env } from "../../src/configs/env.js";
 import { prisma } from "../../src/configs/prisma.js";
-import { getStorageBuckets } from "../../src/configs/storage.js";
+import { getStorageBucket } from "../../src/configs/storage.js";
 import { getStorageDriver } from "../../src/services/storage/drivers/storage.driver.js";
 import { signLocalLink } from "../../src/services/storage/storage.utils.js";
 import {
@@ -60,7 +60,7 @@ function fetchBytes(url: string) {
 /** A release with one file whose object sits where publish puts it. */
 async function shippedFile(
   status: ReleaseStatus,
-  { productActive = true, staged = false } = {},
+  { productActive = true, staged = false, prefix = "releases" } = {},
 ) {
   const product = await createProduct();
   if (!productActive) {
@@ -79,10 +79,8 @@ async function shippedFile(
   const body = randomBytes(2048);
   const key = staged
     ? `staged/${product.id}/${release.id}/${randomUUID()}/emass-sdk.zip`
-    : `releases/${product.id}/1.0.0/${randomUUID()}/emass-sdk.zip`;
-  const bucket = staged
-    ? getStorageBuckets().staging
-    : getStorageBuckets().release;
+    : `${prefix}/${product.id}/1.0.0/${randomUUID()}/emass-sdk.zip`;
+  const bucket = getStorageBucket();
   await getStorageDriver().putStream({
     bucket,
     key,
@@ -140,11 +138,24 @@ describe("POST /api/catalog/files/:fileId/download", () => {
     expect((await download(fileId)).status).toBe(200);
   });
 
+  it("serves a file stored under the publish/ prefix", async () => {
+    const { fileId, body } = await shippedFile("PUBLISHED", {
+      prefix: "publish",
+    });
+
+    const res = await download(fileId);
+
+    expect(res.status).toBe(200);
+    const file = await fetchBytes(res.body.data.url);
+    expect(file.status).toBe(200);
+    expect(Buffer.compare(file.body as Buffer, body)).toBe(0);
+  });
+
   it("refuses anything customers can't see, recording nothing", async () => {
     const hidden = await Promise.all([
-      ...(
-        ["DRAFT", "IN_REVIEW", "CHANGES_REQUESTED", "ROLLED_BACK"] as const
-      ).map((status) => shippedFile(status)),
+      ...(["DRAFT", "ROLLED_BACK"] as const).map((status) =>
+        shippedFile(status),
+      ),
       shippedFile("PUBLISHED", { productActive: false }),
       // A shipped row pointing at a staged object must never get a link
       shippedFile("PUBLISHED", { staged: true }),
@@ -174,7 +185,7 @@ describe("POST /api/catalog/files/:fileId/download", () => {
   });
 
   it("rejects tampered or expired links", async () => {
-    const { release } = getStorageBuckets();
+    const release = getStorageBucket();
     const expired = signLocalLink(
       {
         bucket: release,
@@ -270,8 +281,8 @@ describe("POST /api/releases/:id/files/:fileId/download (staff)", () => {
     ).toBe(0);
   });
 
-  it("lets an admin download a release in review, and a shipped one with the long link", async () => {
-    const review = await shippedFile("IN_REVIEW", { staged: true });
+  it("lets an admin download a draft, and a shipped one with the long link", async () => {
+    const review = await shippedFile("DRAFT", { staged: true });
     const shipped = await shippedFile("PUBLISHED");
 
     expect(

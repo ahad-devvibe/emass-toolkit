@@ -3,8 +3,8 @@ import type { OperatingSystem } from "@/pages/Catalog/catalog.types"
 import type { ReleaseDetail, ReleaseFileItem } from "@/pages/Releases/releases.model"
 import { parseSemver, versionLabel } from "@/pages/Releases/version.utils"
 
-// What an admin checks before publishing, as 4 cards. Pure: the page passes
-// the release under review and the live version it would replace.
+// What a developer checks before publishing, as 4 cards. Pure: the page passes
+// the draft and the live version it would replace.
 
 export type CardTone = "ok" | "warn" | "bad" | "neutral"
 
@@ -39,6 +39,8 @@ function versionCard(release: ReleaseDetail): ReviewCard {
   const bump = previous && release.version ? bumpKind(previous, release.version) : null
   const value = previous ? `v${previous} → ${versionLabel(release.version)}` : `${versionLabel(release.version)}`
   const title = previous ? `Version${bump ? ` · ${bump}` : ""}` : "Version · first release"
+  if (!release.version) return { key: "version", title, value, tone: "bad", detail: "Set a version before publishing" }
+  if (release.files.length === 0) return { key: "version", title, value, tone: "neutral", detail: "No files to compare yet" }
   const wrong = release.files.filter((file) => hasIssue(file, ["VERSION_MISMATCH", "VERSION_EXISTS"]))
   if (wrong.length) return { key: "version", title, value, tone: "bad", detail: `${plural(wrong.length, "installer")} ${wrong.length === 1 ? "says" : "say"} another version` }
   const silent = release.files.filter((file) => hasIssue(file, ["DOC_VERSION_MISMATCH", "NO_VERSION"]))
@@ -48,6 +50,7 @@ function versionCard(release: ReleaseDetail): ReviewCard {
 
 function checksumCard(release: ReleaseDetail, live: LiveVersion): ReviewCard {
   const base = { key: "checksums" as const, title: "Checksums" }
+  if (release.files.length === 0) return { ...base, value: "No files yet", tone: "neutral", detail: "Add files to check them" }
   const unhashed = release.files.filter((file) => !file.sha256).length
   const value = unhashed ? `${plural(unhashed, "file")} without SHA-256` : "SHA-256 verified"
   if (unhashed) return { ...base, value, tone: "bad", detail: "Every file needs a checksum" }

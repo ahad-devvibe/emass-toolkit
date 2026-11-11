@@ -5,13 +5,13 @@ import { cn } from "@/lib/utils"
 import { isPublishRunning, publishLabel, publishPercent } from "@/pages/ReleaseDetail/publish-progress"
 import type { PublishItem } from "./uploads.state"
 
-/** An admin's publish job: the server copies the files, then ships the release. */
+/** A publish job: the server copies the files, then ships the release. */
 export function PublishRow({ item, onDismiss }: { item: PublishItem; onDismiss: () => void }) {
   const { job, interrupted } = item
   const running = isPublishRunning(job)
   const failed = job?.phase === "failed"
   const done = job?.phase === "done"
-  const text = interrupted ? "Publishing stopped; the release is still in review." : job ? publishLabel(job) : "Starting…"
+  const text = interrupted ? "Publishing stopped; the release is still a draft." : job ? publishLabel(job) : "Starting…"
   const files = job && running ? ` · ${Math.min(job.filesDone, job.filesTotal)} of ${job.filesTotal} files` : ""
 
   return (

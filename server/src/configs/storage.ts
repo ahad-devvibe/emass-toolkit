@@ -40,28 +40,15 @@ export function getStorageConfig(): StorageConfig {
   };
 }
 
-export interface StorageBuckets {
-  staging: string;
-  release: string;
-}
-
 /**
- * Dev runs one bucket (keys are separated by the staged/ and releases/
- * prefixes); prod sets separate staging and release buckets.
+ * The one private bucket that holds every release file: draft/ for unpublished
+ * ones and publish/ for shipped ones.
  */
-export function getStorageBuckets(): StorageBuckets {
-  const fallback =
-    env.OCI_BUCKET || (env.STORAGE_DRIVER === "local" ? "local" : undefined);
-  return {
-    staging: requiredEnv(
-      env.OCI_STAGING_BUCKET || fallback,
-      "OCI_STAGING_BUCKET or OCI_BUCKET",
-    ),
-    release: requiredEnv(
-      env.OCI_RELEASE_BUCKET || fallback,
-      "OCI_RELEASE_BUCKET or OCI_BUCKET",
-    ),
-  };
+export function getStorageBucket(): string {
+  return requiredEnv(
+    env.OCI_BUCKET || (env.STORAGE_DRIVER === "local" ? "local" : undefined),
+    "OCI_BUCKET",
+  );
 }
 
 export type ObjectStorageClientLike = Pick<

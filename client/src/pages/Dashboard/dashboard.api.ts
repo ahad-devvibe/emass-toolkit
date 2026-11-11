@@ -1,4 +1,3 @@
-import type { UserRole } from "@/auth/auth.types"
 import { authorizedRequest } from "@/auth/session"
 
 // Wire shape of GET /admin/dashboard (server/src/services/admin/dashboard.service.ts)
@@ -13,10 +12,6 @@ export type Dashboard = {
   }
   // Customer downloads only; staff ones aren't counted
   downloads: { total: number; last30Days: number }
-  releaseAlerts: {
-    total: number
-    items: { id: string; product: { id: string; name: string }; version: string; createdBy: { id: string; name: string; role: UserRole }; submittedAt: string }[]
-  }
   signupAlerts: {
     total: number
     items: { id: string; firstName: string; lastName: string; email: string; companyName: string; country: string; createdAt: string }[]

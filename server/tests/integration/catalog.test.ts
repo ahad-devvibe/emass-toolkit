@@ -62,7 +62,7 @@ describe("GET /api/catalog/products", () => {
     const publishedAt = new Date("2026-10-12T09:00:00Z");
     await release(shipped.id, "2.0.0", "PUBLISHED", publishedAt);
     await release(shipped.id, "1.0.0", "ARCHIVED", new Date("2026-01-01"));
-    await release(shipped.id, "2.1.0", "IN_REVIEW");
+    await release(shipped.id, "2.1.0", "DRAFT");
     await release(unreleased.id, "0.1.0", "DRAFT");
 
     const res = await getList();
@@ -104,8 +104,6 @@ describe("GET /api/catalog/products/:id", () => {
     await release(product.id, "1.3.0", "PUBLISHED", new Date("2026-09-01"));
     for (const [version, status] of [
       ["1.4.0", "DRAFT"],
-      ["1.5.0", "IN_REVIEW"],
-      ["1.6.0", "CHANGES_REQUESTED"],
       ["1.1.0", "ROLLED_BACK"],
     ] as const) {
       await release(product.id, version, status);
@@ -158,7 +156,7 @@ describe("GET /api/catalog/products/:id", () => {
     const body = JSON.stringify(res.body);
 
     expect(body).not.toContain("objectKey");
-    expect(body).not.toContain("staged/");
+    expect(body).not.toContain("draft/");
     expect(body).not.toContain(dev.id);
   });
 

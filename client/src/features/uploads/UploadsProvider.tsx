@@ -29,7 +29,7 @@ function createAppStore() {
 /**
  * Owns the tab's uploads store, above the router, so uploads and publish jobs
  * outlive the page that started them. Staff only: a DEV's unfinished uploads
- * come back after a refresh, an admin's publish jobs are picked up. Signing
+ * come back after a refresh, and running publish jobs are picked up. Signing
  * out (or in as someone else) stops and forgets everything.
  */
 export function UploadsProvider({ children }: { children: ReactNode }) {

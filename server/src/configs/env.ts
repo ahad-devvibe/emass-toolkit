@@ -116,9 +116,6 @@ export const envSchema = z
     // storage
     OCI_OBJECT_NAMESPACE: z.string().optional(),
     OCI_BUCKET: z.string().optional(),
-    // Prod splits staging and release buckets; both default to OCI_BUCKET
-    OCI_STAGING_BUCKET: z.string().optional(),
-    OCI_RELEASE_BUCKET: z.string().optional(),
     STORAGE_DRIVER: z
       .enum(["local", "oci"], {
         error: "STORAGE_DRIVER must be one of local, oci",

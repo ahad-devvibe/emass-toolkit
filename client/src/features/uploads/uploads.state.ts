@@ -3,7 +3,7 @@ import type { FileIssue, PublishJob, ReleaseFileItem } from "@/pages/Releases/re
 import type { FileHandle } from "./file-source"
 
 // The app-wide uploads state: a pure reducer plus selectors. Release files
-// upload piece by piece and outlive the page that started them; admins'
+// upload piece by piece and outlive the page that started them; developers'
 // publish jobs are followed here too. uploads.store.ts runs it.
 //
 // Every dropped file is checked, then uploads, typed or not (an undetected
@@ -77,12 +77,12 @@ export type QueueItem = {
   result: ReleaseFileItem | null
 }
 
-/** An admin's publish job, followed from any page. */
+/** A developer's publish job, followed from any page. */
 export type PublishItem = {
   releaseId: string
   releaseLabel: string
   job: PublishJob | null
-  /** The server lost the job (restart) while the release was still in review. */
+  /** The server lost the job (restart) while the release was still a draft. */
   interrupted: boolean
 }
 
@@ -340,7 +340,7 @@ export const hasUnfinished = (state: QueueState) => state.items.some((item) => i
  * or held on a platform conflict. Blocked files never joined the release, so
  * they don't.
  */
-export const blocksSubmit = (state: QueueState) => isBusy(state) || hasFailures(state) || hasConflicts(state) || hasUnfinished(state)
+export const blocksPublish = (state: QueueState) => isBusy(state) || hasFailures(state) || hasConflicts(state) || hasUnfinished(state)
 
 /**
  * Another upload of the same release still in flight that claims `os`. Held

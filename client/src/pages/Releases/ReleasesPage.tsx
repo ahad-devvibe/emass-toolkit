@@ -53,9 +53,6 @@ export function ReleasesPage() {
           productId={productId}
           query={query}
           canCreate={user ? canCreateRelease(user.role) : false}
-          // Admins review submissions; devs act on feedback
-          highlightStatus={user?.role === "ADMIN" ? "in_review" : "changes_requested"}
-          highlightCount={list.needsYou}
           onStatusChange={(value) => setParam("status", value)}
           onProductChange={(value) => setParam("product", value)}
           onQueryChange={setQuery}

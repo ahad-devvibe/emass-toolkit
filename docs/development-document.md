@@ -10,15 +10,15 @@ For how people use the portal day to day, see the [User Guide](user-guide.md).
 
 The EMASS Toolkit is Nanoveu's private download portal for EMASS SDKs and
 documentation. Approved customers sign in and download versioned files.
-Nanoveu staff prepare, review and ship those files through the same portal.
+Nanoveu staff prepare and ship those files through the same portal.
 
 The portal serves three groups:
 
 | Group | What the portal gives them |
 |---|---|
 | **Customers** | A catalog of EMASS products, every shipped version, release notes, and verified downloads |
-| **Developers** | A release editor to upload SDKs and documents, with automatic checks, and a review workflow |
-| **Admins** | Sign-up approval, domain rules, release review, publishing, rollback, and a dashboard |
+| **Developers** | A release editor to upload SDKs and documents, with automatic checks, and the whole release workflow: publish, rollback and notes |
+| **Admins** | Sign-up approval, domain rules, and a dashboard; read-only access to releases |
 
 This delivery covers the complete portal: the web client, the API, the
 database, file storage, email, and the CRM link to HubSpot.
@@ -31,13 +31,13 @@ database, file storage, email, and the CRM link to HubSpot.
 |---|---|
 | **Accounts and access** | Self-service sign-up with email verification and captcha; approval queue for personal email addresses; blocking of competitor domains; password sign-in; email code (MFA) for every staff sign-in; password reset by email link |
 | **Roles** | Customer, Developer and Admin, enforced by the API on every request |
-| **Release management** | Drafts, review, changes requested, publish, archive and rollback, with a full activity history per release |
+| **Release management** | Drafts, publish, archive and rollback, with a full activity history per release |
 | **Release editor** | Drag-and-drop upload of large files, version detected from the files, file type and platform mapping, Markdown release notes |
 | **File integrity** | SHA-256 checksum of every file, computed on upload and shown to customers; checks that block wrong-version, already-shipped or duplicate installers |
 | **Publishing and rollback** | One-click publish that moves files into the release storage and archives the previous version; rollback that restores the previous version |
 | **Customer downloads** | Product catalog and pages, version picker, one-time licence acceptance, secure time-limited download links, checksum verification instructions |
 | **Notifications** | Sign-up, approval, sign-in and password emails; "new version available" and "version withdrawn" emails to the customers concerned |
-| **Admin tools** | Dashboard with user, sign-up and download figures and review queues; sign-up approval page; domain rules page |
+| **Admin tools** | Dashboard with user, sign-up and download figures and the sign-up queue; sign-up approval page; domain rules page |
 | **CRM** | Customer contacts, download totals and a first-download note sent to HubSpot |
 | **Audit** | Logs of sign-ins, customer downloads, staff downloads and every release change |
 | **API documentation** | OpenAPI specification and an HTML reference, generated from the code |
@@ -54,7 +54,7 @@ flowchart LR
         N[nginx] --> A[EMASS API<br/>Node.js]
     end
     D[(PostgreSQL)]
-    S[OCI Object Storage<br/>private staging + release buckets]
+    S[OCI Object Storage<br/>private bucket]
     E[OCI Email Delivery]
     H[HubSpot]
 
@@ -79,8 +79,8 @@ the same process: publish jobs and the email sender.
 **PostgreSQL.** Holds users, products, releases, file records, activity
 history, download logs and the email queue.
 
-**OCI Object Storage.** Holds the actual files, in two private buckets: one
-for files being prepared (staging) and one for shipped files (release).
+**OCI Object Storage.** Holds the actual files in one private bucket: a
+`draft/` area for files being prepared and a `publish/` area for shipped files.
 Nothing is ever public. The API reaches OCI through the virtual machine's own
 identity, so no cloud keys are stored on the server.
 
@@ -148,22 +148,19 @@ never reveals whether an email address has an account.
 ```mermaid
 stateDiagram-v2
     [*] --> Draft: developer adds files
-    Draft --> InReview: submitted
-    InReview --> ChangesRequested: admin requests changes
-    ChangesRequested --> InReview: resubmitted
-    InReview --> Draft: withdrawn
-    InReview --> Published: admin publishes
+    Draft --> Published: developer publishes
     Published --> Archived: newer version published
-    Published --> RolledBack: admin rolls back
-    Archived --> RolledBack: admin rolls back
+    Published --> RolledBack: developer rolls back
+    Archived --> RolledBack: developer rolls back
 ```
 
-- Only the developer who created a release can change it.
-- Admins review, publish and roll back; they never edit a release's files.
+- Developers own releases from start to finish, and any developer can manage
+  any release.
+- Admins can read releases and download their files, but can't change them.
 - After publishing, only the release notes can change.
 - Versions follow semantic versioning (for example 1.4.0). Each is unique per
   product and must be newer than anything already shipped.
-- Every change, with who made it and any feedback or reason, is recorded and
+- Every change, with who made it and any reason, is recorded and
   shown on the release's Activity timeline.
 
 ### 5.4 Uploads and file checks
@@ -181,7 +178,7 @@ Before a file uploads, the portal checks it:
 3. Installers are **blocked** if their version doesn't match the release, if
    that version has already shipped, or if the identical file was uploaded
    before. Documents only produce **warnings**, which the developer confirms
-   on submit and the admin sees.
+   when publishing and which stay in the release's history.
 
 The file then streams through the API into private storage. The API computes
 the checksum again as the data passes and rejects the file if the two don't
@@ -192,24 +189,25 @@ and locks it, so the version and the files can't disagree.
 
 ### 5.5 File storage
 
-- Files being prepared live in the **staging** bucket.
-- On publish they are copied into the **release** bucket, organised by
-  product and version, and the staged copies are removed.
+- Files being prepared live under **draft/** in the bucket.
+- On publish they are copied under **publish/**, organised by product and
+  version, and the draft copies are removed.
 - A stored file is never overwritten: every version is a new object.
-- Both buckets are private. Files leave storage only through individual,
+- The bucket is private. Files leave storage only through individual,
   time-limited download links.
 
 ### 5.6 Publishing
 
-When an admin publishes, a background job:
+When a developer publishes, the API checks the draft (files, version, file
+rules, and that any warnings were confirmed), then a background job:
 
-1. checks the release one last time, with the same rules as submission;
-2. copies each file from staging to the release bucket;
+1. refuses further changes to the draft while it runs;
+2. copies each file from draft/ to publish/;
 3. in a single database transaction, archives the currently published version
    and publishes the new one;
-4. removes the staged copies.
+4. removes the draft copies.
 
-The admin watches its progress in the portal. The process is all or nothing:
+The developer watches its progress in the portal. The process is all or nothing:
 if anything fails before step 3, nothing changes and it can be run again. When
 the new version is live, every customer who downloaded an earlier version of
 that product is emailed that it's available.
@@ -223,7 +221,7 @@ Rollback takes effect immediately and copies nothing.
 - **Rolling back an archived version** removes it from the list of previous
   versions; the published version is unchanged.
 
-The admin records an internal reason, kept in the release history, and may
+The developer records an internal reason, kept in the release history, and may
 add a message for customers. Every customer who downloaded the withdrawn
 version is emailed, and the release's Activity shows how many were notified.
 
@@ -271,7 +269,7 @@ resync script brings it up to date.
 
 The dashboard shows active users, pending sign-ups, blocked competitors,
 rejected sign-ups and downloads (total and last 30 days). It also shows the
-oldest releases waiting for review and the oldest sign-ups waiting for
+oldest sign-ups waiting for
 approval. It refreshes every 30 seconds while open.
 
 ---
@@ -282,7 +280,7 @@ approval. It refreshes every 30 seconds while open.
   interface only hides what a role can't use.
 - **Data isolation.** Users can only reach their own data, and the tests prove
   that one user can't access another's.
-- **Private storage.** Both buckets are private. Customers get a one-hour,
+- **Private storage.** The bucket is private. Customers get a one-hour,
   read-only link to one shipped file per click; unshipped files are never
   available to customers.
 - **Staff MFA.** Every staff sign-in needs a code sent by email.
@@ -344,7 +342,7 @@ its own configuration at startup and refuses to run if anything is missing.
 
 **Testing.** Testing is integration-first. Automated tests call the real API
 against a real PostgreSQL test database, not mocks. Pure logic, such as the
-file parsers and the review rules, has its own unit tests. Every endpoint that
+file parsers and the pre-publish rules, has its own unit tests. Every endpoint that
 returns user data is tested to prove other users can't reach it.
 
 **Documentation.** The API reference (OpenAPI) is generated from the code. A
@@ -373,7 +371,7 @@ decision record was written for each module as it was completed, in
 | Web client | Static files on Hostinger |
 | API | Node.js on an OCI virtual machine, behind nginx |
 | Database | PostgreSQL |
-| Files | OCI Object Storage: separate private staging and release buckets |
+| Files | OCI Object Storage: one private bucket with draft/ and publish/ areas |
 | Email | OCI Email Delivery |
 | CRM | HubSpot |
 
@@ -381,7 +379,7 @@ decision record was written for each module as it was completed, in
   receives the traffic and passes it to the API.
 - The API reaches OCI Object Storage and Email Delivery with the virtual
   machine's own identity (instance principal), granted only the permissions
-  it needs on each bucket.
+  it needs on the bucket.
 - The web client is built once and uploaded to Hostinger as static files.
 - At startup the API checks its configuration and refuses to start if
   anything required is missing. In production it also refuses to start
@@ -392,7 +390,7 @@ decision record was written for each module as it was completed, in
 ## 10. Operations
 
 **Running inside the API.** Publish jobs run in the background and report
-progress to the admin. The email sender wakes when there is mail to send and
+progress to the developer. The email sender wakes when there is mail to send and
 on startup, so nothing queued is lost on a restart.
 
 **Logging.** The API writes structured logs: one short line per request, plus
@@ -408,7 +406,7 @@ full detail for any unexpected error. Secrets are never logged.
 | HubSpot setup | Creates the portal's custom fields in HubSpot |
 | HubSpot resync | Pushes download totals to HubSpot again |
 | Release purge | Permanently removes test releases; previews by default |
-| Storage checks | Verifies uploads and copies against the real buckets |
+| Storage checks | Verifies uploads and copies against the real bucket |
 | Email preview | Renders every email template for review |
 | API docs | Regenerates the OpenAPI reference |
 

@@ -6,7 +6,7 @@ import request from "supertest";
 import { app } from "../../src/app.js";
 import { env } from "../../src/configs/env.js";
 import { prisma } from "../../src/configs/prisma.js";
-import { getStorageBuckets } from "../../src/configs/storage.js";
+import { getStorageBucket } from "../../src/configs/storage.js";
 import { getStorageDriver } from "../../src/services/storage/drivers/storage.driver.js";
 import { buildPe } from "../helpers/file-fixtures.js";
 import {
@@ -73,7 +73,7 @@ const sessions = (releaseId: string) =>
   prisma.uploadSession.findMany({ where: { releaseId } });
 
 async function stagedBytes(objectKey: string): Promise<Buffer> {
-  const { staging } = getStorageBuckets();
+  const staging = getStorageBucket();
   return readFile(path.resolve(env.STORAGE_LOCAL_DIR, staging, objectKey));
 }
 
@@ -228,7 +228,7 @@ describe("PUT /api/releases/:id/uploads/:uploadId/parts/:n", () => {
     const { file, uploadId } = await opened(release.id);
     await prisma.release.update({
       where: { id: release.id },
-      data: { status: "IN_REVIEW" },
+      data: { status: "PUBLISHED" },
     });
 
     const res = await putPart(
@@ -410,8 +410,8 @@ describe("GET and DELETE /api/releases/:id/uploads", () => {
   });
 });
 
-describe("upload routes: roles and ownership", () => {
-  it("are for the creating DEV only", async () => {
+describe("upload routes: roles", () => {
+  it("are for developers only", async () => {
     const release = await draft();
     const { file, uploadId } = await opened(release.id);
     const base = `/api/releases/${release.id}/uploads`;
@@ -441,13 +441,30 @@ describe("upload routes: roles and ownership", () => {
         expect(res.body.code).toBe("FORBIDDEN");
       }
     }
-    for (const res of await Promise.all(calls(otherDev))) {
-      expect(res.status).toBe(403);
-      expect(res.body.code).toBe("NOT_RELEASE_OWNER");
-    }
 
     const [session] = await sessions(release.id);
     expect(session).toMatchObject({ id: uploadId, partsDone: 0 });
+  });
+
+  it("lets another developer send the parts and cancel, listing only their own", async () => {
+    const release = await draft();
+    const { file, uploadId } = await opened(release.id);
+    const base = `/api/releases/${release.id}/uploads`;
+
+    await request(app)
+      .put(`${base}/${uploadId}/parts/1`)
+      .set(otherDev.cookie)
+      .set("Content-Type", "application/octet-stream")
+      .send(partOf(file.body, PART, 1))
+      .expect(200);
+    const listed = await request(app).get(base).set(otherDev.cookie);
+    expect(listed.body.data.uploads).toEqual([]);
+
+    await request(app)
+      .delete(`${base}/${uploadId}`)
+      .set(otherDev.cookie)
+      .expect(200);
+    expect(await sessions(release.id)).toEqual([]);
   });
 });
 
@@ -473,7 +490,7 @@ describe("complete commits what storage holds", () => {
       where: { id: uploadId },
     });
     await getStorageDriver().uploadPart({
-      bucket: getStorageBuckets().staging,
+      bucket: getStorageBucket(),
       key: session.objectKey,
       uploadId: session.storageUploadId,
       partNum: 1,
@@ -501,7 +518,7 @@ describe("complete commits what storage holds", () => {
       where: { id: uploadId },
     });
     await getStorageDriver().uploadPart({
-      bucket: getStorageBuckets().staging,
+      bucket: getStorageBucket(),
       key: session.objectKey,
       uploadId: session.storageUploadId,
       partNum: 2,

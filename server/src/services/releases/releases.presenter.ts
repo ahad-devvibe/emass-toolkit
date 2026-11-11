@@ -40,7 +40,7 @@ const noVerdict: FileVerdict = { reasons: [], warnings: [] };
 
 // sizeBytes is a BigInt column (JSON can't carry it); files are capped far
 // below 2^53, so a number is exact. objectKey never leaves the server.
-// `blockedBy` lists what stops submit; `warnings` what submit must confirm.
+// `blockedBy` lists what stops publish; `warnings` what publish must confirm.
 export function presentFile(file: ReleaseFile, verdict = noVerdict) {
   return {
     id: file.id,
@@ -88,9 +88,9 @@ type DetailInput = SummaryInput & {
 type VersionRef = { id: string; version: string } | null;
 
 /**
- * What the admin's review actions would touch: the published release a
- * publish would archive (while in review) and the archived release a
- * rollback would restore (while published).
+ * What a developer's actions would touch: the published release a publish
+ * would archive (while a draft) and the archived release a rollback would
+ * restore (while published).
  */
 export type ReviewContext = {
   currentPublished: VersionRef;

@@ -56,23 +56,17 @@ export const releasesApi = {
     const body = { ...rest, ...(files?.length && { files: files.map(toApiFileMapping) }) }
     return toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(releasePath(id), { method: "PATCH", body }))
   },
-  /** confirmWarnings: the developer saw the files' warnings and submits anyway. */
-  submit: async (id: string, input: { confirmWarnings?: boolean } = {}): Promise<ReleaseDetail> =>
-    toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(`${releasePath(id)}/submit`, { method: "POST", body: input })),
-  withdraw: async (id: string): Promise<ReleaseDetail> => toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(`${releasePath(id)}/withdraw`, { method: "POST" })),
   remove: (id: string) => authorizedRequest<void>(releasePath(id), { method: "DELETE" }),
 
-  /** Notes on a published release (creating DEV or admin); each real edit is logged. */
+  /** Notes on a published release; each real edit is logged. */
   updateNotes: async (id: string, releaseNotes: string): Promise<ReleaseDetail> => toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(`${releasePath(id)}/notes`, { method: "PATCH", body: { releaseNotes } })),
 
-  // Admin review
-  requestChanges: async (id: string, note: string): Promise<ReleaseDetail> => toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(`${releasePath(id)}/request-changes`, { method: "POST", body: { note } })),
   /** `reason` is internal; `customerMessage` (optional) goes into the email to everyone who downloaded it. */
   rollback: async (id: string, input: { reason: string; customerMessage?: string }): Promise<ReleaseDetail> => toReleaseDetail(await authorizedRequest<ApiReleaseDetail>(`${releasePath(id)}/rollback`, { method: "POST", body: input })),
-  /** Starts the background publish (202); poll publishStatus for progress. */
-  publish: async (id: string): Promise<PublishJob> => (await authorizedRequest<{ job: PublishJob }>(`${releasePath(id)}/publish`, { method: "POST" })).job,
+  /** Starts the background publish (202); poll publishStatus for progress. confirmWarnings: the developer saw the files' warnings and publishes anyway. */
+  publish: async (id: string, input: { confirmWarnings?: boolean } = {}): Promise<PublishJob> => (await authorizedRequest<{ job: PublishJob }>(`${releasePath(id)}/publish`, { method: "POST", body: input })).job,
   publishStatus: async (id: string): Promise<PublishStatus> => toPublishStatus(await authorizedRequest<ApiPublishStatus>(`${releasePath(id)}/publish-status`)),
-  /** Every publish job running or recently settled (admins). */
+  /** Every publish job running or recently settled. */
   publishJobs: async (): Promise<PublishJobEntry[]> => (await authorizedRequest<{ jobs: PublishJobEntry[] }>("/releases/publish-jobs")).jobs,
 
   /** The rules' verdict before upload; call again with the ranges it asks for. */
