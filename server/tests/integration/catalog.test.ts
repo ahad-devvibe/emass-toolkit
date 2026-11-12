@@ -74,6 +74,8 @@ describe("GET /api/catalog/products", () => {
         name: "Core",
         description: null,
         imageUrl: null,
+        kind: "RELEASES",
+        link: null,
         latest: {
           version: "2.0.0",
           publishedAt: publishedAt.toISOString(),
@@ -85,9 +87,34 @@ describe("GET /api/catalog/products", () => {
         name: "Vision",
         description: null,
         imageUrl: null,
+        kind: "RELEASES",
+        link: null,
         latest: null,
       },
     ]);
+  });
+
+  it("lists a link product with the link its button opens", async () => {
+    const product = await createProduct({
+      name: "Portal",
+      sortOrder: 99,
+      link: { url: "https://example.com/portal", label: "Open portal" },
+    });
+
+    const res = await getList();
+
+    expect(res.status).toBe(200);
+    expect(
+      res.body.data.products.find((p: { id: string }) => p.id === product.id),
+    ).toEqual({
+      id: product.id,
+      name: "Portal",
+      description: null,
+      imageUrl: null,
+      kind: "LINK",
+      link: { url: "https://example.com/portal", label: "Open portal" },
+      latest: null,
+    });
   });
 
   it("requires sign-in", async () => {
@@ -160,11 +187,14 @@ describe("GET /api/catalog/products/:id", () => {
     expect(body).not.toContain(dev.id);
   });
 
-  it("answers 404 for an inactive, unknown or malformed product id", async () => {
+  it("answers 404 for an inactive, unknown, link or malformed product id", async () => {
     const inactive = await createProduct({ isActive: false });
     await release(inactive.id, "1.0.0", "PUBLISHED", new Date());
+    const link = await createProduct({
+      link: { url: "https://example.com", label: "Open" },
+    });
 
-    for (const id of [inactive.id, randomUUID(), "not-a-uuid"]) {
+    for (const id of [inactive.id, link.id, randomUUID(), "not-a-uuid"]) {
       const res = await getProduct(id);
       expect(res.status).toBe(404);
       expect(res.body.code).toBe("PRODUCT_NOT_FOUND");

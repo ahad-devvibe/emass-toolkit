@@ -9,7 +9,7 @@ import type { Product, ProductSummary, Release, ReleaseFile } from "./catalog.ty
 
 type ApiCatalogFile = { id: string; kind: "SDK" | "DOC"; platform: ApiPlatform | null; name: string; sizeBytes: number; sha256: string }
 type ApiCatalogVersion = { id: string; version: string; status: "PUBLISHED" | "ARCHIVED"; publishedAt: string | null; releaseNotes: string; files: ApiCatalogFile[] }
-type ApiProductSummary = { id: string; name: string; description: string | null; imageUrl: string | null; latest: { version: string; publishedAt: string | null; platforms: ApiPlatform[] } | null }
+type ApiProductSummary = { id: string; name: string; description: string | null; imageUrl: string | null; kind: "RELEASES" | "LINK"; link: { url: string; label: string } | null; latest: { version: string; publishedAt: string | null; platforms: ApiPlatform[] } | null }
 type ApiCatalogProduct = { product: { id: string; name: string; description: string | null; detail: string | null; imageUrl: string | null }; versions: ApiCatalogVersion[] }
 
 const productPath = (id: string) => `/catalog/products/${encodeURIComponent(id)}`
@@ -43,6 +43,7 @@ export function toProductSummary(product: ApiProductSummary): ProductSummary {
     name: product.name,
     description: product.description ?? "",
     imageUrl: product.imageUrl,
+    link: product.kind === "LINK" ? product.link : null,
     latest: latest ? { version: latest.version, released: latest.publishedAt ?? "", os: latest.platforms.map(fromApiPlatform) } : null,
   }
 }

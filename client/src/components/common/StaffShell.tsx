@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   AtSign,
+  ExternalLink,
   FilePlus2,
   LayoutDashboard,
   Layers,
@@ -8,6 +9,7 @@ import {
   Plus,
   Settings,
   UserCheck,
+  Users,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { roleLabels, type SessionUser } from "@/auth/auth.types";
@@ -84,10 +86,22 @@ function useNavEntries(user: SessionUser): NavEntry[] {
             Icon: FilePlus2,
             active: pathname === "/releases/new",
           },
+          {
+            to: "/external-product",
+            label: "External Product",
+            Icon: ExternalLink,
+            active: pathname.startsWith("/external-product"),
+          },
         ]
       : []),
     ...(isAdmin
       ? [
+          {
+            to: "/admin/customers",
+            label: "Customers",
+            Icon: Users,
+            active: pathname.startsWith("/admin/customers"),
+          },
           {
             to: "/admin/signups",
             label: "Signup Requests",

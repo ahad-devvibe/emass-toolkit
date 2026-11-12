@@ -68,6 +68,9 @@ are set up by Nanoveu; you don't request one through the sign-up form.
 After signing in you land on the **catalog**, which lists every EMASS product
 available to you. Select a product to open its page.
 
+Some products are links rather than downloads: their card has a single button
+that opens the product's page on another site in a new tab.
+
 ### The product page
 
 A product page shows the **latest version** by default, with:
@@ -151,6 +154,16 @@ Every file is checked before and after it uploads:
 
 If you drop an SDK for a platform that already has one, you'll be asked
 whether to replace the existing file or change the new file's type.
+
+### Editing the external product
+
+The external product (Model Zoo) is a catalog card that sends customers to
+another site; it has no releases. Open **External Product** in the sidebar to
+change the card's **Name** and **Description**, and where its button goes:
+the **URL** (a full `https://` link) and the **Button label** (up to 40
+characters). The card on the right shows what customers will see as you type.
+Select **Save changes**; customers see the change straight away. Only
+developers can edit it; admins don't see the page.
 
 ### Deleting a draft
 
@@ -257,6 +270,15 @@ each request you can see their details and what they plan to use EMASS for.
 Select **Add email domain**, enter a domain such as `example.com` (you can
 paste a full email address), and choose the list. Changes apply to **new**
 sign-ups only; existing accounts are unaffected.
+
+### Customers
+
+**Customers** lists every customer account, newest first, with how many files
+each has downloaded and when they last downloaded (hover to see which file).
+Search by name, email or company, and filter by account status or by whether
+they have downloaded anything. Use **Previous** and **Next** to move between
+pages. Select a customer to see their full profile, account status, licence
+acceptance and their first and last download.
 
 ### Viewing releases
 

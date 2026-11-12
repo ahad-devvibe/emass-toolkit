@@ -1,4 +1,4 @@
-import { ReleaseStatus, type SdkPlatform } from "@prisma/client";
+import { ProductKind, ReleaseStatus, type SdkPlatform } from "@prisma/client";
 import { prisma } from "../../configs/prisma.js";
 import { productNotFound } from "../releases/releases.errors.js";
 
@@ -22,7 +22,10 @@ const fileSelect = {
   sha256: true,
 } as const;
 
-/** Active products in catalog order, each with its current release, if any. */
+/**
+ * Active products in catalog order, each with its current release, if any.
+ * A link product has no releases; it carries the link its button opens.
+ */
 export async function listCatalogProducts() {
   const products = await prisma.product.findMany({
     where: { isActive: true },
@@ -32,6 +35,9 @@ export async function listCatalogProducts() {
       name: true,
       description: true,
       imageUrl: true,
+      kind: true,
+      linkUrl: true,
+      linkLabel: true,
       releases: {
         where: { status: ReleaseStatus.PUBLISHED },
         take: 1,
@@ -45,10 +51,14 @@ export async function listCatalogProducts() {
   });
 
   return {
-    products: products.map(({ releases, ...product }) => {
+    products: products.map(({ releases, linkUrl, linkLabel, ...product }) => {
       const current = releases[0];
       return {
         ...product,
+        link:
+          product.kind === ProductKind.LINK && linkUrl && linkLabel
+            ? { url: linkUrl, label: linkLabel }
+            : null,
         latest: current
           ? {
               version: current.version,
@@ -63,10 +73,13 @@ export async function listCatalogProducts() {
   };
 }
 
-/** One active product with its shipped versions: the current one first, then older ones. */
+/**
+ * One active product with its shipped versions: the current one first, then
+ * older ones. Link products have no page of their own, so they're unknown here.
+ */
 export async function getCatalogProduct(productId: string) {
   const product = await prisma.product.findFirst({
-    where: { id: productId, isActive: true },
+    where: { id: productId, isActive: true, kind: ProductKind.RELEASES },
     select: {
       id: true,
       name: true,

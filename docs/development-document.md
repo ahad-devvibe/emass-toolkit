@@ -239,6 +239,14 @@ directly from storage. Every click creates a new link.
 Each file's SHA-256 checksum is shown next to it, with the command to verify
 it on Windows, macOS or Linux.
 
+An **external product** (`kind: LINK`) has no releases or files. Its catalog
+card has one button that opens an external `https://` URL in a new tab;
+nothing is logged, and no licence is needed. Developers edit its name,
+description, URL and button label on the External Product page
+(`PATCH /api/products/:id/external`, DEV only); re-running the product seed
+never overwrites those. The server refuses releases for external products and
+keeps them out of the release product picker.
+
 Staff can download files from any release, including unpublished ones, to test
 a build. Those links last 5 minutes and are logged separately, so testing
 never counts as a customer download.
@@ -271,6 +279,14 @@ The dashboard shows active users, pending sign-ups, blocked competitors,
 rejected sign-ups and downloads (total and last 30 days). It also shows the
 oldest sign-ups waiting for
 approval. It refreshes every 30 seconds while open.
+
+The **Customers** page (`GET /api/admin/customers`, admin only) lists customer
+accounts newest first, keyset-paginated on (created, id), with search on name,
+email and company and filters on status and "has downloaded". Download totals
+and the first and last download (time and a "Product vX — file" label) are
+kept on the user row in the same transaction as each download, so the page is
+one query on one table. `releases:purge` deletes download rows without
+lowering these totals, so a test purge leaves them overstated.
 
 ---
 
@@ -317,7 +333,7 @@ erDiagram
 | Entity | Holds |
 |---|---|
 | **User** | Profile, role, status, sign-up details, licence acceptance, download totals |
-| **Product** | The EMASS products in the catalog |
+| **Product** | The EMASS products in the catalog. `kind` is RELEASES (ships versioned files) or LINK (only a catalog button opening `linkUrl`, labelled `linkLabel`) |
 | **Release** | One version of a product: state, version, release notes |
 | **ReleaseFile** | One file of a release: name, type, platform, size, SHA-256, storage location |
 | **ReleaseEvent** | The history of a release: each action, who did it, feedback or reason |

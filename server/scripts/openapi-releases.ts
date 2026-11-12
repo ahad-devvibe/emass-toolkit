@@ -7,6 +7,7 @@ import {
   publishedNotesSchema,
   updateReleaseSchema,
 } from "../src/schemas/releases.schema.js";
+import { externalProductSchema } from "../src/schemas/products.schema.js";
 import { errorResponse, jsonBody, successResponse } from "./openapi-helpers.js";
 
 const cookie = [{ cookieAuth: [] }];
@@ -254,7 +255,8 @@ export const releaseTags = [
   },
   {
     name: "Products",
-    description: "Active products (seeded; admin CRUD comes later)",
+    description:
+      "Active products (seeded; admin CRUD comes later). A RELEASES product ships versioned files; a LINK (external) product is only a catalog card whose button opens a URL; developers edit its name, description and link.",
   },
   {
     name: "Releases",
@@ -263,12 +265,69 @@ export const releaseTags = [
   },
 ];
 
+const externalProduct = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    name: { type: "string" },
+    description: { type: "string", nullable: true },
+    isActive: { type: "boolean" },
+    link: {
+      type: "object",
+      properties: { url: { type: "string" }, label: { type: "string" } },
+    },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
 export const releasePaths = {
+  "/products/external": {
+    get: {
+      operationId: "listExternalProducts",
+      tags: ["Products"],
+      summary:
+        "External products with their name, description, URL and button label (DEV only)",
+      security: cookie,
+      responses: {
+        200: successResponse("External products", {
+          type: "object",
+          properties: { products: { type: "array", items: externalProduct } },
+        }),
+        401: unauthorized,
+        403: forbidden(),
+      },
+    },
+  },
+  "/products/{id}/external": {
+    patch: {
+      operationId: "updateExternalProduct",
+      tags: ["Products"],
+      summary:
+        "Set an external product's name, description, URL (https only) and button label (DEV only)",
+      security: cookie,
+      parameters: [idParam],
+      requestBody: jsonBody(
+        externalProductSchema,
+        "All fields are trimmed; an empty or null description clears it",
+      ),
+      responses: {
+        200: successResponse("External product updated", {
+          type: "object",
+          properties: { product: externalProduct },
+        }),
+        400: errorResponse("Invalid body", ["VALIDATION_ERROR"], 400),
+        401: unauthorized,
+        403: forbidden(),
+        404: notFound(["PRODUCT_NOT_FOUND"]),
+      },
+    },
+  },
   "/products": {
     get: {
       operationId: "listProducts",
       tags: ["Products"],
-      summary: "Active products in catalog order (any signed-in user)",
+      summary:
+        "Active products that ship releases, in catalog order (any signed-in user); link products are left out",
       security: cookie,
       responses: {
         200: successResponse("Products", {
@@ -312,6 +371,17 @@ export const releasePaths = {
                   name: { type: "string" },
                   description: { type: "string", nullable: true },
                   imageUrl: { type: "string", nullable: true },
+                  kind: { type: "string", enum: ["RELEASES", "LINK"] },
+                  link: {
+                    type: "object",
+                    nullable: true,
+                    description:
+                      "Set for LINK products: the button opens url in a new tab",
+                    properties: {
+                      url: { type: "string" },
+                      label: { type: "string" },
+                    },
+                  },
                   latest: {
                     type: "object",
                     nullable: true,
@@ -341,7 +411,7 @@ export const releasePaths = {
       operationId: "getCatalogProduct",
       tags: ["Catalog"],
       summary:
-        "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts and rolled-back releases never appear; storage keys are never sent",
+        "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts and rolled-back releases never appear; storage keys are never sent. Link products have no page (404 PRODUCT_NOT_FOUND)",
       security: cookie,
       parameters: [
         { name: "id", in: "path", required: true, schema: { type: "string" } },

@@ -370,6 +370,115 @@ const authPaths = {
       },
     },
   },
+  "/admin/customers": {
+    get: {
+      operationId: "listCustomers",
+      tags: ["Admin"],
+      summary:
+        "Customers newest first with their download totals and first/last download, cursor-paginated, with search and filters (ADMIN only)",
+      security: [{ cookieAuth: [] }],
+      parameters: [
+        {
+          name: "limit",
+          in: "query",
+          required: false,
+          schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+        },
+        {
+          name: "cursor",
+          in: "query",
+          required: false,
+          description: "Opaque; pass the previous response's nextCursor",
+          schema: { type: "string" },
+        },
+        {
+          name: "q",
+          in: "query",
+          required: false,
+          description:
+            "Case-insensitive; every word must match a name part, the email or the company",
+          schema: { type: "string", maxLength: 100 },
+        },
+        {
+          name: "status",
+          in: "query",
+          required: false,
+          schema: {
+            type: "string",
+            enum: ["ACTIVE", "PENDING_APPROVAL", "BLOCKED"],
+          },
+        },
+        {
+          name: "downloads",
+          in: "query",
+          required: false,
+          description: "any: downloaded at least once; none: never downloaded",
+          schema: { type: "string", enum: ["any", "none"] },
+        },
+      ],
+      responses: {
+        200: successResponse("Customers page", {
+          type: "object",
+          properties: {
+            customers: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  firstName: { type: "string" },
+                  middleName: { type: "string", nullable: true },
+                  lastName: { type: "string" },
+                  email: { type: "string" },
+                  country: { type: "string" },
+                  companyName: { type: "string" },
+                  jobTitle: { type: "string" },
+                  useCase: { type: "string", nullable: true },
+                  website: { type: "string", nullable: true },
+                  status: { type: "string" },
+                  blockReason: { type: "string", nullable: true },
+                  emailVerified: { type: "boolean" },
+                  licenseAcceptedAt: {
+                    type: "string",
+                    format: "date-time",
+                    nullable: true,
+                  },
+                  downloadCount: { type: "integer" },
+                  firstDownloadAt: {
+                    type: "string",
+                    format: "date-time",
+                    nullable: true,
+                  },
+                  firstDownloadLabel: { type: "string", nullable: true },
+                  lastDownloadAt: {
+                    type: "string",
+                    format: "date-time",
+                    nullable: true,
+                  },
+                  lastDownloadLabel: { type: "string", nullable: true },
+                  createdAt: { type: "string", format: "date-time" },
+                },
+              },
+            },
+            nextCursor: { type: "string", nullable: true },
+            total: { type: "integer" },
+          },
+          required: ["customers", "nextCursor", "total"],
+        }),
+        400: errorResponse(
+          "Invalid query",
+          ["VALIDATION_ERROR", "INVALID_CURSOR"],
+          400,
+        ),
+        401: errorResponse(
+          "Missing or invalid token",
+          ["TOKEN_MISSING", "TOKEN_INVALID", "TOKEN_EXPIRED"],
+          401,
+        ),
+        403: errorResponse("Admin access required", ["FORBIDDEN"], 403),
+      },
+    },
+  },
   "/admin/domains": {
     get: {
       operationId: "listEmailDomains",

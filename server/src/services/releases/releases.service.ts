@@ -1,4 +1,5 @@
 import {
+  ProductKind,
   ReleaseEventType,
   ReleaseFileKind,
   ReleaseStatus,
@@ -88,9 +89,10 @@ const versionColumns = (version: Semver | null) => ({
 const shippedRef = (row: { id: string; version: string | null } | null) =>
   row && { id: row.id, version: versionOf(row) };
 
+// Link products have no releases, so they're unknown here
 async function assertActiveProduct(productId: string): Promise<void> {
   const product = await prisma.product.findFirst({
-    where: { id: productId, isActive: true },
+    where: { id: productId, isActive: true, kind: ProductKind.RELEASES },
     select: { id: true },
   });
   if (!product) throw productNotFound();

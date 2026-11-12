@@ -15,5 +15,8 @@ export type ResourceFile = { name: string; title: string; format: string; size: 
 // releases: the published one first, then archived ones, newest first
 export type Product = { id: string; name: string; description: string; detail: string; imageUrl: string | null; releases: Release[]; resources: ResourceFile[] }
 
-/** A catalog card: the product and its current release, if one has shipped. */
-export type ProductSummary = { id: string; name: string; description: string; imageUrl: string | null; latest: { version: string; released: string; os: OperatingSystem[] } | null }
+/** Where a link product's button goes; such a product has no releases or page of its own. */
+export type ProductLink = { url: string; label: string }
+
+/** A catalog card: the product and its current release, if one has shipped, or its link. */
+export type ProductSummary = { id: string; name: string; description: string; imageUrl: string | null; link: ProductLink | null; latest: { version: string; released: string; os: OperatingSystem[] } | null }

@@ -33,7 +33,7 @@
     },
     {
       "name": "Products",
-      "description": "Active products (seeded; admin CRUD comes later)"
+      "description": "Active products (seeded; admin CRUD comes later). A RELEASES product ships versioned files; a LINK (external) product is only a catalog card whose button opens a URL; developers edit its name, description and link."
     },
     {
       "name": "Releases",
@@ -2174,6 +2174,334 @@
         }
       }
     },
+    "/admin/customers": {
+      "get": {
+        "operationId": "listCustomers",
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Customers newest first with their download totals and first/last download, cursor-paginated, with search and filters (ADMIN only)",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Opaque; pass the previous response's nextCursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Case-insensitive; every word must match a name part, the email or the company",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "PENDING_APPROVAL",
+                "BLOCKED"
+              ]
+            }
+          },
+          {
+            "name": "downloads",
+            "in": "query",
+            "required": false,
+            "description": "any: downloaded at least once; none: never downloaded",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "any",
+                "none"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customers page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "customers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "firstName": {
+                                "type": "string"
+                              },
+                              "middleName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "lastName": {
+                                "type": "string"
+                              },
+                              "email": {
+                                "type": "string"
+                              },
+                              "country": {
+                                "type": "string"
+                              },
+                              "companyName": {
+                                "type": "string"
+                              },
+                              "jobTitle": {
+                                "type": "string"
+                              },
+                              "useCase": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "website": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "blockReason": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "emailVerified": {
+                                "type": "boolean"
+                              },
+                              "licenseAcceptedAt": {
+                                "type": "string",
+                                "format": "date-time",
+                                "nullable": true
+                              },
+                              "downloadCount": {
+                                "type": "integer"
+                              },
+                              "firstDownloadAt": {
+                                "type": "string",
+                                "format": "date-time",
+                                "nullable": true
+                              },
+                              "firstDownloadLabel": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "lastDownloadAt": {
+                                "type": "string",
+                                "format": "date-time",
+                                "nullable": true
+                              },
+                              "lastDownloadLabel": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        },
+                        "nextCursor": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "customers",
+                        "nextCursor",
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        400
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "INVALID_CURSOR"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/domains": {
       "get": {
         "operationId": "listEmailDomains",
@@ -3543,13 +3871,483 @@
         }
       }
     },
+    "/products/external": {
+      "get": {
+        "operationId": "listExternalProducts",
+        "tags": [
+          "Products"
+        ],
+        "summary": "External products with their name, description, URL and button label (DEV only)",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "External products",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "products": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "isActive": {
+                                "type": "boolean"
+                              },
+                              "link": {
+                                "type": "object",
+                                "properties": {
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{id}/external": {
+      "patch": {
+        "operationId": "updateExternalProduct",
+        "tags": [
+          "Products"
+        ],
+        "summary": "Set an external product's name, description, URL (https only) and button label (DEV only)",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "All fields are trimmed; an empty or null description clears it",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  }
+                },
+                "required": [
+                  "name",
+                  "url",
+                  "label"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "External product updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        200
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "product": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "isActive": {
+                              "type": "boolean"
+                            },
+                            "link": {
+                              "type": "object",
+                              "properties": {
+                                "url": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        400
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        401
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "TOKEN_MISSING",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this role or user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        403
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "FORBIDDEN"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "enum": [
+                        404
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "PRODUCT_NOT_FOUND"
+                      ]
+                    },
+                    "details": {}
+                  },
+                  "required": [
+                    "success",
+                    "statusCode",
+                    "message",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/products": {
       "get": {
         "operationId": "listProducts",
         "tags": [
           "Products"
         ],
-        "summary": "Active products in catalog order (any signed-in user)",
+        "summary": "Active products that ship releases, in catalog order (any signed-in user); link products are left out",
         "security": [
           {
             "cookieAuth": []
@@ -3718,6 +4516,26 @@
                                 "type": "string",
                                 "nullable": true
                               },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "RELEASES",
+                                  "LINK"
+                                ]
+                              },
+                              "link": {
+                                "type": "object",
+                                "nullable": true,
+                                "description": "Set for LINK products: the button opens url in a new tab",
+                                "properties": {
+                                  "url": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
                               "latest": {
                                 "type": "object",
                                 "nullable": true,
@@ -3809,7 +4627,7 @@
         "tags": [
           "Catalog"
         ],
-        "summary": "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts and rolled-back releases never appear; storage keys are never sent",
+        "summary": "One product with its shipped versions (PUBLISHED first, then ARCHIVED, newest first), notes and files with SHA-256. Drafts and rolled-back releases never appear; storage keys are never sent. Link products have no page (404 PRODUCT_NOT_FOUND)",
         "security": [
           {
             "cookieAuth": []

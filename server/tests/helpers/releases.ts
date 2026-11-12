@@ -53,13 +53,24 @@ export async function createCustomer(): Promise<StaffUser> {
 }
 
 export async function createProduct(
-  options: { name?: string; isActive?: boolean; sortOrder?: number } = {},
+  options: {
+    name?: string;
+    isActive?: boolean;
+    sortOrder?: number;
+    /** Makes a link product (no releases) that opens this link. */
+    link?: { url: string; label: string };
+  } = {},
 ) {
   return prisma.product.create({
     data: {
       name: options.name ?? `Product ${randomUUID().slice(0, 8)}`,
       isActive: options.isActive ?? true,
       sortOrder: options.sortOrder ?? 0,
+      ...(options.link && {
+        kind: "LINK",
+        linkUrl: options.link.url,
+        linkLabel: options.link.label,
+      }),
     },
   });
 }

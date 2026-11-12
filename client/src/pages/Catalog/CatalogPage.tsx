@@ -24,17 +24,24 @@ function catalogStats(products: ProductSummary[]): string[] {
 
 function CardSkeletons() {
   return (
-    <div aria-hidden className="grid gap-6 lg:grid-cols-2">
-      {[0, 1].map((key) => (
+    <div aria-hidden className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {[0, 1, 2].map((key) => (
+        // Third placeholder only where three fit in a row
+        // Shaped like ProductCard: icon tile, name, description, then the bottom block
         <div
           key={key}
-          className="overflow-hidden rounded-xl ring-1 ring-border"
+          className={`space-y-4 rounded-xl p-6 ring-1 ring-border${key === 2 ? " hidden lg:block" : ""}`}
         >
-          <Skeleton className="h-48 rounded-none sm:h-56" />
-          <div className="space-y-3 p-6 sm:p-7">
+          <Skeleton className="size-12 rounded-xl" />
+          <div className="space-y-2">
             <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-64 max-w-full" />
-            <Skeleton className="mt-6 h-9 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+          <div className="space-y-4 pt-6">
+            <Skeleton className="h-px w-full" />
+            <Skeleton className="h-3 w-36" />
+            <Skeleton className="h-9 w-full" />
           </div>
         </div>
       ))}
@@ -51,7 +58,7 @@ export function CatalogPage() {
     <AppShell>
       <main
         aria-busy={loading || undefined}
-        className="mx-auto w-full max-w-5xl space-y-10 px-6 py-10 sm:px-10 lg:px-12"
+        className="mx-auto w-full max-w-6xl space-y-10 px-6 py-10 sm:px-10 lg:px-12"
       >
         <div className="space-y-2">
           {user?.role === "CUSTOMER" && (
@@ -76,7 +83,8 @@ export function CatalogPage() {
         <section id="catalog" aria-label="Products">
           {products ? (
             products.length > 0 ? (
-              <div className="grid gap-6 lg:grid-cols-2">
+              // One row of three on desktop; two per row on tablets, one on phones
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {products.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}

@@ -34,6 +34,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss(), uploadTimeouts],
+    // The flag set is only imported dynamically, so Vite would discover it on
+    // first use and re-optimize mid-session (the import then fails until a reload)
+    optimizeDeps: {
+      include: ['country-flag-icons/react/3x2'],
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

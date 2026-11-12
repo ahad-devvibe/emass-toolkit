@@ -1,33 +1,63 @@
-import { ArrowRight } from "lucide-react"
+import type { ReactNode } from "react"
+import { ArrowRight, ArrowUpRight } from "lucide-react"
 import { Link } from "react-router-dom"
 import { buttonVariants } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 import { shortDate } from "@/pages/ProductDetails/release.utils"
 import { ProductIcon } from "@/pages/Releases/product-meta"
 import { osMeta } from "../catalog.meta"
-import type { ProductSummary } from "../catalog.types"
+import type { ProductLink, ProductSummary } from "../catalog.types"
 
-export function ProductCard({ product }: { product: ProductSummary }) {
-  const { latest } = product
+const fullWidthButton = cn(buttonVariants(), "w-full")
+
+/** "huggingface.co" for a link product's footer; a URL that won't parse says "an external site". */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "") || "an external site"
+  } catch {
+    return "an external site"
+  }
+}
+
+/**
+ * Opens a link product's page in a new tab; it's never a download, so nothing
+ * is logged. In a preview it's inert, so an unsaved URL can't be opened.
+ */
+export function ProductLinkButton({ link, preview = false, className }: { link: ProductLink; preview?: boolean; className?: string }) {
+  const classes = cn(buttonVariants(), className)
+  if (preview) return <span className={classes}>{link.label}<ArrowUpRight /></span>
+  return <a href={link.url} target="_blank" rel="noopener noreferrer" className={classes}>{link.label}<ArrowUpRight /></a>
+}
+
+/**
+ * A catalog card: icon, name and description on top; platforms, the current
+ * version and one full-width button pinned to the bottom, so a row of cards
+ * lines up whatever the text lengths. `preview` (the External Product editor)
+ * renders it with nothing that navigates.
+ */
+export function ProductCard({ product, preview = false }: { product: ProductSummary; preview?: boolean }) {
+  const { latest, link } = product
+  // A release product's text opens its page; a link product has no page of its own
+  const linksToPage = !link && !preview
+  const top = (children: ReactNode) => linksToPage
+    ? <Link to={`/catalog/${product.id}`} className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4">{children}</Link>
+    : <div>{children}</div>
+
   return (
-    <Card className="h-full gap-0 py-0 transition-shadow duration-200 hover:ring-primary/35">
-      <Link to={`/catalog/${product.id}`} className="block rounded-t-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        <div className="relative h-48 overflow-hidden rounded-t-xl bg-brand-gradient-deep sm:h-56">
-          <div className="absolute inset-0 grid place-items-center bg-grid-dots text-white/60"><ProductIcon productId={product.id} className="size-16" /></div>
-          {product.imageUrl && <img src={product.imageUrl} alt={`${product.name} product preview`} className="relative h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none" }} />}
-        </div>
-        <CardHeader className="gap-4 p-6 sm:p-7">
-          <div className="flex items-start gap-4">
-            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary text-primary ring-1 ring-primary/10"><ProductIcon productId={product.id} className="size-5" /></div>
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <CardTitle className="text-lg font-semibold tracking-tight">{product.name}</CardTitle>
-              {product.description && <CardDescription className="leading-5">{product.description}</CardDescription>}
-            </div>
+    <Card className={cn("h-full gap-0 p-6 transition-[box-shadow,transform] duration-200", linksToPage && "hover:-translate-y-0.5 hover:shadow-md hover:ring-primary/35")}>
+      {top(
+        <div className="space-y-4">
+          <span className="grid size-12 place-items-center rounded-xl bg-secondary text-primary ring-1 ring-primary/10"><ProductIcon productId={product.id} className="size-6" /></span>
+          <div className="space-y-1.5">
+            <h3 className="text-lg font-semibold tracking-tight">{product.name}</h3>
+            {product.description && <p title={product.description} className="line-clamp-3 text-sm leading-6 text-muted-foreground">{product.description}</p>}
           </div>
-        </CardHeader>
-      </Link>
-      <CardContent className="mt-auto space-y-5 px-6 pb-6 pt-0 sm:px-7 sm:pb-7">
+        </div>,
+      )}
+
+      <div className="mt-auto space-y-4 pt-6">
         {latest && latest.os.length > 0 && (
           <ul aria-label="Platforms" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
             {latest.os.map((os) => {
@@ -37,11 +67,27 @@ export function ProductCard({ product }: { product: ProductSummary }) {
           </ul>
         )}
         <Separator />
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-muted-foreground">{latest ? <><span className="font-mono font-medium text-foreground">v{latest.version}</span> · Released {shortDate(latest.released)}</> : "No release yet"}</span>
-          {latest && <Link to={`/catalog/${product.id}`} className={buttonVariants()}>View downloads<ArrowRight /></Link>}
+        <div className="flex min-h-6 items-center justify-between gap-3 text-xs text-muted-foreground">
+          {link ? (
+            <span className="truncate">Opens {hostOf(link.url)}</span>
+          ) : latest ? (
+            <>
+              <span className="rounded-full bg-secondary px-2 py-0.5 font-medium tabular-nums text-primary">v{latest.version}</span>
+              <time dateTime={latest.released}>{shortDate(latest.released)}</time>
+            </>
+          ) : (
+            <span>No release yet</span>
+          )}
         </div>
-      </CardContent>
+        {/* Every card keeps a button slot, so the footers of a row line up */}
+        {link ? (
+          <ProductLinkButton link={link} preview={preview} className="w-full" />
+        ) : latest ? (
+          preview ? <span className={fullWidthButton}>View downloads<ArrowRight /></span> : <Link to={`/catalog/${product.id}`} className={fullWidthButton}>View downloads<ArrowRight /></Link>
+        ) : (
+          <span aria-disabled="true" className={cn(buttonVariants({ variant: "outline" }), "w-full cursor-default text-muted-foreground")}>Coming soon</span>
+        )}
+      </div>
     </Card>
   )
 }

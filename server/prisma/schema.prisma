@@ -196,6 +196,12 @@ model Product {
 
   isActive Boolean @default(true)
 
+  // RELEASES products ship versioned files; a LINK product is only a button
+  // in the catalog that opens linkUrl (both link fields set for LINK, null otherwise)
+  kind      ProductKind @default(RELEASES)
+  linkUrl   String?
+  linkLabel String?
+
   releases  Release[]
   resources ProductResource[]
 
@@ -203,6 +209,11 @@ model Product {
   updatedAt DateTime @updatedAt
 
   @@index([isActive, sortOrder])
+}
+
+enum ProductKind {
+  RELEASES
+  LINK
 }
 
 enum ReleaseStatus {

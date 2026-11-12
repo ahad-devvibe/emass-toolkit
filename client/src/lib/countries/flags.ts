@@ -6,7 +6,16 @@ export type FlagMap = Record<string, ComponentType<{ title?: string; className?:
 
 let pending: Promise<FlagMap> | null = null
 
-const loadFlags = () => (pending ??= import("country-flag-icons/react/3x2").then((module) => module as unknown as FlagMap))
+// A failed load (offline, or Vite re-optimizing deps in dev) isn't kept:
+// the next flag to mount tries again instead of staying blank until a reload
+const loadFlags = () =>
+  (pending ??= import("country-flag-icons/react/3x2").then(
+    (module) => module as unknown as FlagMap,
+    (error: unknown) => {
+      pending = null
+      throw error
+    },
+  ))
 
 export function useFlags(): FlagMap | null {
   const [flags, setFlags] = useState<FlagMap | null>(null)

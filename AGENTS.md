@@ -54,7 +54,13 @@ download versioned files. This is an MVP: keep it simple.
   there is one. Everyone who downloaded the withdrawn build is emailed.
 - Catalog: products live in Postgres (`Product`, addressed by UUID, seeded
   by `npm run seed:products`; admin CRUD comes later). Versions, files and
-  product-level resources live in Postgres too.
+  product-level resources live in Postgres too. A product's `kind` is
+  `RELEASES` (ships versioned files) or `LINK`, called an "external product"
+  in the UI (no releases: its catalog card button opens `linkUrl`, labelled
+  `linkLabel`, in a new tab, unlogged). Developers edit an external product's
+  name, description, URL and label on `/external-product`; the product seed
+  never overwrites those. External products never appear in release flows
+  (create, next-version, product picker) and have no catalog detail page.
 - HubSpot: used only to create/update customer contacts, one-way from our
   portal. Never read business logic from it. Download and activity logs live in
   our database; customer download totals and a first-download note are pushed

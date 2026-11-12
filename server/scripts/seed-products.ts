@@ -1,13 +1,23 @@
 import "dotenv/config";
+import { ProductKind } from "@prisma/client";
 import { prisma } from "../src/configs/prisma.js";
 import { logger } from "../src/configs/logger.js";
 
-// The two EMASS products. Until admin CRUD exists this list is the source of
-// truth; texts match client/src/pages/Catalog/catalog.data.ts. Ids are fixed
-// so every environment (and every URL) agrees on them; re-running upserts by
-// id and updates names and texts in place.
+// The EMASS products. Until admin CRUD exists this list is the source of
+// truth. Ids are fixed so every environment (and every URL) agrees on them;
+// re-running upserts by id and updates names and texts in place.
+// An external (link) product's name, description, URL and button label are
+// only its starting values: developers edit them on /external-product, so
+// re-running never overwrites them.
 //   npm run seed:products
-const products = [
+const products: {
+  id: string;
+  name: string;
+  description: string;
+  detail?: string;
+  sortOrder: number;
+  link?: { url: string; label: string };
+}[] = [
   {
     id: "6f1c2d8e-3b4a-4c5d-9e7f-1a2b3c4d5e6f",
     name: "EMASS Core SDK",
@@ -26,14 +36,32 @@ const products = [
       "Build vision experiences with calibrated imaging drivers, frame-processing libraries, and tools for validating camera performance across supported platforms.",
     sortOrder: 1,
   },
+  {
+    // A link product: models are hosted externally. The URL is a placeholder
+    // until the real one is set on /products
+    id: "3d4e5f60-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+    name: "Model Zoo",
+    description:
+      "Hosted externally. Pick a model here, then compile it with the AI Pipeline Guide.",
+    sortOrder: 2,
+    link: { url: "https://huggingface.co", label: "Open on Hugging Face" },
+  },
 ];
 
 async function main() {
-  for (const { id, ...data } of products) {
+  for (const { id, link, ...data } of products) {
+    const kind = link ? ProductKind.LINK : ProductKind.RELEASES;
     await prisma.product.upsert({
       where: { id },
-      create: { id, ...data },
-      update: data,
+      create: {
+        id,
+        ...data,
+        kind,
+        ...(link && { linkUrl: link.url, linkLabel: link.label }),
+      },
+      // An external product's card is the developers' to edit on
+      // /external-product: re-running never overwrites it
+      update: link ? { kind } : { ...data, kind },
     });
   }
   logger.info({ count: products.length }, "products seeded");
