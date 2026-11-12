@@ -6,7 +6,7 @@ export const HUBSPOT_USE_CASE_PROPERTY = "emass_use_case";
 
 export const USE_CASE_PROPERTY = {
   name: HUBSPOT_USE_CASE_PROPERTY,
-  label: "EMASS use case",
+  label: "EMASS Use Case",
   description:
     "Set by the EMASS Toolkit portal: what the person said at sign-up they will use EMASS for.",
   groupName: "contactinformation",
@@ -103,35 +103,35 @@ const portalProperty = (
 export const DOWNLOAD_PROPERTIES: SimplePropertyDefinition[] = [
   portalProperty(
     HUBSPOT_DOWNLOAD_COUNT_PROPERTY,
-    "EMASS download count",
+    "EMASS Download Count",
     "how many files this person has downloaded.",
     "number",
     "number",
   ),
   portalProperty(
     HUBSPOT_FIRST_DOWNLOAD_AT_PROPERTY,
-    "EMASS first download",
+    "EMASS First Download",
     "when this person first downloaded a file.",
     "datetime",
     "date",
   ),
   portalProperty(
     HUBSPOT_LAST_DOWNLOAD_AT_PROPERTY,
-    "EMASS last download",
+    "EMASS Last Download",
     "when this person last downloaded a file.",
     "datetime",
     "date",
   ),
   portalProperty(
     HUBSPOT_FIRST_DOWNLOAD_PROPERTY,
-    "EMASS first downloaded file",
+    "EMASS First Downloaded File",
     "the product, version and file of the first download.",
     "string",
     "text",
   ),
   portalProperty(
     HUBSPOT_LAST_DOWNLOAD_PROPERTY,
-    "EMASS last downloaded file",
+    "EMASS Last Downloaded File",
     "the product, version and file of the latest download.",
     "string",
     "text",
@@ -146,7 +146,7 @@ export const HUBSPOT_PORTAL_USER_PROPERTY = "emass_portal_user";
 export const PORTAL_USER_PROPERTY: SimplePropertyDefinition = {
   ...portalProperty(
     HUBSPOT_PORTAL_USER_PROPERTY,
-    "EMASS portal user",
+    "EMASS Portal User",
     "true when this person signed up on the EMASS portal.",
     "bool",
     "booleancheckbox",

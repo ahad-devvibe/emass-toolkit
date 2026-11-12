@@ -150,7 +150,7 @@ The original spec is `tasks/auth.md`.
   - **A contact is created only once an account is `ACTIVE`,** sent as
     `lifecyclestage: "lead"` with the name, country, company and job title,
     the use case in the custom free-text property `emass_use_case`, and the
-    checkbox `emass_portal_user` ("EMASS portal user") set to true.
+    checkbox `emass_portal_user` ("EMASS Portal User") set to true.
     `npm run hubspot:setup` creates those properties (once per HubSpot portal,
     before enabling HubSpot; safe to re-run after upgrades).
   - **Download tracking (customers only):**

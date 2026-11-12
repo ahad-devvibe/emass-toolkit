@@ -67,13 +67,13 @@ Run it again after any portal update that adds HubSpot fields.
 
 | Field (label in HubSpot) | Filled with |
 |---|---|
-| EMASS use case | what the person said at sign-up they'll use EMASS for |
-| EMASS portal user | checkbox, ticked (true) on every contact that signed up on the portal |
-| EMASS download count | total files downloaded |
-| EMASS first download | date of the first download |
-| EMASS last download | date of the latest download |
-| EMASS first downloaded file | e.g. "EMASS Core SDK v1.2.0: emass-mac.dmg" |
-| EMASS last downloaded file | e.g. "EMASS Core SDK v1.4.0: emass-win.zip" |
+| EMASS Use Case | what the person said at sign-up they'll use EMASS for |
+| EMASS Portal User | checkbox, ticked (true) on every contact that signed up on the portal |
+| EMASS Download Count | total files downloaded |
+| EMASS First Download | date of the first download |
+| EMASS Last Download | date of the latest download |
+| EMASS First Downloaded File | e.g. "EMASS Core SDK v1.2.0: emass-mac.dmg" |
+| EMASS Last Downloaded File | e.g. "EMASS Core SDK v1.4.0: emass-win.zip" |
 
 **Older setups:** an earlier version of the script also created **EMASS
 Portal Status** (`emass_portal_status`). The portal no longer uses it. Delete
@@ -124,15 +124,16 @@ the contact page until you add them. To show them for every user:
    **Default view** (or customize the view your sales team uses).
 2. **Key information at the top (Data highlights):** in the middle column's
    **Overview** tab, edit the **Data highlights** card (up to 4 fields) and pick:
-   - EMASS download count;
-   - EMASS first downloaded file;
-   - EMASS last downloaded file;
-   - EMASS last download.
-3. **Left sidebar:** in **About this contact**, add **EMASS use case** (long
-   text reads better here) and **EMASS first download** (the date).
+   - EMASS Download Count;
+   - EMASS First Downloaded File;
+   - EMASS Last Downloaded File;
+   - EMASS Last Download.
+3. **Left sidebar:** in **About this contact**, add **EMASS Use Case** (long
+   text reads better here), **EMASS Portal User** and **EMASS First Download**
+   (the date).
 4. **Save**. Every contact now shows the fields; the first-download note is
    already in the activity timeline.
 
 **Optional:** in **Contacts** → the table view → **Edit columns**, add
-**EMASS download count** and **EMASS last download** to sort and filter
+**EMASS Download Count** and **EMASS Last Download** to sort and filter
 contacts by activity.

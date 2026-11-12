@@ -117,7 +117,7 @@ describe("ensureSimpleProperty (portal-user flag)", () => {
       method: "POST",
       body: {
         name: "emass_portal_user",
-        label: "EMASS portal user",
+        label: "EMASS Portal User",
         type: "bool",
         fieldType: "booleancheckbox",
         options: [
@@ -136,7 +136,7 @@ describe("ensureSimpleProperty (portal-user flag)", () => {
 
     await ensureSimpleProperty(PORTAL_USER_PROPERTY, { apiKey: "pat", fetchImpl });
 
-    expect(calls[1].body).toEqual({ label: "EMASS portal user" });
+    expect(calls[1].body).toEqual({ label: "EMASS Portal User" });
   });
 });
 
