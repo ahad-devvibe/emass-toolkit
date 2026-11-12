@@ -121,22 +121,61 @@ describe("ensureSimpleProperty (portal-user flag)", () => {
         type: "bool",
         fieldType: "booleancheckbox",
         options: [
-          { label: "Yes", value: "true", displayOrder: 0 },
-          { label: "No", value: "false", displayOrder: 1 },
+          { label: "True", value: "true", displayOrder: 0 },
+          { label: "False", value: "false", displayOrder: 1 },
         ],
       },
     });
   });
 
-  it("never patches the options of an existing checkbox", async () => {
+  it("relabels an existing Yes/No checkbox to True/False", async () => {
     const { calls, fetchImpl } = scriptedFetch([
-      { status: 200, body: { ...PORTAL_USER_PROPERTY, label: "Old" } },
+      {
+        status: 200,
+        body: {
+          ...PORTAL_USER_PROPERTY,
+          options: [
+            { label: "Yes", value: "true", displayOrder: 0, hidden: false },
+            { label: "No", value: "false", displayOrder: 1, hidden: false },
+          ],
+        },
+      },
       { status: 200 },
     ]);
 
-    await ensureSimpleProperty(PORTAL_USER_PROPERTY, { apiKey: "pat", fetchImpl });
+    const result = await ensureSimpleProperty(PORTAL_USER_PROPERTY, {
+      apiKey: "pat",
+      fetchImpl,
+    });
 
-    expect(calls[1].body).toEqual({ label: "EMASS Portal User" });
+    expect(result).toEqual({ action: "updated", changes: ["options"] });
+    expect(calls[1]).toMatchObject({
+      method: "PATCH",
+      body: { options: PORTAL_USER_PROPERTY.options },
+    });
+  });
+
+  it("leaves a matching checkbox alone", async () => {
+    const { calls, fetchImpl } = scriptedFetch([
+      {
+        status: 200,
+        body: {
+          ...PORTAL_USER_PROPERTY,
+          options: PORTAL_USER_PROPERTY.options!.map((o) => ({
+            ...o,
+            hidden: false,
+          })),
+        },
+      },
+    ]);
+
+    expect(
+      await ensureSimpleProperty(PORTAL_USER_PROPERTY, {
+        apiKey: "pat",
+        fetchImpl,
+      }),
+    ).toEqual({ action: "unchanged" });
+    expect(calls).toHaveLength(1);
   });
 });
 

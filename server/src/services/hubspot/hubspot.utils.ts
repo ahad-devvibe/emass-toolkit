@@ -153,8 +153,8 @@ export const PORTAL_USER_PROPERTY: SimplePropertyDefinition = {
   ),
   // HubSpot requires exactly these two options on a checkbox property
   options: [
-    { label: "Yes", value: "true", displayOrder: 0 },
-    { label: "No", value: "false", displayOrder: 1 },
+    { label: "True", value: "true", displayOrder: 0 },
+    { label: "False", value: "false", displayOrder: 1 },
   ],
 };
 

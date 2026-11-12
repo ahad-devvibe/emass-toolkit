@@ -32,10 +32,28 @@ async function failure(response: Response, doing: string): Promise<Error> {
   );
 }
 
+type PropertyOption = NonNullable<SimplePropertyDefinition["options"]>[number];
+
+/** True when an existing option list shows different labels or order than ours (matched by value). */
+function optionsDiffer(
+  wanted: PropertyOption[],
+  existing: PropertyOption[] | undefined,
+): boolean {
+  if (!existing || existing.length !== wanted.length) return true;
+  return wanted.some((option) => {
+    const current = existing.find((item) => item.value === option.value);
+    return (
+      !current ||
+      current.label !== option.label ||
+      current.displayOrder !== option.displayOrder
+    );
+  });
+}
+
 /**
  * Idempotently creates a contact property (text, number, date, or a checkbox
- * with its fixed options), or brings its label and description in line.
- * Never changes the type or options of an existing property.
+ * with its fixed options), or brings its label, description and option labels
+ * in line. Never changes the type or the option values.
  */
 export async function ensureSimpleProperty(
   definition: SimplePropertyDefinition,
@@ -63,8 +81,13 @@ export async function ensureSimpleProperty(
   const existing = (await current.json()) as {
     label?: string;
     description?: string;
+    options?: PropertyOption[];
   };
-  const patch: { label?: string; description?: string } = {};
+  const patch: {
+    label?: string;
+    description?: string;
+    options?: PropertyOption[];
+  } = {};
   const changes: string[] = [];
   if (existing.label !== definition.label) {
     patch.label = definition.label;
@@ -73,6 +96,10 @@ export async function ensureSimpleProperty(
   if (existing.description !== definition.description) {
     patch.description = definition.description;
     changes.push("description");
+  }
+  if (definition.options && optionsDiffer(definition.options, existing.options)) {
+    patch.options = definition.options;
+    changes.push("options");
   }
   if (changes.length === 0) return { action: "unchanged" };
   if (dryRun) return { action: "would-update", changes };

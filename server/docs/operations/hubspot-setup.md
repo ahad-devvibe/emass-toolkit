@@ -68,7 +68,7 @@ Run it again after any portal update that adds HubSpot fields.
 | Field (label in HubSpot) | Filled with |
 |---|---|
 | EMASS Use Case | what the person said at sign-up they'll use EMASS for |
-| EMASS Portal User | checkbox, ticked (true) on every contact that signed up on the portal |
+| EMASS Portal User | True / False; True on every contact that signed up on the portal |
 | EMASS Download Count | total files downloaded |
 | EMASS First Download | date of the first download |
 | EMASS Last Download | date of the latest download |
