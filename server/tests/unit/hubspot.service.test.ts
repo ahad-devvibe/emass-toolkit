@@ -94,6 +94,7 @@ describe("createApiHubspotClient", () => {
       company: "Acme",
       jobtitle: "CTO",
       lifecyclestage: "lead",
+      emass_portal_user: "true",
     });
   });
 

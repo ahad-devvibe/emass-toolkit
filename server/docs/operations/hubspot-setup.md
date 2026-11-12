@@ -54,6 +54,7 @@ Every line should end in `created` or `already up to date`:
 
 ```
 hubspot-setup: emass_use_case: created
+hubspot-setup: emass_portal_user: created
 hubspot-setup: emass_download_count: created
 hubspot-setup: emass_first_download_at: created
 hubspot-setup: emass_last_download_at: created
@@ -67,6 +68,7 @@ Run it again after any portal update that adds HubSpot fields.
 | Field (label in HubSpot) | Filled with |
 |---|---|
 | EMASS use case | what the person said at sign-up they'll use EMASS for |
+| EMASS portal user | checkbox, ticked (true) on every contact that signed up on the portal |
 | EMASS download count | total files downloaded |
 | EMASS first download | date of the first download |
 | EMASS last download | date of the latest download |

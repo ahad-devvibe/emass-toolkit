@@ -4,6 +4,7 @@ import { prisma } from "../../configs/prisma.js";
 import { getHubspotConfig, type HubspotConfig } from "../../configs/hubspot.js";
 import { countryName } from "../../utils/country.utils.js";
 import {
+  HUBSPOT_PORTAL_USER_PROPERTY,
   HUBSPOT_USE_CASE_PROPERTY,
   firstDownloadNoteBody,
   toDownloadProperties,
@@ -59,6 +60,8 @@ function toContactProperties(
     // Contacts are only created once the portal account is active (verified
     // email, password set, approved if needed); sales qualifies them from here
     lifecyclestage: "lead",
+    // Every contact the portal writes signed up here
+    [HUBSPOT_PORTAL_USER_PROPERTY]: "true",
   };
   if (input.middleName) properties.middlename = input.middleName;
   if (input.useCase) properties[HUBSPOT_USE_CASE_PROPERTY] = input.useCase;

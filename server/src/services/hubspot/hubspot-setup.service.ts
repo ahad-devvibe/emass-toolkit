@@ -33,8 +33,9 @@ async function failure(response: Response, doing: string): Promise<Error> {
 }
 
 /**
- * Idempotently creates a contact property without options (text, number,
- * date), or brings its label and description in line. Never changes the type.
+ * Idempotently creates a contact property (text, number, date, or a checkbox
+ * with its fixed options), or brings its label and description in line.
+ * Never changes the type or options of an existing property.
  */
 export async function ensureSimpleProperty(
   definition: SimplePropertyDefinition,

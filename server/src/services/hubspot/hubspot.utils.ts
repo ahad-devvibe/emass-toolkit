@@ -74,7 +74,7 @@ export const HUBSPOT_LAST_DOWNLOAD_AT_PROPERTY = "emass_last_download_at";
 export const HUBSPOT_LAST_DOWNLOAD_PROPERTY = "emass_last_download";
 export const HUBSPOT_FIRST_DOWNLOAD_PROPERTY = "emass_first_download";
 
-/** A contact property with no options (text, number, date). */
+/** A contact property (text, number, date, or a yes/no checkbox with its two fixed options). */
 export interface SimplePropertyDefinition {
   name: string;
   label: string;
@@ -82,6 +82,7 @@ export interface SimplePropertyDefinition {
   groupName: string;
   type: string;
   fieldType: string;
+  options?: { label: string; value: string; displayOrder: number }[];
 }
 
 const portalProperty = (
@@ -137,9 +138,30 @@ export const DOWNLOAD_PROPERTIES: SimplePropertyDefinition[] = [
   ),
 ];
 
+// --- Portal sign-up flag ---
+
+// Checkbox set to true on every contact the portal creates or updates
+export const HUBSPOT_PORTAL_USER_PROPERTY = "emass_portal_user";
+
+export const PORTAL_USER_PROPERTY: SimplePropertyDefinition = {
+  ...portalProperty(
+    HUBSPOT_PORTAL_USER_PROPERTY,
+    "EMASS portal user",
+    "true when this person signed up on the EMASS portal.",
+    "bool",
+    "booleancheckbox",
+  ),
+  // HubSpot requires exactly these two options on a checkbox property
+  options: [
+    { label: "Yes", value: "true", displayOrder: 0 },
+    { label: "No", value: "false", displayOrder: 1 },
+  ],
+};
+
 /** Every contact property the portal writes; the Settings check looks for all of them. */
 export const PORTAL_PROPERTY_NAMES = [
   HUBSPOT_USE_CASE_PROPERTY,
+  HUBSPOT_PORTAL_USER_PROPERTY,
   ...DOWNLOAD_PROPERTIES.map((property) => property.name),
 ];
 

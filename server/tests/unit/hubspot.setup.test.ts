@@ -5,6 +5,7 @@ import {
 } from "../../src/services/hubspot/hubspot-setup.service.js";
 import {
   DOWNLOAD_PROPERTIES,
+  PORTAL_USER_PROPERTY,
   USE_CASE_PROPERTY,
 } from "../../src/services/hubspot/hubspot.utils.js";
 
@@ -95,6 +96,47 @@ describe("ensureUseCaseProperty", () => {
       }),
     ).toEqual({ action: "would-update", changes: ["description"] });
     expect(stale.calls).toHaveLength(1);
+  });
+});
+
+describe("ensureSimpleProperty (portal-user flag)", () => {
+  it("creates emass_portal_user as a checkbox with HubSpot's two options", async () => {
+    const { calls, fetchImpl } = scriptedFetch([
+      { status: 404 },
+      { status: 201 },
+    ]);
+
+    const result = await ensureSimpleProperty(PORTAL_USER_PROPERTY, {
+      apiKey: "pat",
+      fetchImpl,
+    });
+
+    expect(result).toEqual({ action: "created" });
+    expect(calls[0].url).toMatch(/\/properties\/contacts\/emass_portal_user$/);
+    expect(calls[1]).toMatchObject({
+      method: "POST",
+      body: {
+        name: "emass_portal_user",
+        label: "EMASS portal user",
+        type: "bool",
+        fieldType: "booleancheckbox",
+        options: [
+          { label: "Yes", value: "true", displayOrder: 0 },
+          { label: "No", value: "false", displayOrder: 1 },
+        ],
+      },
+    });
+  });
+
+  it("never patches the options of an existing checkbox", async () => {
+    const { calls, fetchImpl } = scriptedFetch([
+      { status: 200, body: { ...PORTAL_USER_PROPERTY, label: "Old" } },
+      { status: 200 },
+    ]);
+
+    await ensureSimpleProperty(PORTAL_USER_PROPERTY, { apiKey: "pat", fetchImpl });
+
+    expect(calls[1].body).toEqual({ label: "EMASS portal user" });
   });
 });
 

@@ -7,10 +7,12 @@ import {
 import {
   DOWNLOAD_PROPERTIES,
   HUBSPOT_USE_CASE_PROPERTY,
+  PORTAL_USER_PROPERTY,
 } from "../src/services/hubspot/hubspot.utils.js";
 
 // One-off, idempotent setup of the HubSpot contact properties the portal
-// writes (use case, download totals). Safe to re-run after an upgrade.
+// writes (use case, portal-user flag, download totals). Safe to re-run after
+// an upgrade.
 // Run once per HubSpot portal before HUBSPOT_ENABLED=true:
 //   npm run hubspot:setup [-- --dry-run]
 // The private-app token needs crm.schemas.contacts.write for this run.
@@ -35,7 +37,7 @@ async function main(): Promise<void> {
 
   const steps: [string, typeof ensureUseCaseProperty][] = [
     [HUBSPOT_USE_CASE_PROPERTY, ensureUseCaseProperty],
-    ...DOWNLOAD_PROPERTIES.map(
+    ...[PORTAL_USER_PROPERTY, ...DOWNLOAD_PROPERTIES].map(
       (definition): [string, typeof ensureUseCaseProperty] => [
         definition.name,
         (options) => ensureSimpleProperty(definition, options),
