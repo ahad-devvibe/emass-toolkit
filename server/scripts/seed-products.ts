@@ -20,20 +20,18 @@ const products: {
 }[] = [
   {
     id: "6f1c2d8e-3b4a-4c5d-9e7f-1a2b3c4d5e6f",
-    name: "EMASS Core SDK",
+    name: "EMASS IDE (with AI Pipeline)",
     description:
-      "Essential drivers and tools to integrate EMASS devices into your product.",
-    detail:
-      "The foundation for every EMASS integration, with device drivers, discovery tools, and CLI utilities for provisioning and diagnostics.",
+      "Development environment for EMASS chips, with tools for running trained AI models on the device.",
+    detail: "",
     sortOrder: 0,
   },
   {
     id: "8a9b0c1d-2e3f-4a5b-8c6d-7e8f9a0b1c2d",
-    name: "EMASS Vision SDK",
+    name: "EMASS IDE (without AI Pipeline)",
     description:
-      "Computer vision libraries and calibrated drivers for EMASS imaging hardware.",
-    detail:
-      "Build vision experiences with calibrated imaging drivers, frame-processing libraries, and tools for validating camera performance across supported platforms.",
+      "Essential drivers and tools to integrate EMASS devices, without the AI model tools.",
+    detail: "",
     sortOrder: 1,
   },
   {
